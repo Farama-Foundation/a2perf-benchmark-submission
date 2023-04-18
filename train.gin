@@ -1,4 +1,4 @@
-train_eval.root_dir = './logs/difficulty_1'
+train_eval.root_dir = './logs/difficulty_1_seed_47'
 train_eval.env_name = 'WebNavigation-v0'
 train_eval.use_gpu = True
 train_eval.num_iterations=1000000

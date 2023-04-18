@@ -202,7 +202,7 @@ def train_eval(
                 global_step=global_step)
         rb_checkpointer = common.Checkpointer(
                 ckpt_dir=os.path.join(train_dir, 'replay_buffer'),
-                max_to_keep=3,
+                max_to_keep=2,
                 replay_buffer=replay_buffer)
 
         train_checkpointer.initialize_or_restore()

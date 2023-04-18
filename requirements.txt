@@ -1,1 +1,5 @@
-tf-agents[reverb]
+tf-agents[reverb]==0.15.0
+numpy==1.23.5
+dm-sonnet
+regex
+tensorflow

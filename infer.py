@@ -1,9 +1,6 @@
 import os
 import sys
 
-# Change the current working directory to the directory where the script is located
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
 # Insert the directory at the beginning of sys.path
 sys.path.insert(0, os.getcwd())
 
@@ -18,14 +15,15 @@ from tf_agents.trajectories import time_step as ts
 
 from train import DQNLSTM
 
+ROOT_DIR = '/tmp/pycharm_project_494/rl-perf/rl_perf/submission/logs/difficulty_1_seed_47'
+
 
 def load_model():
     env_name = 'WebNavigation-v0'
     learning_rate = 1e-4
     max_vocab_size = 500
     seed = 32
-    root_dir = '/tmp/pycharm_project_494/rl_perf/submission/logs/difficulty_1_save_test'
-    train_dir = os.path.join(root_dir, 'train')
+    train_dir = os.path.join(ROOT_DIR, 'train')
     tf_env = tf_py_environment.TFPyEnvironment(suite_gym.load(environment_name=env_name,
                                                               spec_dtype_map={gym.spaces.Discrete: np.int32},
                                                               gym_kwargs={'difficulty': 1, 'seed': seed}))
@@ -77,6 +75,9 @@ def preprocess_observation(observation):
 
 def infer_once(model, observation):
     # Write your code here to run inference on the model. This function should return the output of the model.
+
+    observation = preprocess_observation(observation)
+
     action_step = model.action(time_step=observation)
     action = tf.nest.map_structure(lambda t: tf.squeeze(t, axis=0), action_step.action)
     return action
