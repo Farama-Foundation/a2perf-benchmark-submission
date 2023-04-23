@@ -20,6 +20,7 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
 from rl_perf.domains.web_nav.CoDE import q_networks
+import rl_perf.domains.web_nav.web_nav
 
 
 class DQNLSTM(network.Network):
@@ -56,6 +57,7 @@ def train_eval(
         # Params for train
         train_steps_per_iteration=1,
         batch_size=64,
+        environment_batch_size=1,
         learning_rate=1e-3,
         n_step_update=1,
         gamma=0.99,
@@ -95,8 +97,8 @@ def train_eval(
             eval_dir, flush_millis=summaries_flush_secs * 1000)
     eval_metrics = [
             tf_metrics.EnvironmentSteps(),
-            tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
-            tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes)
+            tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes, ),
+            tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes, )
             ]
 
     os.makedirs(eval_dir, exist_ok=True)
@@ -106,9 +108,13 @@ def train_eval(
     global_step = tf.compat.v1.train.get_or_create_global_step()
     with tf.compat.v2.summary.record_if(
             lambda: tf.math.equal(global_step % summary_interval, 0)):
-        tf_env = tf_py_environment.TFPyEnvironment(suite_gym.load(environment_name=env_name,
-                                                                  spec_dtype_map={gym.spaces.Discrete: np.int32},
-                                                                  gym_kwargs={'difficulty': 1, 'seed': seed}))
+
+        batched_tf_env = tf_py_environment.batched_py_environment.BatchedPyEnvironment(
+                envs=[suite_gym.load(environment_name=env_name,
+                                     spec_dtype_map={gym.spaces.Discrete: np.int32},
+                                     gym_kwargs={'difficulty': 1, 'seed': seed + i}) for i in
+                      range(environment_batch_size)])
+        batched_tf_env = tf_py_environment.TFPyEnvironment(batched_tf_env)
         eval_tf_env = tf_py_environment.TFPyEnvironment(
                 suite_gym.load(env_name, gym_kwargs={'difficulty': 1, 'seed': seed + 10}))
 
@@ -117,16 +123,12 @@ def train_eval(
                     'train_eval does not currently support n-step updates with stateful '
                     'networks (i.e., RNNs)')
 
-        action_spec = tf_env.action_spec()
-        num_actions = action_spec.maximum - action_spec.minimum + 1
-
         with tf.name_scope('DQNAgent'):
-
             q_net = DQNLSTM(
-                    observation_spec=tf_env.observation_spec(),
-                    action_spec=tf_env.action_spec(),
+                    observation_spec=batched_tf_env.observation_spec(),
+                    action_spec=batched_tf_env.action_spec(),
                     state_spec=(),
-                    vocab_size=max_vocab_size if max_vocab_size is not None else tf_env.pyenv.envs[
+                    vocab_size=max_vocab_size if max_vocab_size is not None else batched_tf_env.pyenv.envs[
                         0].env.local_vocab.max_vocabulary_size,
                     profile_value_dropout=0.0,
                     q_min=None,
@@ -137,8 +139,8 @@ def train_eval(
                     return_state_value=True)
 
             tf_agent = dqn_agent.DqnAgent(
-                    tf_env.time_step_spec(),
-                    tf_env.action_spec(),
+                    batched_tf_env.time_step_spec(),
+                    batched_tf_env.action_spec(),
                     q_network=q_net,
                     epsilon_greedy=epsilon_greedy,
                     n_step_update=n_step_update,
@@ -159,8 +161,8 @@ def train_eval(
         train_metrics = [
                 tf_metrics.NumberOfEpisodes(),
                 tf_metrics.EnvironmentSteps(),
-                tf_metrics.AverageReturnMetric(),
-                tf_metrics.AverageEpisodeLengthMetric(),
+                tf_metrics.AverageReturnMetric(batch_size=environment_batch_size),
+                tf_metrics.AverageEpisodeLengthMetric(batch_size=environment_batch_size),
                 ]
         os.makedirs(train_dir, exist_ok=True)
         with open(os.path.join(train_dir, 'train_summary.csv'), 'w') as train_file:
@@ -169,22 +171,23 @@ def train_eval(
         eval_policy = tf_agent.policy
         collect_policy = tf_agent.collect_policy
 
+        replay_buffer_capacity = replay_buffer_capacity // batched_tf_env.batch_size
         replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
                 data_spec=tf_agent.collect_data_spec,
-                batch_size=tf_env.batch_size,
+                batch_size=batched_tf_env.batch_size,
                 max_length=replay_buffer_capacity,
                 device='gpu:0' if use_gpu else 'cpu:0'
                 )
         initial_collect_policy = random_tf_policy.RandomTFPolicy(
-                tf_env.time_step_spec(), tf_env.action_spec(), validate_args=True)
+                batched_tf_env.time_step_spec(), batched_tf_env.action_spec(), validate_args=True)
 
         initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
-                tf_env,
+                batched_tf_env,
                 initial_collect_policy,
                 observers=[replay_buffer.add_batch] + train_metrics,
                 num_steps=initial_collect_steps)
         collect_driver = dynamic_step_driver.DynamicStepDriver(
-                tf_env,
+                batched_tf_env,
                 collect_policy,
                 observers=[replay_buffer.add_batch] + train_metrics,
                 num_steps=collect_steps_per_iteration)
@@ -218,7 +221,7 @@ def train_eval(
                 'Initializing replay buffer by collecting experience for %d steps with '
                 'a random policy.', initial_collect_steps)
         dynamic_step_driver.DynamicStepDriver(
-                tf_env,
+                batched_tf_env,
                 initial_collect_policy,
                 observers=[replay_buffer.add_batch] + train_metrics,
                 num_steps=initial_collect_steps).run()
@@ -244,7 +247,7 @@ def train_eval(
         del eval_df
 
         time_step = None
-        policy_state = collect_policy.get_initial_state(tf_env.batch_size)
+        policy_state = collect_policy.get_initial_state(batched_tf_env.batch_size)
 
         timed_at_step = global_step.numpy()
         time_acc = 0
