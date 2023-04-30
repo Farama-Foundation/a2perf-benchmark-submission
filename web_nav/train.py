@@ -102,8 +102,8 @@ def train_eval(
             ]
 
     os.makedirs(eval_dir, exist_ok=True)
-    with  open(os.path.join(eval_dir, 'eval_summary.csv'), 'w') as eval_file:
-        eval_file.write(','.join([metric.name for metric in eval_metrics]))
+    with open(os.path.join(eval_dir, 'eval_summary.csv'), 'w') as eval_file:
+        eval_file.write(','.join([metric.name for metric in eval_metrics]) + '\n')
 
     global_step = tf.compat.v1.train.get_or_create_global_step()
     with tf.compat.v2.summary.record_if(
@@ -166,7 +166,7 @@ def train_eval(
                 ]
         os.makedirs(train_dir, exist_ok=True)
         with open(os.path.join(train_dir, 'train_summary.csv'), 'w') as train_file:
-            train_file.write(','.join([metric.name for metric in train_metrics]))
+            train_file.write(','.join([metric.name for metric in train_metrics]) + '\n')
 
         eval_policy = tf_agent.policy
         collect_policy = tf_agent.collect_policy
@@ -242,7 +242,7 @@ def train_eval(
         # Save initial eval metrics
         results = {k: v.numpy() for k, v in results.items()}
         eval_df = pd.read_csv(os.path.join(eval_dir, 'eval_summary.csv'))
-        eval_df = eval_df.append(results, ignore_index=True)
+        eval_df = pd.concat([eval_df, pd.DataFrame([results])], ignore_index=True)
         eval_df.to_csv(os.path.join(eval_dir, 'eval_summary.csv'), index=False)
         del eval_df
 
@@ -303,8 +303,8 @@ def train_eval(
                     csv_results.append(metric_val.numpy())
                     train_metric.tf_summaries(train_step=global_step, step_metrics=train_metrics[:2])
 
-                train_df = pd.read_csv(os.path.join(train_dir, 'train_summary.csv'))
-                train_df = train_df.append(pd.Series(csv_results, index=train_df.columns), ignore_index=True)
+                train_df = pd.read_csv(os.path.join(train_dir, 'train_summary.csv'), header='infer')
+                train_df = pd.concat([train_df, pd.DataFrame([results])], ignore_index=True)
                 train_df.to_csv(os.path.join(train_dir, 'train_summary.csv'), index=False)
                 del train_df
 
@@ -324,7 +324,7 @@ def train_eval(
                 results = {k: v.numpy() for k, v in results.items()}
                 eval_df = pd.read_csv(os.path.join(eval_dir, 'eval_summary.csv'))
                 # add row to df based on results dictionary
-                eval_df = eval_df.append(results, ignore_index=True)
+                eval_df = pd.concat([eval_df, pd.DataFrame([results])], ignore_index=True)
                 eval_df.to_csv(os.path.join(eval_dir, 'eval_summary.csv'), index=False)
                 del eval_df
 
@@ -332,7 +332,7 @@ def train_eval(
 
 
 def train():
-    gin.parse_config_file('../rlperf_benchmark_submission/train.gin')
+    gin.parse_config_file('train.gin')
     train_eval()
 
 
