@@ -89,17 +89,17 @@ def train_eval(
     eval_dir = os.path.join(root_dir, 'eval')
 
     train_summary_writer = tf.compat.v2.summary.create_file_writer(
-            train_dir, flush_millis=summaries_flush_secs * 1000)
+        train_dir, flush_millis=summaries_flush_secs * 1000)
 
     train_summary_writer.set_as_default()
 
     eval_summary_writer = tf.compat.v2.summary.create_file_writer(
-            eval_dir, flush_millis=summaries_flush_secs * 1000)
+        eval_dir, flush_millis=summaries_flush_secs * 1000)
     eval_metrics = [
-            tf_metrics.EnvironmentSteps(),
-            tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes, ),
-            tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes, )
-            ]
+        tf_metrics.EnvironmentSteps(),
+        tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes, ),
+        tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes, )
+    ]
 
     os.makedirs(eval_dir, exist_ok=True)
     with open(os.path.join(eval_dir, 'eval_summary.csv'), 'w') as eval_file:
@@ -110,60 +110,60 @@ def train_eval(
             lambda: tf.math.equal(global_step % summary_interval, 0)):
 
         batched_tf_env = tf_py_environment.batched_py_environment.BatchedPyEnvironment(
-                envs=[suite_gym.load(environment_name=env_name,
-                                     spec_dtype_map={gym.spaces.Discrete: np.int32},
-                                     gym_kwargs={'difficulty': 1, 'seed': seed + i}) for i in
-                      range(environment_batch_size)])
+            envs=[suite_gym.load(environment_name=env_name,
+                                 spec_dtype_map={gym.spaces.Discrete: np.int32},
+                                 gym_kwargs={'difficulty': 1, 'seed': seed + i}) for i in
+                  range(environment_batch_size)])
         batched_tf_env = tf_py_environment.TFPyEnvironment(batched_tf_env)
         eval_tf_env = tf_py_environment.TFPyEnvironment(
-                suite_gym.load(env_name, gym_kwargs={'difficulty': 1, 'seed': seed + 10}))
+            suite_gym.load(env_name, gym_kwargs={'difficulty': 1, 'seed': seed + 10}))
 
         if train_sequence_length != 1 and n_step_update != 1:
             raise NotImplementedError(
-                    'train_eval does not currently support n-step updates with stateful '
-                    'networks (i.e., RNNs)')
+                'train_eval does not currently support n-step updates with stateful '
+                'networks (i.e., RNNs)')
 
         with tf.name_scope('DQNAgent'):
             q_net = DQNLSTM(
-                    observation_spec=batched_tf_env.observation_spec(),
-                    action_spec=batched_tf_env.action_spec(),
-                    state_spec=(),
-                    vocab_size=max_vocab_size if max_vocab_size is not None else batched_tf_env.pyenv.envs[
-                        0].env.local_vocab.max_vocabulary_size,
-                    profile_value_dropout=0.0,
-                    q_min=None,
-                    q_max=None,
-                    embedding_dim=100,
-                    name='q_network',
-                    latent_dim=50,
-                    return_state_value=True)
+                observation_spec=batched_tf_env.observation_spec(),
+                action_spec=batched_tf_env.action_spec(),
+                state_spec=(),
+                vocab_size=max_vocab_size if max_vocab_size is not None else batched_tf_env.pyenv.envs[
+                    0].env.local_vocab.max_vocabulary_size,
+                profile_value_dropout=0.0,
+                q_min=None,
+                q_max=None,
+                embedding_dim=100,
+                name='q_network',
+                latent_dim=50,
+                return_state_value=True)
 
             tf_agent = dqn_agent.DqnAgent(
-                    batched_tf_env.time_step_spec(),
-                    batched_tf_env.action_spec(),
-                    q_network=q_net,
-                    epsilon_greedy=epsilon_greedy,
-                    n_step_update=n_step_update,
-                    target_update_tau=target_update_tau,
-                    target_update_period=target_update_period,
-                    optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate),
-                    td_errors_loss_fn=common.element_wise_huber_loss,
-                    gamma=gamma,
-                    reward_scale_factor=reward_scale_factor,
-                    gradient_clipping=gradient_clipping,
-                    debug_summaries=debug_summaries,
-                    summarize_grads_and_vars=summarize_grads_and_vars,
-                    train_step_counter=global_step,
-                    name='dqn_agent'
-                    )
+                batched_tf_env.time_step_spec(),
+                batched_tf_env.action_spec(),
+                q_network=q_net,
+                epsilon_greedy=epsilon_greedy,
+                n_step_update=n_step_update,
+                target_update_tau=target_update_tau,
+                target_update_period=target_update_period,
+                optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate),
+                td_errors_loss_fn=common.element_wise_huber_loss,
+                gamma=gamma,
+                reward_scale_factor=reward_scale_factor,
+                gradient_clipping=gradient_clipping,
+                debug_summaries=debug_summaries,
+                summarize_grads_and_vars=summarize_grads_and_vars,
+                train_step_counter=global_step,
+                name='dqn_agent'
+            )
             tf_agent.initialize()
 
         train_metrics = [
-                tf_metrics.NumberOfEpisodes(),
-                tf_metrics.EnvironmentSteps(),
-                tf_metrics.AverageReturnMetric(batch_size=environment_batch_size),
-                tf_metrics.AverageEpisodeLengthMetric(batch_size=environment_batch_size),
-                ]
+            tf_metrics.NumberOfEpisodes(),
+            tf_metrics.EnvironmentSteps(),
+            tf_metrics.AverageReturnMetric(batch_size=environment_batch_size),
+            tf_metrics.AverageEpisodeLengthMetric(batch_size=environment_batch_size),
+        ]
         os.makedirs(train_dir, exist_ok=True)
         with open(os.path.join(train_dir, 'train_summary.csv'), 'w') as train_file:
             train_file.write(','.join([metric.name for metric in train_metrics]) + '\n')
@@ -173,40 +173,40 @@ def train_eval(
 
         replay_buffer_capacity = replay_buffer_capacity // batched_tf_env.batch_size
         replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
-                data_spec=tf_agent.collect_data_spec,
-                batch_size=batched_tf_env.batch_size,
-                max_length=replay_buffer_capacity,
-                device='gpu:0' if use_gpu else 'cpu:0'
-                )
+            data_spec=tf_agent.collect_data_spec,
+            batch_size=batched_tf_env.batch_size,
+            max_length=replay_buffer_capacity,
+            device='gpu:0' if use_gpu else 'cpu:0'
+        )
         initial_collect_policy = random_tf_policy.RandomTFPolicy(
-                batched_tf_env.time_step_spec(), batched_tf_env.action_spec(), validate_args=True)
+            batched_tf_env.time_step_spec(), batched_tf_env.action_spec(), validate_args=True)
 
         initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
-                batched_tf_env,
-                initial_collect_policy,
-                observers=[replay_buffer.add_batch] + train_metrics,
-                num_steps=initial_collect_steps)
+            batched_tf_env,
+            initial_collect_policy,
+            observers=[replay_buffer.add_batch] + train_metrics,
+            num_steps=initial_collect_steps)
         collect_driver = dynamic_step_driver.DynamicStepDriver(
-                batched_tf_env,
-                collect_policy,
-                observers=[replay_buffer.add_batch] + train_metrics,
-                num_steps=collect_steps_per_iteration)
+            batched_tf_env,
+            collect_policy,
+            observers=[replay_buffer.add_batch] + train_metrics,
+            num_steps=collect_steps_per_iteration)
 
         train_checkpointer = common.Checkpointer(
-                ckpt_dir=train_dir,
-                agent=tf_agent,
-                global_step=global_step,
-                max_to_keep=3,
-                metrics=metric_utils.MetricsGroup(train_metrics, 'train_metrics'))
+            ckpt_dir=train_dir,
+            agent=tf_agent,
+            global_step=global_step,
+            max_to_keep=5,
+            metrics=metric_utils.MetricsGroup(train_metrics, 'train_metrics'))
         policy_checkpointer = common.Checkpointer(
-                ckpt_dir=os.path.join(train_dir, 'policy'),
-                max_to_keep=3,
-                policy=eval_policy,
-                global_step=global_step)
+            ckpt_dir=os.path.join(train_dir, 'policy'),
+            max_to_keep=5,
+            policy=eval_policy,
+            global_step=global_step)
         rb_checkpointer = common.Checkpointer(
-                ckpt_dir=os.path.join(train_dir, 'replay_buffer'),
-                max_to_keep=2,
-                replay_buffer=replay_buffer)
+            ckpt_dir=os.path.join(train_dir, 'replay_buffer'),
+            max_to_keep=2,
+            replay_buffer=replay_buffer)
 
         train_checkpointer.initialize_or_restore()
         rb_checkpointer.initialize_or_restore()
@@ -218,23 +218,23 @@ def train_eval(
 
         # Collect initial replay data.
         logging.info(
-                'Initializing replay buffer by collecting experience for %d steps with '
-                'a random policy.', initial_collect_steps)
+            'Initializing replay buffer by collecting experience for %d steps with '
+            'a random policy.', initial_collect_steps)
         dynamic_step_driver.DynamicStepDriver(
-                batched_tf_env,
-                initial_collect_policy,
-                observers=[replay_buffer.add_batch] + train_metrics,
-                num_steps=initial_collect_steps).run()
+            batched_tf_env,
+            initial_collect_policy,
+            observers=[replay_buffer.add_batch] + train_metrics,
+            num_steps=initial_collect_steps).run()
 
         results = metric_utils.eager_compute(
-                eval_metrics,
-                eval_tf_env,
-                eval_policy,
-                num_episodes=num_eval_episodes,
-                train_step=global_step,
-                summary_writer=eval_summary_writer,
-                summary_prefix='Metrics',
-                )
+            eval_metrics,
+            eval_tf_env,
+            eval_policy,
+            num_episodes=num_eval_episodes,
+            train_step=global_step,
+            summary_writer=eval_summary_writer,
+            summary_prefix='Metrics',
+        )
         if eval_metrics_callback is not None:
             eval_metrics_callback(results, global_step.numpy())
         metric_utils.log_metrics(eval_metrics)
@@ -254,9 +254,9 @@ def train_eval(
 
         # Dataset generates trajectories with shape [Bx2x...]
         dataset = replay_buffer.as_dataset(
-                num_parallel_calls=3,
-                sample_batch_size=batch_size,
-                num_steps=train_sequence_length + 1).prefetch(3)
+            num_parallel_calls=3,
+            sample_batch_size=batch_size,
+            num_steps=train_sequence_length + 1).prefetch(3)
         iterator = iter(dataset)
 
         def train_step():
@@ -270,9 +270,9 @@ def train_eval(
             start_time = time.time()
             global_step_val = global_step.numpy()
             time_step, policy_state = collect_driver.run(
-                    time_step=time_step,
-                    policy_state=policy_state,
-                    )
+                time_step=time_step,
+                policy_state=policy_state,
+            )
             for _ in range(train_steps_per_iteration):
                 train_loss = train_step()
             time_acc += time.time() - start_time
@@ -283,7 +283,7 @@ def train_eval(
                 steps_per_sec = (global_step.numpy() - timed_at_step) / time_acc
                 logging.info('%.3f steps/sec', steps_per_sec)
                 tf.compat.v2.summary.scalar(
-                        name='global_steps_per_sec', data=steps_per_sec, step=global_step)
+                    name='global_steps_per_sec', data=steps_per_sec, step=global_step)
                 timed_at_step = global_step.numpy()
                 time_acc = 0
 
@@ -294,7 +294,8 @@ def train_eval(
                 policy_checkpointer.save(global_step=global_step_val)
 
             if global_step_val % rb_checkpoint_interval == 0:
-                rb_checkpointer.save(global_step=global_step_val)
+                pass # replay buffer is too large to save
+                # rb_checkpointer.save(global_step=global_step_val)
 
             if global_step.numpy() % summary_interval == 0:
                 csv_results = []
@@ -310,14 +311,14 @@ def train_eval(
 
             if global_step.numpy() % eval_interval == 0:
                 results = metric_utils.eager_compute(
-                        eval_metrics,
-                        eval_tf_env,
-                        eval_policy,
-                        num_episodes=num_eval_episodes,
-                        train_step=global_step,
-                        summary_writer=eval_summary_writer,
-                        summary_prefix='Metrics',
-                        )
+                    eval_metrics,
+                    eval_tf_env,
+                    eval_policy,
+                    num_episodes=num_eval_episodes,
+                    train_step=global_step,
+                    summary_writer=eval_summary_writer,
+                    summary_prefix='Metrics',
+                )
                 if eval_metrics_callback is not None:
                     eval_metrics_callback(results, global_step.numpy())
                 metric_utils.log_metrics(eval_metrics)
@@ -333,7 +334,26 @@ def train_eval(
 
 def train():
     gin.parse_config_file('train.gin')
-    train_eval()
+    seed = int(os.environ['SEED'])
+    root_dir = os.environ['ROOT_DIR']
+    env_batch_size = int(os.environ['ENV_BATCH_SIZE'])
+
+    envs_steps = 1000000
+    num_iterations = envs_steps // env_batch_size
+
+    train_eval(seed=seed,
+               root_dir=root_dir,
+               environment_batch_size=env_batch_size,
+               train_steps_per_iteration=env_batch_size,
+               replay_buffer_capacity=envs_steps // 10,
+               num_iterations=num_iterations,
+               eval_interval=num_iterations // 100,
+               train_checkpoint_interval=num_iterations // 10,
+               policy_checkpoint_interval=num_iterations // 10,
+               rb_checkpoint_interval=num_iterations // 10,
+               log_interval=num_iterations // 1000,
+               summary_interval=num_iterations // 1000,
+               )
 
 
 if __name__ == '__main__':
