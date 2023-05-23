@@ -101,6 +101,7 @@ def train_eval(
         tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes, )
     ]
 
+    difficulty = 0
     os.makedirs(eval_dir, exist_ok=True)
     with open(os.path.join(eval_dir, 'eval_summary.csv'), 'w') as eval_file:
         eval_file.write(','.join([metric.name for metric in eval_metrics]) + '\n')
@@ -109,14 +110,18 @@ def train_eval(
     with tf.compat.v2.summary.record_if(
             lambda: tf.math.equal(global_step % summary_interval, 0)):
 
+        global_vocab = rl_perf.domains.web_nav.CoDE.vocabulary_node.LockedVocabulary()
         batched_tf_env = tf_py_environment.batched_py_environment.BatchedPyEnvironment(
             envs=[suite_gym.load(environment_name=env_name,
                                  spec_dtype_map={gym.spaces.Discrete: np.int32},
-                                 gym_kwargs={'difficulty': 1, 'seed': seed + i}) for i in
+                                 gym_kwargs={'difficulty': difficulty,
+                                             'seed': seed + i,
+                                             'global_vocabulary': global_vocab}) for i in
                   range(environment_batch_size)])
         batched_tf_env = tf_py_environment.TFPyEnvironment(batched_tf_env)
         eval_tf_env = tf_py_environment.TFPyEnvironment(
-            suite_gym.load(env_name, gym_kwargs={'difficulty': 1, 'seed': seed + 10}))
+            suite_gym.load(env_name,
+                           gym_kwargs={'difficulty': difficulty, 'seed': seed + 10, 'global_vocabulary': global_vocab}))
 
         if train_sequence_length != 1 and n_step_update != 1:
             raise NotImplementedError(
@@ -273,6 +278,7 @@ def train_eval(
                 time_step=time_step,
                 policy_state=policy_state,
             )
+
             for _ in range(train_steps_per_iteration):
                 train_loss = train_step()
             time_acc += time.time() - start_time
@@ -293,8 +299,12 @@ def train_eval(
             if global_step_val % policy_checkpoint_interval == 0:
                 policy_checkpointer.save(global_step=global_step_val)
 
+                # Save the global vocabulary since it maps tokens to ids
+                vocab_dict = global_vocab._local_vocab
+                np.save(os.path.join(train_dir, 'global_vocab.npy'), vocab_dict)
+
             if global_step_val % rb_checkpoint_interval == 0:
-                pass # replay buffer is too large to save
+                pass  # replay buffer is too large to save
                 # rb_checkpointer.save(global_step=global_step_val)
 
             if global_step.numpy() % summary_interval == 0:
@@ -329,23 +339,27 @@ def train_eval(
                 eval_df.to_csv(os.path.join(eval_dir, 'eval_summary.csv'), index=False)
                 del eval_df
 
+        # Save all checkpoints at the end of training
+        train_checkpointer.save(global_step=global_step_val)
+        policy_checkpointer.save(global_step=global_step_val)
+        # rb_checkpointer.save(global_step=global_step_val)
+
         return train_loss
 
 
 def train():
-    gin.parse_config_file('train.gin')
+    gin.parse_config_file('./train.gin')
     seed = int(os.environ['SEED'])
     root_dir = os.environ['ROOT_DIR']
     env_batch_size = int(os.environ['ENV_BATCH_SIZE'])
-
-    envs_steps = 1000000
-    num_iterations = envs_steps // env_batch_size
+    total_env_steps = int(os.environ['TOTAL_ENV_STEPS'])
+    num_iterations = total_env_steps // env_batch_size
 
     train_eval(seed=seed,
                root_dir=root_dir,
                environment_batch_size=env_batch_size,
                train_steps_per_iteration=env_batch_size,
-               replay_buffer_capacity=envs_steps // 10,
+               replay_buffer_capacity=total_env_steps // 10,
                num_iterations=num_iterations,
                eval_interval=num_iterations // 100,
                train_checkpoint_interval=num_iterations // 10,

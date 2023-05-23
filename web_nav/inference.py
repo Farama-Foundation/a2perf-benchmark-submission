@@ -10,8 +10,7 @@ from tf_agents.utils import common
 
 from train import DQNLSTM
 
-
-# ROOT_DIR = '/tmp/pycharm_project_494/rl-perf/rl_perf/submission/logs/difficulty_1_seed_47'
+from rl_perf.domains.web_nav.CoDE import vocabulary_node
 
 
 def load_model():
@@ -28,10 +27,17 @@ def load_model():
     learning_rate = 1e-4
     max_vocab_size = 500
     seed = 32
+    designs = [{'number_of_pages': 1, 'action': [], 'action_page': [], }]
     train_dir = os.path.join(root_dir, 'train')
+
+    # Load the global vocabulary
+    global_vocab_dict = np.load(os.path.join(train_dir, 'global_vocab.npy'), allow_pickle=True).item()
+    global_vocab = vocabulary_node.LockedVocabulary()
+    global_vocab.restore(dict(global_vocab=global_vocab_dict))
     tf_env = tf_py_environment.TFPyEnvironment(suite_gym.load(environment_name=env_name,
                                                               spec_dtype_map={gym.spaces.Discrete: np.int32},
-                                                              gym_kwargs={'difficulty': 1, 'seed': seed}))
+                                                              gym_kwargs={'designs': designs, 'seed': seed,
+                                                                          'global_vocabulary': global_vocab, }))
 
     global_step = tf.compat.v1.train.get_or_create_global_step()
     q_net = DQNLSTM(
