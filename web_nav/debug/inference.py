@@ -27,6 +27,7 @@ def load_model():
     learning_rate = 1e-4
     max_vocab_size = 500
     seed = 32
+    designs = [{'number_of_pages': 1, 'action': [], 'action_page': [], }]
     train_dir = os.path.join(root_dir, 'train')
 
     # Load the global vocabulary

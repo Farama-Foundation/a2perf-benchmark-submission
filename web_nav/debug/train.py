@@ -42,7 +42,6 @@ class DQNLSTM(network.Network):
 def train_eval(
         root_dir,
         env_name='CartPole-v0',
-        difficulty_level=-1,
         use_gpu=False,
         num_iterations=100000,
         train_sequence_length=1,
@@ -79,6 +78,7 @@ def train_eval(
         debug_summaries=False,
         summarize_grads_and_vars=False,
         eval_metrics_callback=None,
+        env_args=None,
         seed=0, ):
     """A simple train and eval for DQN."""
     tf.random.set_seed(seed)
@@ -102,6 +102,7 @@ def train_eval(
         tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes, )
     ]
 
+    difficulty = 0
     os.makedirs(eval_dir, exist_ok=True)
     with open(os.path.join(eval_dir, 'eval_summary.csv'), 'w') as eval_file:
         eval_file.write(','.join([metric.name for metric in eval_metrics]) + '\n')
@@ -114,15 +115,17 @@ def train_eval(
         batched_tf_env = tf_py_environment.batched_py_environment.BatchedPyEnvironment(
             envs=[suite_gym.load(environment_name=env_name,
                                  spec_dtype_map={gym.spaces.Discrete: np.int32},
-                                 gym_kwargs={'difficulty': difficulty_level,
-                                             'seed': seed + i,
-                                             'global_vocabulary': global_vocab}) for i in
+                                 gym_kwargs={
+                                     'difficulty': difficulty,
+                                     'seed': seed + i,
+                                     'global_vocabulary': global_vocab,
+                                     **env_args  # Add env_args to the gym_kwargs dictionary
+                                 }) for i in
                   range(environment_batch_size)])
         batched_tf_env = tf_py_environment.TFPyEnvironment(batched_tf_env)
         eval_tf_env = tf_py_environment.TFPyEnvironment(
             suite_gym.load(env_name,
-                           gym_kwargs={'difficulty': difficulty_level, 'seed': seed + 10,
-                                       'global_vocabulary': global_vocab}))
+                           gym_kwargs={'difficulty': difficulty, 'seed': seed + 10, 'global_vocabulary': global_vocab}))
 
         if train_sequence_length != 1 and n_step_update != 1:
             raise NotImplementedError(
@@ -245,6 +248,13 @@ def train_eval(
             eval_metrics_callback(results, global_step.numpy())
         metric_utils.log_metrics(eval_metrics)
 
+        # Save initial eval metrics
+        results = {k: v.numpy() for k, v in results.items()}
+        eval_df = pd.read_csv(os.path.join(eval_dir, 'eval_summary.csv'))
+        eval_df = pd.concat([eval_df, pd.DataFrame([results])], ignore_index=True)
+        eval_df.to_csv(os.path.join(eval_dir, 'eval_summary.csv'), index=False)
+        del eval_df
+
         time_step = None
         policy_state = collect_policy.get_initial_state(batched_tf_env.batch_size)
 
@@ -308,6 +318,11 @@ def train_eval(
                     csv_results.append(metric_val.numpy())
                     train_metric.tf_summaries(train_step=global_step, step_metrics=train_metrics[:2])
 
+                train_df = pd.read_csv(os.path.join(train_dir, 'train_summary.csv'), header='infer')
+                train_df = pd.concat([train_df, pd.DataFrame([results])], ignore_index=True)
+                train_df.to_csv(os.path.join(train_dir, 'train_summary.csv'), index=False)
+                del train_df
+
             if global_step.numpy() % eval_interval == 0:
                 results = metric_utils.eager_compute(
                     eval_metrics,
@@ -321,6 +336,12 @@ def train_eval(
                 if eval_metrics_callback is not None:
                     eval_metrics_callback(results, global_step.numpy())
                 metric_utils.log_metrics(eval_metrics)
+                results = {k: v.numpy() for k, v in results.items()}
+                eval_df = pd.read_csv(os.path.join(eval_dir, 'eval_summary.csv'))
+                # add row to df based on results dictionary
+                eval_df = pd.concat([eval_df, pd.DataFrame([results])], ignore_index=True)
+                eval_df.to_csv(os.path.join(eval_dir, 'eval_summary.csv'), index=False)
+                del eval_df
 
         # Save all checkpoints at the end of training
         train_checkpointer.save(global_step=global_step_val)
@@ -337,10 +358,9 @@ def train():
     env_batch_size = int(os.environ['ENV_BATCH_SIZE'])
     total_env_steps = int(os.environ['TOTAL_ENV_STEPS'])
     num_iterations = total_env_steps // env_batch_size
-    difficulty_level = int(os.environ['DIFFICULTY_LEVEL'])
+
     train_eval(seed=seed,
                root_dir=root_dir,
-               difficulty_level=difficulty_level,
                environment_batch_size=env_batch_size,
                train_steps_per_iteration=env_batch_size,
                replay_buffer_capacity=total_env_steps // 10,

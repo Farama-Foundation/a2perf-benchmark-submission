@@ -1,8 +1,10 @@
 train_eval.collect_steps_per_iteration = 1
 train_eval.summaries_flush_secs = 10
 train_eval.env_name = 'WebNavigation-v0'
+train_eval.env_args = {'designs':[{'number_of_pages': 1, 'action': [],'action_page': [],}]}
 train_eval.use_gpu = True
-train_eval.initial_collect_steps = 1000
+#train_eval.initial_collect_steps = 1000
+train_eval.initial_collect_steps = 5
 train_eval.epsilon_greedy = 0.05
 train_eval.target_update_tau = 0.05
 train_eval.target_update_period = 5000
