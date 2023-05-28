@@ -19,7 +19,7 @@ import os
 from absl import app
 from absl import flags
 
-import ppo_reverb_server_lib
+from learning import ppo_reverb_server_lib
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
@@ -39,14 +39,14 @@ FLAGS = flags.FLAGS
 
 
 def main(_):
-  # Create the path for the serialized collect policy.
-  root_dir = os.path.join(FLAGS.root_dir, str(FLAGS.global_seed))
-  ppo_reverb_server_lib.start_reverb_server(root_dir,
-                                            FLAGS.replay_buffer_capacity,
-                                            FLAGS.port,
-                                            _NUM_NETLISTS.value)
+    # Create the path for the serialized collect policy.
+    root_dir = os.path.join(FLAGS.root_dir, str(FLAGS.global_seed))
+    ppo_reverb_server_lib.start_reverb_server(root_dir,
+                                              FLAGS.replay_buffer_capacity,
+                                              FLAGS.port,
+                                              _NUM_NETLISTS.value)
 
 
 if __name__ == '__main__':
-  flags.mark_flags_as_required(['root_dir', 'port'])
-  app.run(main)
+    flags.mark_flags_as_required(['root_dir', 'port'])
+    app.run(main)

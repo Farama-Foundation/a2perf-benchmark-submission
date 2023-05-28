@@ -3,8 +3,18 @@ import subprocess
 
 
 def run_command(command: str, output_file: str):
+    # Get the directory of the current script
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    print(f"script_dir: {script_dir}")
+
+    env = os.environ.copy()
+    current_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{script_dir}:{current_pythonpath}"
+    print(f"PYTHONPATH: {env['PYTHONPATH']}")
     with open(output_file, "w") as outfile:
-        process = subprocess.Popen(command, shell=True, stdout=outfile, stderr=subprocess.STDOUT)
+        # Pass the updated environment variables to the subprocess
+        process = subprocess.Popen(command, shell=True, stdout=outfile, stderr=subprocess.STDOUT, env=env)
+    return process
 
 
 def train():
@@ -40,32 +50,31 @@ def train():
 
     # Start reverb server
     reverb_command = f"""
-    CUDA_VISIBLE_DEVICES=-1 python3.9 -m learning.ppo_reverb_server \
+    CUDA_VISIBLE_DEVICES=-1 python3.11 -m learning.ppo_reverb_server \
     --root_dir={root_dir} \
     --global_seed={global_seed} \
     --port={reverb_port} \
     """
     run_command(reverb_command, f"{output_dir}/reverb_server_output")
 
-    raise ValueError("Stop here")
-    # Start train job
     train_command = f"""
-    python3.9 -m learning.train_ppo \
+    python3.11 -m learning.train_ppo \
     --root_dir={root_dir} \
     --replay_buffer_server_address={reverb_server} \
     --variable_container_server_address={reverb_server} \
-    --num_episodes_per_iteration=16 \
-    --global_batch_size=64 \
+    --gin_bindings='global_batch_size=64' \
+    --gin_bindings='num_episodes_per_iteration=16' \
     --netlist_file={netlist_file} \
     --global_seed={global_seed} \
     --init_placement={init_placement}
     """
-    run_command(train_command, f"{output_dir}/train_job_output")
+
+    train_process = run_command(train_command, f"{output_dir}/train_job_output")
 
     # Start collect jobs
     for i in range(num_collect_jobs):
         collect_command = f"""
-        CUDA_VISIBLE_DEVICES=-1 python3.9 -m learning.ppo_collect \
+        CUDA_VISIBLE_DEVICES=-1 python3.11 -m learning.ppo_collect \
         --root_dir={root_dir} \
         --replay_buffer_server_address={reverb_server} \
         --variable_container_server_address={reverb_server} \
@@ -78,7 +87,7 @@ def train():
 
     # Start eval job
     eval_command = f"""
-    CUDA_VISIBLE_DEVICES=-1 python3.9 -m learning.eval \
+    CUDA_VISIBLE_DEVICES=-1 python3.11 -m learning.eval \
     --root_dir={root_dir} \
     --variable_container_server_address={reverb_server} \
     --netlist_file={netlist_file} \
@@ -86,6 +95,7 @@ def train():
     --init_placement={init_placement}
     """
     run_command(eval_command, f"{output_dir}/eval_job")
+    train_process.wait()
 
 
 if __name__ == '__main__':
@@ -96,7 +106,7 @@ if __name__ == '__main__':
 # Training job
 # $ docker run --network host -d -e "GOOGLE_APPLICATION_CREDENTIALS=/workspace/cloud_key.json" \
 #      --gpus all  --rm -it -v ${REPO_ROOT}:/workspace -w /workspace/ circuit_training:core  \
-#      python3.9 -m circuit_training.learning.train_ppo \
+#      python3.11 -m circuit_training.learning.train_ppo \
 #        --root_dir=${ROOT_DIR} \
 #        --std_cell_placer_mode=dreamplace \
 #        --replay_buffer_server_address=${REVERB_SERVER} \
@@ -111,7 +121,7 @@ if __name__ == '__main__':
 # # If using the toy netlist, some args need changed. Use this command instead.
 # $ docker run --network host -d -e "GOOGLE_APPLICATION_CREDENTIALS=/workspace/cloud_key.json" \
 #      --gpus all  --rm -it -v ${REPO_ROOT}:/workspace -w /workspace/ circuit_training:core  \
-#      python3.9 -m circuit_training.learning.train_ppo \
+#      python3.11 -m circuit_training.learning.train_ppo \
 #        --root_dir=${ROOT_DIR} \
 #        --std_cell_placer_mode=dreamplace \
 #        --replay_buffer_server_address=${REVERB_SERVER} \
@@ -133,7 +143,7 @@ if __name__ == '__main__':
 # for i in $(seq 1 23); do
 #   docker run --network host -d -e "GOOGLE_APPLICATION_CREDENTIALS=/workspace/cloud_key.json" \
 #   --rm -it -v ${REPO_ROOT}/circuit_training:/workspace -w /workspace/ circuit_training:core  \
-#      python3.9 -m circuit_training.learning.ppo_collect \
+#      python3.11 -m circuit_training.learning.ppo_collect \
 #   --root_dir=${ROOT_DIR} \
 #   --std_cell_placer_mode=dreamplace \
 #   --replay_buffer_server_address=${REVERB_SERVER} \
@@ -148,7 +158,7 @@ if __name__ == '__main__':
 # Eval job
 # $ docker run --network host -d -e "GOOGLE_APPLICATION_CREDENTIALS=/workspace/cloud_key.json" \
 #      --rm -it -v $(pwd):/workspace -w /workspace/ circuit_training:core  \
-#      python3.9 -m circuit_training.learning.eval \
+#      python3.11 -m circuit_training.learning.eval \
 #        --root_dir=${ROOT_DIR} \
 #        --variable_container_server_address=${REVERB_SERVER} \
 #        --netlist_file=${NETLIST_FILE} \

@@ -20,12 +20,13 @@ import os
 from absl import app
 from absl import flags
 from rl_perf.domains.circuit_training.circuit_training.environment import environment
-import eval_lib
-from .. model import create_models_lib
+from learning import eval_lib
 import gin
 
 from tf_agents.policies import greedy_policy  # pylint: disable=unused-import
 from tf_agents.system import system_multiprocessing as multiprocessing
+
+from model import create_models_lib
 
 _GIN_FILE = flags.DEFINE_multi_string('gin_file', None,
                                       'Paths to the gin-config files.')
@@ -54,50 +55,50 @@ flags.DEFINE_string(
     'defaults to root_dir/global_seed.')
 flags.DEFINE_bool(
     'cd_finetune', False, 'runs coordinate descent to finetune macro '
-    'orientations. Supposed to run in eval only, not training.')
+                          'orientations. Supposed to run in eval only, not training.')
 
 FLAGS = flags.FLAGS
 
 
 def main(_):
-  gin.parse_config_files_and_bindings(
-      _GIN_FILE.value,
-      # Turn off noise for GRL model.
-      _GIN_BINDINGS.value +
-      ['circuittraining.models.GrlModel.policy_noise_weight=0'],
-      skip_unknown=True)
-  root_dir = os.path.join(FLAGS.root_dir, str(FLAGS.global_seed))
+    gin.parse_config_files_and_bindings(
+        _GIN_FILE.value,
+        # Turn off noise for GRL model.
+        _GIN_BINDINGS.value +
+        ['circuittraining.models.GrlModel.policy_noise_weight=0'],
+        skip_unknown=True)
+    root_dir = os.path.join(FLAGS.root_dir, str(FLAGS.global_seed))
 
-  if FLAGS.output_placement_save_dir:
-    output_plc_file = os.path.join(FLAGS.output_placement_save_dir,
-                                   'rl_opt_placement.plc')
-  else:
-    output_plc_file = os.path.join(root_dir, 'rl_opt_placement.plc')
+    if FLAGS.output_placement_save_dir:
+        output_plc_file = os.path.join(FLAGS.output_placement_save_dir,
+                                       'rl_opt_placement.plc')
+    else:
+        output_plc_file = os.path.join(root_dir, 'rl_opt_placement.plc')
 
-  create_env_fn = functools.partial(
-      environment.create_circuit_environment,
-      netlist_file=FLAGS.netlist_file,
-      init_placement=FLAGS.init_placement,
-      is_eval=True,
-      save_best_cost=True,
-      output_plc_file=output_plc_file,
-      global_seed=FLAGS.global_seed,
-      cd_finetune=FLAGS.cd_finetune,
-      std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
-      netlist_index=0,
-  )
+    create_env_fn = functools.partial(
+        environment.create_circuit_environment,
+        netlist_file=FLAGS.netlist_file,
+        init_placement=FLAGS.init_placement,
+        is_eval=True,
+        save_best_cost=True,
+        output_plc_file=output_plc_file,
+        global_seed=FLAGS.global_seed,
+        cd_finetune=FLAGS.cd_finetune,
+        std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
+        netlist_index=0,
+    )
 
-  eval_lib.evaluate(
-      root_dir=root_dir,
-      variable_container_server_address=FLAGS.variable_container_server_address,
-      create_env_fn=create_env_fn,
-      create_models_fn=create_models_lib.create_models_fn,
-      rl_architecture='generalization',
-      info_metric_names=environment.COST_COMPONENTS,
-  )
+    eval_lib.evaluate(
+        root_dir=root_dir,
+        variable_container_server_address=FLAGS.variable_container_server_address,
+        create_env_fn=create_env_fn,
+        create_models_fn=create_models_lib.create_models_fn,
+        rl_architecture='generalization',
+        info_metric_names=environment.COST_COMPONENTS,
+    )
 
 
 if __name__ == '__main__':
-  flags.mark_flags_as_required(
-      ['root_dir', 'variable_container_server_address'])
-  multiprocessing.handle_main(functools.partial(app.run, main))
+    flags.mark_flags_as_required(
+        ['root_dir', 'variable_container_server_address'])
+    multiprocessing.handle_main(functools.partial(app.run, main))
