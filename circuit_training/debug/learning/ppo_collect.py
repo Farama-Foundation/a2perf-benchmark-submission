@@ -20,10 +20,10 @@ import os
 from absl import app
 from absl import flags
 from rl_perf.domains.circuit_training.circuit_training.environment import environment
-from learning import ppo_collect_lib
 import gin
 from tf_agents.system import system_multiprocessing as multiprocessing
 
+from learning import ppo_collect_lib
 from model import create_models_lib
 
 _GIN_FILE = flags.DEFINE_multi_string(

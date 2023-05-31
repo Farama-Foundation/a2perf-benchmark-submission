@@ -9,7 +9,7 @@ def run_command(command: str, output_file: str):
 
     env = os.environ.copy()
     current_pythonpath = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"{script_dir}:{current_pythonpath}"
+    env["PYTHONPATH"] = f"{script_dir}:{'/rl-perf'}:{current_pythonpath}"
     print(f"PYTHONPATH: {env['PYTHONPATH']}")
     with open(output_file, "w") as outfile:
         # Pass the updated environment variables to the subprocess
@@ -23,7 +23,10 @@ def train():
         raise ValueError("Missing environment variable: ROOT_DIR")
     os.makedirs(root_dir, exist_ok=True)
 
-    num_collect_jobs = int(os.getenv("NUM_CT_COLLECT_JOBS", 0))
+    num_collect_jobs = os.getenv("NUM_COLLECT_JOBS")
+    if num_collect_jobs is None:
+        raise ValueError("Missing environment variable: NUM_COLLECT_JOBS")
+    num_collect_jobs = int(num_collect_jobs)
 
     global_seed = os.getenv("GLOBAL_SEED")
     if global_seed is None:
@@ -50,23 +53,25 @@ def train():
 
     # Start reverb server
     reverb_command = f"""
-    CUDA_VISIBLE_DEVICES=-1 python3.11 -m learning.ppo_reverb_server \
+    CUDA_VISIBLE_DEVICES=-1 python3.9 -m learning.ppo_reverb_server \
     --root_dir={root_dir} \
     --global_seed={global_seed} \
-    --port={reverb_port} \
+    --port={reverb_port} 
     """
     run_command(reverb_command, f"{output_dir}/reverb_server_output")
 
     train_command = f"""
-    python3.11 -m learning.train_ppo \
+    python3.9 -m learning.train_ppo \
     --root_dir={root_dir} \
+    --std_cell_placer_mode=dreamplace \
     --replay_buffer_server_address={reverb_server} \
     --variable_container_server_address={reverb_server} \
-    --gin_bindings='global_batch_size=64' \
-    --gin_bindings='num_episodes_per_iteration=16' \
+    --sequence_length=134 \
+    --gin_bindings='train.num_iterations=200' \
     --netlist_file={netlist_file} \
+    --init_placement={init_placement} \
     --global_seed={global_seed} \
-    --init_placement={init_placement}
+    --use_gpu
     """
 
     train_process = run_command(train_command, f"{output_dir}/train_job_output")
@@ -74,94 +79,31 @@ def train():
     # Start collect jobs
     for i in range(num_collect_jobs):
         collect_command = f"""
-        CUDA_VISIBLE_DEVICES=-1 python3.11 -m learning.ppo_collect \
+        CUDA_VISIBLE_DEVICES=-1 python3.9 -m learning.ppo_collect \
         --root_dir={root_dir} \
+        --std_cell_placer_mode=dreamplace \
         --replay_buffer_server_address={reverb_server} \
         --variable_container_server_address={reverb_server} \
         --task_id={i} \
         --netlist_file={netlist_file} \
+        --init_placement={init_placement} \
         --global_seed={global_seed} \
-        --init_placement={init_placement}
+        --logtostderr
         """
         run_command(collect_command, f"{output_dir}/collect_job_{i:02d}")
 
     # Start eval job
     eval_command = f"""
-    CUDA_VISIBLE_DEVICES=-1 python3.11 -m learning.eval \
+    CUDA_VISIBLE_DEVICES=-1 python3.9 -m learning.eval \
     --root_dir={root_dir} \
     --variable_container_server_address={reverb_server} \
     --netlist_file={netlist_file} \
-    --global_seed={global_seed} \
-    --init_placement={init_placement}
+    --init_placement={init_placement} \
+    --global_seed={global_seed} 
     """
     run_command(eval_command, f"{output_dir}/eval_job")
-    train_process.wait()
+    train_process.wait()  # wait to keep process alive while collecting metrics
 
 
 if __name__ == '__main__':
     train()
-
-# Here are the commands from the circuit training example
-
-# Training job
-# $ docker run --network host -d -e "GOOGLE_APPLICATION_CREDENTIALS=/workspace/cloud_key.json" \
-#      --gpus all  --rm -it -v ${REPO_ROOT}:/workspace -w /workspace/ circuit_training:core  \
-#      python3.11 -m circuit_training.learning.train_ppo \
-#        --root_dir=${ROOT_DIR} \
-#        --std_cell_placer_mode=dreamplace \
-#        --replay_buffer_server_address=${REVERB_SERVER} \
-#        --variable_container_server_address=${REVERB_SERVER} \
-#        --sequence_length=134 \
-#        --gin_bindings='train.num_iterations=200'\
-#        --netlist_file=${NETLIST_FILE} \
-#        --init_placement=${INIT_PLACEMENT} \
-#        --global_seed=${GLOBAL_SEED} \
-#        --use_gpu
-#
-# # If using the toy netlist, some args need changed. Use this command instead.
-# $ docker run --network host -d -e "GOOGLE_APPLICATION_CREDENTIALS=/workspace/cloud_key.json" \
-#      --gpus all  --rm -it -v ${REPO_ROOT}:/workspace -w /workspace/ circuit_training:core  \
-#      python3.11 -m circuit_training.learning.train_ppo \
-#        --root_dir=${ROOT_DIR} \
-#        --std_cell_placer_mode=dreamplace \
-#        --replay_buffer_server_address=${REVERB_SERVER} \
-#        --variable_container_server_address=${REVERB_SERVER} \
-#        --sequence_length=3 \
-#        --gin_bindings='train.num_iterations=200' \
-#        --gin_bindings='train.num_episodes_per_iteration=32' \
-#        --gin_bindings='train.per_replica_batch_size=64' \
-#        --gin_bindings='CircuittrainingPPOLearner.summary_interval=12' \
-#        --gin_bindings='CircuitPPOAgent.debug_summaries=True' \
-#        --netlist_file=${NETLIST_FILE} \
-#        --init_placement=${INIT_PLACEMENT} \
-#        --global_seed=${GLOBAL_SEED} \
-#        --use_gpu
-
-
-# Collect job
-#
-# for i in $(seq 1 23); do
-#   docker run --network host -d -e "GOOGLE_APPLICATION_CREDENTIALS=/workspace/cloud_key.json" \
-#   --rm -it -v ${REPO_ROOT}/circuit_training:/workspace -w /workspace/ circuit_training:core  \
-#      python3.11 -m circuit_training.learning.ppo_collect \
-#   --root_dir=${ROOT_DIR} \
-#   --std_cell_placer_mode=dreamplace \
-#   --replay_buffer_server_address=${REVERB_SERVER} \
-#   --variable_container_server_address=${REVERB_SERVER} \
-#   --task_id=${i} \
-#   --netlist_file=${NETLIST_FILE} \
-#   --init_placement=${INIT_PLACEMENT} \
-#   --global_seed=${GLOBAL_SEED} \
-#   --logtostderr
-
-
-# Eval job
-# $ docker run --network host -d -e "GOOGLE_APPLICATION_CREDENTIALS=/workspace/cloud_key.json" \
-#      --rm -it -v $(pwd):/workspace -w /workspace/ circuit_training:core  \
-#      python3.11 -m circuit_training.learning.eval \
-#        --root_dir=${ROOT_DIR} \
-#        --variable_container_server_address=${REVERB_SERVER} \
-#        --netlist_file=${NETLIST_FILE} \
-#        --init_placement=${INIT_PLACEMENT} \
-#        --global_seed=${GLOBAL_SEED} \
-#        --output_placement_save_dir=./
