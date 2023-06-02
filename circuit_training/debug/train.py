@@ -53,7 +53,7 @@ def train():
 
     # Start reverb server
     reverb_command = f"""
-    CUDA_VISIBLE_DEVICES=-1 python3.9 -m learning.ppo_reverb_server \
+    python3.9 -m learning.ppo_reverb_server \
     --root_dir={root_dir} \
     --global_seed={global_seed} \
     --port={reverb_port} 
@@ -74,6 +74,23 @@ def train():
     --use_gpu
     """
 
+    # train_command = f"""
+    # python3.9 -m learning.train_ppo \
+    # --root_dir={root_dir} \
+    # --std_cell_placer_mode=dreamplace \
+    # --replay_buffer_server_address={reverb_server} \
+    # --variable_container_server_address={reverb_server} \
+    # --sequence_length=3 \
+    # --gin_bindings='train.num_iterations=200' \
+    # --gin_bindings='train.num_episodes_per_iteration=32' \
+    # --gin_bindings='train.per_replica_batch_size=64' \
+    # --gin_bindings='CircuittrainingPPOLearner.summary_interval=12' \
+    # --gin_bindings='CircuitPPOAgent.debug_summaries=True' \
+    # --netlist_file={netlist_file} \
+    # --init_placement={init_placement} \
+    # --global_seed={global_seed} \
+    # --use_gpu
+    # """
     train_process = run_command(train_command, f"{output_dir}/train_job_output")
 
     # Start collect jobs
