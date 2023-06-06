@@ -19,12 +19,11 @@ import os
 
 from absl import app
 from absl import flags
-from rl_perf.domains.circuit_training.circuit_training.environment import environment
-import gin
-from tf_agents.system import system_multiprocessing as multiprocessing
-
+from environment import environment
 from learning import ppo_collect_lib
 from model import create_models_lib
+import gin
+from tf_agents.system import system_multiprocessing as multiprocessing
 
 _GIN_FILE = flags.DEFINE_multi_string(
     'gin_file', None, 'Paths to the gin-config files.'
@@ -79,37 +78,37 @@ FLAGS = flags.FLAGS
 
 
 def main(_):
-    gin.parse_config_files_and_bindings(
-        _GIN_FILE.value, _GIN_BINDINGS.value, skip_unknown=True
-    )
-    root_dir = os.path.join(FLAGS.root_dir, str(FLAGS.global_seed))
+  gin.parse_config_files_and_bindings(
+      _GIN_FILE.value, _GIN_BINDINGS.value, skip_unknown=True
+  )
+  root_dir = os.path.join(FLAGS.root_dir, str(FLAGS.global_seed))
 
-    create_env_fn = functools.partial(
-        environment.create_circuit_environment,
-        netlist_file=FLAGS.netlist_file,
-        init_placement=FLAGS.init_placement,
-        global_seed=FLAGS.global_seed,
-        std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
-        netlist_index=0,
-    )
+  create_env_fn = functools.partial(
+      environment.create_circuit_environment,
+      netlist_file=FLAGS.netlist_file,
+      init_placement=FLAGS.init_placement,
+      global_seed=FLAGS.global_seed,
+      std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
+      netlist_index=0,
+  )
 
-    ppo_collect_lib.collect(
-        task=FLAGS.task_id,
-        root_dir=root_dir,
-        replay_buffer_server_address=FLAGS.replay_buffer_server_address,
-        variable_container_server_address=FLAGS.variable_container_server_address,
-        create_env_fn=create_env_fn,
-        create_models_fn=create_models_lib.create_models_fn,
-        max_sequence_length=FLAGS.max_sequence_length,
-        rl_architecture='generalization',
-        netlist_index=_NETLIST_INDEX.value,
-    )
+  ppo_collect_lib.collect(
+      task=FLAGS.task_id,
+      root_dir=root_dir,
+      replay_buffer_server_address=FLAGS.replay_buffer_server_address,
+      variable_container_server_address=FLAGS.variable_container_server_address,
+      create_env_fn=create_env_fn,
+      create_models_fn=create_models_lib.create_models_fn,
+      max_sequence_length=FLAGS.max_sequence_length,
+      rl_architecture='generalization',
+      netlist_index=_NETLIST_INDEX.value,
+  )
 
 
 if __name__ == '__main__':
-    flags.mark_flags_as_required([
-        'root_dir',
-        'replay_buffer_server_address',
-        'variable_container_server_address',
-    ])
-    multiprocessing.handle_main(functools.partial(app.run, main))
+  flags.mark_flags_as_required([
+      'root_dir',
+      'replay_buffer_server_address',
+      'variable_container_server_address',
+  ])
+  multiprocessing.handle_main(functools.partial(app.run, main))

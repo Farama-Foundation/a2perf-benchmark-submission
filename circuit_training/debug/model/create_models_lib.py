@@ -17,7 +17,7 @@
 from typing import Any, Dict
 
 from model import fully_connected_model_lib
-from model import ct_model
+from model import model
 
 import numpy as np
 from tf_agents.typing import types
@@ -28,29 +28,29 @@ def create_models_fn(rl_architecture: str,
                      action_tensor_spec: types.NestedTensorSpec,
                      static_features: Dict[str, np.ndarray],
                      seed: int = 0) -> tuple[Any, Any]:
-    """Creates actor/value networks.
+  """Creates actor/value networks.
 
-    Args:
-      rl_architecture: The RL architecture.
-      observation_tensor_spec: Env observation spec.
-      action_tensor_spec: Env action spec.
-      static_features: Env static features.
-      seed: Random seed.
+  Args:
+    rl_architecture: The RL architecture.
+    observation_tensor_spec: Env observation spec.
+    action_tensor_spec: Env action spec.
+    static_features: Env static features.
+    seed: Random seed.
 
-    Returns:
-      Tuple of actor_net, value_net.
-    """
-    if rl_architecture == 'generalization':
-        actor_net, value_net = ct_model.create_grl_models(
-            observation_tensor_spec,
-            action_tensor_spec,
-            static_features,
-            use_model_tpu=False,
-            seed=seed)
-    else:
-        actor_net = fully_connected_model_lib.create_actor_net(
-            observation_tensor_spec, action_tensor_spec)
-        value_net = fully_connected_model_lib.create_value_net(
-            observation_tensor_spec)
+  Returns:
+    Tuple of actor_net, value_net.
+  """
+  if rl_architecture == 'generalization':
+    actor_net, value_net = model.create_grl_models(
+        observation_tensor_spec,
+        action_tensor_spec,
+        static_features,
+        use_model_tpu=False,
+        seed=seed)
+  else:
+    actor_net = fully_connected_model_lib.create_actor_net(
+        observation_tensor_spec, action_tensor_spec)
+    value_net = fully_connected_model_lib.create_value_net(
+        observation_tensor_spec)
 
-    return actor_net, value_net
+  return actor_net, value_net

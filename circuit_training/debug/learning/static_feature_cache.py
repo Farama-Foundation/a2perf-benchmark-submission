@@ -16,33 +16,32 @@
 
 from typing import Dict
 
+from environment import observation_config
 import numpy as np
-
-from rl_perf.domains.circuit_training.circuit_training.environment import observation_config
 
 
 class StaticFeatureCache:
-    """A class to handle static feature caching."""
+  """A class to handle static feature caching."""
 
-    def __init__(self):
-        self.static_feature_dict = {}
+  def __init__(self):
+    self.static_feature_dict = {}
 
-    def add_static_feature(self, static_feature: Dict[str, np.ndarray]) -> None:
-        netlist_index = static_feature['netlist_index'][0]
-        if netlist_index in self.static_feature_dict:
-            raise ValueError(
-                'Adding two static features with '
-                f'the same netlist_index: {netlist_index}.')
-        self.static_feature_dict[netlist_index] = static_feature
+  def add_static_feature(self, static_feature: Dict[str, np.ndarray]) -> None:
+    netlist_index = static_feature['netlist_index'][0]
+    if netlist_index in self.static_feature_dict:
+      raise ValueError(
+          'Adding two static features with '
+          f'the same netlist_index: {netlist_index}.')
+    self.static_feature_dict[netlist_index] = static_feature
 
-    def get_all_static_features(self) -> Dict[str, np.ndarray]:
-        """Returns the stacked static feature with netlist_index order."""
-        netlist_indices = sorted(list(self.static_feature_dict.keys()))
+  def get_all_static_features(self) -> Dict[str, np.ndarray]:
+    """Returns the stacked static feature with netlist_index order."""
+    netlist_indices = sorted(list(self.static_feature_dict.keys()))
 
-        all_static_features = {}
-        for feature in observation_config.STATIC_OBSERVATIONS:
-            all_static_features[feature] = np.array([
-                self.static_feature_dict[netlist_index][feature]
-                for netlist_index in netlist_indices
-            ])
-        return all_static_features
+    all_static_features = {}
+    for feature in observation_config.STATIC_OBSERVATIONS:
+      all_static_features[feature] = np.array([
+          self.static_feature_dict[netlist_index][feature]
+          for netlist_index in netlist_indices
+      ])
+    return all_static_features

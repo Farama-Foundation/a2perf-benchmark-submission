@@ -16,12 +16,11 @@
 import sys
 from typing import Callable, Optional, Union
 
+from environment import observation_config as observation_config_lib
 import gin
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-
-from rl_perf.domains.circuit_training.circuit_training.environment import observation_config as observation_config_lib
 
 
 # Reimplements internal function
@@ -434,8 +433,7 @@ class CircuitTrainingModel(tf.keras.layers.Layer):
       inputs: dict[str, tf.Tensor],
       training: bool = False,
       is_eval: bool = False,
-      finetune_value_only: bool = False) -> tuple[dict[str, tf.Tensor],
-                                                  tf.Tensor]:
+  ) -> tuple[dict[str, tf.Tensor], tf.Tensor]:
     # Netlist metadata.
     netlist_metadata_inputs = [
         self._get_static_input(key, inputs)  # pytype: disable=wrong-arg-types  # always-use-return-annotations
@@ -574,13 +572,7 @@ class CircuitTrainingModel(tf.keras.layers.Layer):
       augmented_embedding = self._augmented_embedding_layer(
           inputs['augmented_features'])
       observation_hiddens.append(augmented_embedding)
-
-    finetune_value_only = tf.convert_to_tensor(
-        finetune_value_only, dtype=tf.bool)
     h = tf.concat(observation_hiddens, axis=1)
-    h = tf.cond(finetune_value_only,
-                lambda: tf.stop_gradient(h),
-                lambda: h)
 
     location_logits = self._policy_location_head(h, training=training)
     # smart_cond avoids using tf.cond when condition value is static.
@@ -592,9 +584,6 @@ class CircuitTrainingModel(tf.keras.layers.Layer):
         ),
     }
     value = self._value_head(h, training=training)
-    logits = {'location': tf.cond(finetune_value_only,
-                                  lambda: tf.stop_gradient(logits['location']),
-                                  lambda: logits['location'])}
 
     return logits, value
 
@@ -678,13 +667,12 @@ class CircuitTrainingTPUModel(CircuitTrainingModel):
     mask = tf.broadcast_to(sparse_adj_weight != 0.0, tf.shape(h_edges))
     return tf.where(mask, h_edges, tf.zeros_like(h_edges))
 
-
-  def call(self,
-           inputs: dict[str, tf.Tensor],
-           training: bool = False,
-           is_eval: bool = False,
-           finetune_value_only: bool = False) -> tuple[dict[str, tf.Tensor],
-                                                       tf.Tensor]:
+  def call(
+      self,
+      inputs: dict[str, tf.Tensor],
+      training: bool = False,
+      is_eval: bool = False,
+  ) -> tuple[dict[str, tf.Tensor], tf.Tensor]:
     # Netlist metadata.
     netlist_metadata_inputs = [
         self._get_static_input(key, inputs)
@@ -881,13 +869,7 @@ class CircuitTrainingTPUModel(CircuitTrainingModel):
       augmented_embedding = self._augmented_embedding_layer(
           inputs['augmented_features'])
       observation_hiddens.append(augmented_embedding)
-
-    finetune_value_only = tf.convert_to_tensor(
-        finetune_value_only, dtype=tf.bool)
     h = tf.concat(observation_hiddens, axis=1)
-    h = tf.cond(finetune_value_only,
-                lambda: tf.stop_gradient(h),
-                lambda: h)
 
     location_logits = self._policy_location_head(h, training=training)
     # smart_cond avoids using tf.cond when condition value is static.
@@ -899,8 +881,5 @@ class CircuitTrainingTPUModel(CircuitTrainingModel):
         ),
     }
     value = self._value_head(h, training=training)
-    logits = {'location': tf.cond(finetune_value_only,
-                                  lambda: tf.stop_gradient(logits['location']),
-                                  lambda: logits['location'])}
 
     return logits, value
