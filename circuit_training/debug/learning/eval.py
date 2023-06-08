@@ -19,7 +19,7 @@ import os
 
 from absl import app
 from absl import flags
-from environment  import environment
+from environment_module import environment
 from learning import eval_lib
 from model import create_models_lib
 import gin

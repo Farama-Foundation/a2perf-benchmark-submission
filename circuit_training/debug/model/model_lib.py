@@ -16,7 +16,7 @@
 import sys
 from typing import Callable, Optional, Union
 
-from environment import observation_config as observation_config_lib
+from environment_module import observation_config as observation_config_lib
 import gin
 import numpy as np
 import tensorflow as tf

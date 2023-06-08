@@ -19,8 +19,8 @@ from typing import Dict, Optional, Text, Tuple
 
 from absl import logging
 
-from environment import observation_config as observation_config_lib
-from environment import plc_client
+from environment_module import observation_config as observation_config_lib
+from environment_module import plc_client
 import gin
 import numpy as np
 

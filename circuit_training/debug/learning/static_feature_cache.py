@@ -16,7 +16,7 @@
 
 from typing import Dict
 
-from environment import observation_config
+from environment_module import observation_config
 import numpy as np
 
 

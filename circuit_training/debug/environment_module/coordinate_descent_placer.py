@@ -20,8 +20,8 @@ from typing import Callable, Optional
 from absl import logging
 from dreamplace_module import dreamplace_core
 from dreamplace_module import dreamplace_util
-from environment import placement_util
-from environment import plc_client
+from environment_module import placement_util
+from environment_module import plc_client
 import gin
 import numpy as np
 

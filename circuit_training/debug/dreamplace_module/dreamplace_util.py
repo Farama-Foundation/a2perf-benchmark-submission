@@ -20,7 +20,7 @@ import time
 from typing import Optional
 
 from absl import logging
-import environment.placement_util as util
+from environment_module import placement_util as util
 from dreamplace import Params
 import gin
 

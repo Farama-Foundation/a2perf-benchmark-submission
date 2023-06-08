@@ -22,11 +22,11 @@ from typing import Any, Callable, Dict, Text, Tuple, Optional
 from absl import logging
 from dreamplace_module import dreamplace_core
 from dreamplace_module import dreamplace_util
-from environment import coordinate_descent_placer as cd_placer
-from environment import observation_config
-from environment import observation_extractor
-from environment import placement_util
-from environment import plc_client
+from environment_module import coordinate_descent_placer as cd_placer
+from environment_module import observation_config
+from environment_module import observation_extractor
+from environment_module import placement_util
+from environment_module import plc_client
 import gin
 import gym
 import numpy as np

@@ -17,7 +17,7 @@
 import os
 
 from absl import flags
-from environment import plc_client
+from environment_module import plc_client
 from utils import test_utils
 
 FLAGS = flags.FLAGS

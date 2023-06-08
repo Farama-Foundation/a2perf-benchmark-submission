@@ -18,9 +18,9 @@ import os
 
 from absl import flags
 from absl import logging
-from environment import observation_config
-from environment import observation_extractor
-from environment import placement_util
+from environment_module import observation_config
+from environment_module import observation_extractor
+from environment_module import placement_util
 from utils import test_utils
 import numpy as np
 

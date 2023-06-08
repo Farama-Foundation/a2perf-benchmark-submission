@@ -20,9 +20,9 @@ import random
 from absl import flags
 from absl import logging
 from absl.testing import parameterized
-from environment import coordinate_descent_placer
-from environment import environment
-from environment import placement_util
+from environment_module import coordinate_descent_placer
+from environment_module import environment
+from environment_module import placement_util
 from utils import test_utils
 import numpy as np
 

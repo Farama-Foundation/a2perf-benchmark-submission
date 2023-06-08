@@ -17,7 +17,7 @@
 import os
 
 from absl import flags
-from environment import environment
+from environment_module import environment
 from utils import test_utils
 import gin
 import numpy as np

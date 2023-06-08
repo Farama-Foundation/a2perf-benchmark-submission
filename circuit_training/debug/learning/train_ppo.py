@@ -21,7 +21,7 @@ import random
 from absl import app
 from absl import flags
 from absl import logging
-from environment import environment
+from environment_module import environment
 from learning import static_feature_cache
 from learning import train_ppo_lib
 from model import create_models_lib

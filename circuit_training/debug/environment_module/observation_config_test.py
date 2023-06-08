@@ -14,7 +14,7 @@
 # limitations under the License.
 """Tests for circuit_training.environment.observation_config."""
 
-from environment import observation_config
+from environment_module import observation_config
 from utils import test_utils
 
 

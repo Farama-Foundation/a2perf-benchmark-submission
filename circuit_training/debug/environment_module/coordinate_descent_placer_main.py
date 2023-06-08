@@ -28,9 +28,9 @@ import os
 
 from absl import app
 from absl import flags
-from environment import coordinate_descent_placer
-from environment import environment
-from environment import placement_util
+from environment_module import coordinate_descent_placer
+from environment_module import environment
+from environment_module import placement_util
 import numpy as np
 
 _SEED = flags.DEFINE_integer('seed', 0, 'Random seed.')
