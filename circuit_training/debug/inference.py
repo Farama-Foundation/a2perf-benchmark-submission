@@ -10,8 +10,10 @@ from learning import static_feature_cache
 from learning.agent import create_circuit_ppo_agent
 from learning.train_ppo import try_load_checkpoint
 from model import create_models_lib
+from absl import flags
 
-from rl_perf.domains.circuit_training import circuit_training
+delattr(flags.FLAGS, 'plc_wrapper_main')
+from rl_perf.domains import circuit_training
 
 
 def load_model():

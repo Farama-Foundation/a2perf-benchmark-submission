@@ -34,6 +34,63 @@ from tf_agents.train import learner
 from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import strategy_utils
 
+_GIN_FILE = flags.DEFINE_multi_string(
+    'gin_file', None, 'Paths to the gin-config files.'
+)
+_GIN_BINDINGS = flags.DEFINE_multi_string(
+    'gin_bindings', [], 'Gin binding parameters.'
+)
+_NETLIST_FILE = flags.DEFINE_multi_string(
+    'netlist_file', None, 'File path to the netlist files.'
+)
+_INIT_PLACEMENT = flags.DEFINE_multi_string(
+    'init_placement', None, 'File path to the init placement files.'
+)
+_STD_CELL_PLACER_MODE = flags.DEFINE_string(
+    'std_cell_placer_mode',
+    'fd',
+    (
+        'Options for fast std cells placement: `fd` (uses the '
+        'force-directed algorithm), `dreamplace` (uses DREAMPlace '
+        'algorithm).'
+    ),
+)
+_ROOT_DIR = flags.DEFINE_string(
+    'root_dir',
+    os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
+    'Root directory for writing logs/summaries/checkpoints.',
+)
+_REPLAY_BUFFER_SERVER_ADDR = flags.DEFINE_string(
+    'replay_buffer_server_address', None, 'Replay buffer server address.'
+)
+_VARIABLE_CONTAINER_SERVER_ADDR = flags.DEFINE_string(
+    'variable_container_server_address',
+    None,
+    'Variable container server address.',
+)
+_SEQUENCE_LENGTH = flags.DEFINE_integer(
+    'sequence_length',
+    134,
+    (
+        'The sequence length to estimate shuffle size. Depends on the'
+        ' environment.Max horizon = T translates to sequence_length T+1 because'
+        ' of the additional boundary step (last -> first).'
+    ),
+)
+_GLOBAL_SEED = flags.DEFINE_integer(
+    'global_seed',
+    111,
+    'Used in env and weight initialization, does not impact action sampling.',
+)
+_POLICY_SAVED_MODEL_DIR = flags.DEFINE_string(
+    'policy_saved_model_dir', None, 'If set, load the pretrained policy model.'
+)
+_POLICY_CHECKPOINT_DIR = flags.DEFINE_string(
+    'policy_checkpoint_dir', None, 'If set, load the pretrained policy model.'
+)
+
+FLAGS = flags.FLAGS
+
 
 def remove_tpu_in_the_name(var_name: str) -> str:
     """Removes the tpu in the tensor name."""

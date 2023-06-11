@@ -23,6 +23,9 @@ from typing import Any, Text
 from absl import flags
 from absl import logging
 
+flags.DEFINE_string('plc_wrapper_main', 'plc_wrapper_main',
+                    'Path to plc_wrapper_main binary.')
+
 FLAGS = flags.FLAGS
 
 
