@@ -28,7 +28,7 @@ class SoftMacroPlacer:
   """A soft macro placer using Dreamplace."""
 
   def __init__(
-      self, plc, params, hard_macro_order=None, enable_timeout: bool = True
+      self, plc, params, hard_macro_order=None, enable_timeout: bool = False
   ) -> None:
     self.params = params
     self.placedb_plc = placedb_plc.PlacedbPlc(plc, params, hard_macro_order)
