@@ -1,5 +1,11 @@
-import os
+from absl import flags
 
+# delete all absl flags
+for name in list(flags.FLAGS):
+    delattr(flags.FLAGS, name)
+
+import os
+import numpy as np
 import gym
 import tensorflow as tf
 from absl import app
@@ -10,19 +16,19 @@ from learning import static_feature_cache
 from learning.agent import create_circuit_ppo_agent
 from learning.train_ppo import try_load_checkpoint
 from model import create_models_lib
-from absl import flags
-
-delattr(flags.FLAGS, 'plc_wrapper_main')
+import sys
 from rl_perf.domains import circuit_training
+
+FLAGS = flags.FLAGS
 
 
 def load_model():
     """This function loads and prepares the model for inference."""
+    FLAGS(sys.argv[:1])  # need to explicitly to tell flags library to parse argv before you can access FLAGS.xxx
 
     root_dir = os.environ['ROOT_DIR']
     seed = os.environ['GLOBAL_SEED']
 
-    train_step = train_utils.create_train_step()
     env = gym.make('CircuitTraining-v0')
     observation_tensor_spec, action_tensor_spec, time_step_tensor_spec = (
         spec_utils.get_tensor_specs(env))
@@ -33,7 +39,6 @@ def load_model():
     strategy = strategy_utils.get_strategy(
         strategy_utils.TPU.value, strategy_utils.USE_GPU.value
     )
-    use_model_tpu = bool(strategy_utils.TPU.value)
 
     with strategy.scope():
         actor_net, value_net = create_models_lib.create_models_fn(
@@ -48,13 +53,13 @@ def load_model():
         value_net.create_variables(training=False)
 
         init_train_step = try_load_checkpoint(
-            root_dir,
+            os.path.join(root_dir, str(seed), ),
             actor_net,
             value_net,
         )
 
     tf_agent = create_circuit_ppo_agent(
-        train_step,
+        init_train_step,
         action_tensor_spec,
         time_step_tensor_spec,
         actor_net,
@@ -70,11 +75,12 @@ def preprocess_observation(observation):
 
     You should implement any custom preprocessing steps needed for your observations within this function.
     """
-    time_step = ts.TimeStep(step_type=ts.StepType.FIRST, reward=0.0, discount=1.0, observation=observation)
 
-    # Convert the single timestep into a batch of size 1
-    time_step = tf.nest.map_structure(lambda t: tf.expand_dims(t, 0), time_step)
-
+    if isinstance(observation, dict):
+        time_step = ts.TimeStep(step_type=None, reward=None, discount=None,
+                                observation=observation)
+    else:
+        time_step = observation
     return time_step
 
 
