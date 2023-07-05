@@ -7,19 +7,15 @@ python3.9 -m learning.ppo_reverb_server \
   --port="$REVERB_PORT" >"$ROOT_DIR/server.log" 2>&1 &
 
 python3.9 -m learning.train_ppo \
-  --root_dir="$ROOT_DIR" \
+  --root_dir="${ROOT_DIR}" \
   --std_cell_placer_mode=dreamplace \
-  --replay_buffer_server_address="$REVERB_SERVER" \
-  --variable_container_server_address="$REVERB_SERVER" \
-  --sequence_length=3 \
+  --replay_buffer_server_address="${REVERB_SERVER}" \
+  --variable_container_server_address="${REVERB_SERVER}" \
+  --sequence_length=134 \
   --gin_bindings='train.num_iterations=200' \
-  --gin_bindings='train.num_episodes_per_iteration=32' \
-  --gin_bindings='train.per_replica_batch_size=64' \
-  --gin_bindings='CircuittrainingPPOLearner.summary_interval=12' \
-  --gin_bindings='CircuitPPOAgent.debug_summaries=True' \
-  --netlist_file="$NETLIST_FILE" \
-  --init_placement="$INIT_PLACEMENT" \
-  --global_seed="$GLOBAL_SEED" >"$ROOT_DIR/train.log" 2>&1 &
+  --netlist_file="${NETLIST_FILE}" \
+  --init_placement="${INIT_PLACEMENT}" \
+  --global_seed="${GLOBAL_SEED}" >"$ROOT_DIR/train.log" 2>&1 &
 
 train_ppo_pid=$! # Get the process ID of the train_ppo process
 
