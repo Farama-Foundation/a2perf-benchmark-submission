@@ -1,7 +1,7 @@
 #!/bin/bash
 
 REVERB_SERVER="${REVERB_SERVER_IP}:${REVERB_PORT}"
-python3.9 -m learning.ppo_reverb_server \
+CUDA_VISIBLE_DEVICES=-1 python3.9 -m learning.ppo_reverb_server \
   --root_dir="$ROOT_DIR" \
   --global_seed="$GLOBAL_SEED" \
   --port="$REVERB_PORT" >"$ROOT_DIR/server.log" 2>&1 &
