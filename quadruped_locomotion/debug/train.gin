@@ -1,13 +1,12 @@
 train_eval.env_name = "QuadrupedLocomotion-v0"
 train_eval.parallel = True
-train_eval.parallel_cores = 100
+train_eval.parallel_cores = 1
 train_eval.timesteps_per_actorbatch = 4096
 train_eval.optim_batchsize = 256
 train_eval.mode = "train"
-train_eval.total_timesteps = 100000000
+train_eval.total_timesteps = 200000000
 train_eval.visualize = False
-train_eval.motion_file = "../../../domains/quadruped_locomotion/motion_imitation/data/motions/dog_pace.txt"
 train_eval.int_save_freq = 1000000
-train_eval.env_path = "../../../domains/quadruped_locomotion/motion_imitation/run_utils.py"
+train_eval.setup_path = "setup_model_env.py"
 
 
