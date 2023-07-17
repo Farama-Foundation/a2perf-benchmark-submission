@@ -96,14 +96,18 @@ def train_eval(
   train_dir = os.path.join(root_dir, 'train')
   eval_dir = os.path.join(root_dir, 'eval')
 
+  summaries_dir = os.path.join(root_dir, 'summaries')
+  train_summaries_dir = os.path.join(summaries_dir, 'train')
+  eval_summaries_dir = os.path.join(summaries_dir, 'eval')
+
   train_summary_writer = tf.compat.v2.summary.create_file_writer(
-      train_dir, flush_millis=summaries_flush_secs * 1000
+      train_summaries_dir, flush_millis=summaries_flush_secs * 1000
   )
 
   train_summary_writer.set_as_default()
 
   eval_summary_writer = tf.compat.v2.summary.create_file_writer(
-      eval_dir, flush_millis=summaries_flush_secs * 1000
+      eval_summaries_dir, flush_millis=summaries_flush_secs * 1000
   )
   eval_metrics = [
       tf_metrics.EnvironmentSteps(),
@@ -432,8 +436,8 @@ def train():
       train_checkpoint_interval=num_iterations // 10,
       policy_checkpoint_interval=num_iterations // 10,
       rb_checkpoint_interval=num_iterations // 10,
-      log_interval=num_iterations // 1000,
-      summary_interval=num_iterations // 1000,
+      log_interval=100,
+      summary_interval=100,
   )
 
 
