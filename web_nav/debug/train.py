@@ -4,6 +4,7 @@ import time
 
 from absl import logging
 import gin
+import tf_agents
 import gym
 import numpy as np
 import tf_agents
