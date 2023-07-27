@@ -4,6 +4,7 @@ import time
 
 from absl import logging
 import gin
+import tf_agents
 import gym
 import numpy as np
 import tf_agents
@@ -263,6 +264,7 @@ def train_eval(
             max_length=replay_buffer_capacity,
             device='gpu:0' if use_gpu else 'cpu:0',
         )
+
         initial_collect_policy = random_tf_policy.RandomTFPolicy(
             batched_tf_env.time_step_spec(),
             batched_tf_env.action_spec(),
