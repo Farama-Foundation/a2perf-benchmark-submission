@@ -4,6 +4,7 @@ import time
 
 from absl import logging
 import gin
+import tf_agents
 import gym
 import numpy as np
 import tf_agents
@@ -178,7 +179,24 @@ def train_eval(
                 },
             )
         )
-
+        # batched_tf_env = (
+        #     tf_py_environment.batched_py_environment.BatchedPyEnvironment(
+        #         envs=[
+        #             suite_gym.load(
+        #                 environment_name=env_name,
+        #                 spec_dtype_map={gym.spaces.Discrete: np.int32},
+        #                 gym_kwargs={
+        #                     'difficulty': difficulty,
+        #                     'seed': seed + i,
+        #                     'global_vocabulary': global_vocab,
+        #                     **env_args,  # Add env_args to the gym_kwargs dictionary
+        #                 },
+        #             )
+        #             for i in range(environment_batch_size)
+        #         ]
+        #     )
+        # )
+        # batched_tf_env = tf_py_environment.TFPyEnvironment(batched_tf_env)
         if train_sequence_length != 1 and n_step_update != 1:
             raise NotImplementedError(
                 'train_eval does not currently support n-step updates with stateful '
@@ -234,9 +252,7 @@ def train_eval(
         ]
         os.makedirs(train_dir, exist_ok=True)
         with open(os.path.join(train_dir, 'train_summary.csv'), 'w') as train_file:
-            train_file.write(
-                ','.join([metric.name for metric in train_metrics]) + '\n'
-            )
+            train_file.write(f"global_step,{','.join([metric.name for metric in train_metrics])}\n")
 
         eval_policy = tf_agent.policy
         collect_policy = tf_agent.collect_policy
@@ -248,6 +264,7 @@ def train_eval(
             max_length=replay_buffer_capacity,
             device='gpu:0' if use_gpu else 'cpu:0',
         )
+
         initial_collect_policy = random_tf_policy.RandomTFPolicy(
             batched_tf_env.time_step_spec(),
             batched_tf_env.action_spec(),
@@ -395,6 +412,7 @@ def train_eval(
                         train_step=global_step, step_metrics=train_metrics[:2]
                     )
 
+                results['global_step'] = global_step.numpy()
                 train_df = pd.read_csv(
                     os.path.join(train_dir, 'train_summary.csv'), header='infer'
                 )
