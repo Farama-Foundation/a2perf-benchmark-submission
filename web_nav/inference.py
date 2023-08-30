@@ -35,7 +35,8 @@ def load_model():
     global_vocab.restore(dict(global_vocab=global_vocab_dict))
     tf_env = tf_py_environment.TFPyEnvironment(suite_gym.load(environment_name=env_name,
                                                               spec_dtype_map={gym.spaces.Discrete: np.int32},
-                                                              gym_kwargs={'designs': designs, 'seed': seed,
+                                                              gym_kwargs={'difficulty': 1,
+                                                                          'seed': seed,
                                                                           'global_vocabulary': global_vocab, }))
 
     global_step = tf.compat.v1.train.get_or_create_global_step()
@@ -75,6 +76,9 @@ def load_model():
 
 def preprocess_observation(observation):
     # Write your code here to preprocess the observation. This function should return the preprocessed observation.
+    for key in observation:
+        observation[key] = tf.convert_to_tensor(observation[key], dtype=observation[key].dtype)
+
     time_step = ts.TimeStep(step_type=ts.StepType.FIRST, reward=0.0, discount=1.0, observation=observation)
 
     # Convert the single timestep into a batch of size 1
@@ -84,10 +88,6 @@ def preprocess_observation(observation):
 
 
 def infer_once(model, observation):
-    # Write your code here to run inference on the model. This function should return the output of the model.
-
-    observation = preprocess_observation(observation)
-
     action_step = model.action(time_step=observation)
     action = tf.nest.map_structure(lambda t: tf.squeeze(t, axis=0), action_step.action)
     return action

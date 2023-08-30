@@ -1,5 +1,6 @@
 train_eval.collect_steps_per_iteration = 1
 train_eval.summaries_flush_secs = 10
+train_eval.env_args = {}
 train_eval.env_name = 'WebNavigation-v0'
 train_eval.use_gpu = True
 train_eval.initial_collect_steps = 1000
