@@ -10,7 +10,7 @@
 
 # from train import DQNLSTM
 
-# from rl_perf.domains.web_nav.CoDE import vocabulary_node
+# from rl_perf.domains.quadruped_locomotion.CoDE import vocabulary_node
 
 
 # def load_model():

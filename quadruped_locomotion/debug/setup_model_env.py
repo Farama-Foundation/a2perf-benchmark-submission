@@ -63,14 +63,13 @@ class RunUtils():
 
     def build_environment(self):
         '''Build Environment'''
-        
+
         env = gym.make('QuadrupedLocomotionEnv-v0',
-                        mode=self._mode,
-                        enable_rendering=self._visualize)
-        
+                       mode=self._mode,
+                       enable_rendering=self._visualize)
+
         return env
-        
-        
+
     def set_rand_seed(self, seed=None):
         if seed is None:
             seed = int(time.time())
@@ -85,29 +84,29 @@ class RunUtils():
 
     def build_model(self, env, timesteps_per_actorbatch, optim_batchsize):
         policy_kwargs = {
-                "net_arch": [{"pi": [512, 256],
-                              "vf": [512, 256]}],
-                "act_fun": tf.nn.relu
-                }
+            "net_arch": [{"pi": [512, 256],
+                          "vf": [512, 256]}],
+            "act_fun": tf.nn.relu
+        }
 
         timesteps_per_actorbatch = int(np.ceil(float(timesteps_per_actorbatch) / self._num_procs))
         optim_batchsize = int(np.ceil(float(optim_batchsize) / self._num_procs))
 
         model = ppo_imitation.PPOImitation(
-                policy=imitation_policies.ImitationPolicy,
-                env=env,
-                gamma=0.95,
-                timesteps_per_actorbatch=timesteps_per_actorbatch,
-                clip_param=0.2,
-                optim_epochs=1,
-                optim_stepsize=1e-5,
-                optim_batchsize=optim_batchsize,
-                lam=0.95,
-                adam_epsilon=1e-5,
-                schedule='constant',
-                policy_kwargs=policy_kwargs,
-                tensorboard_log=self._output_dir,
-                verbose=1)
+            policy=imitation_policies.ImitationPolicy,
+            env=env,
+            gamma=0.95,
+            timesteps_per_actorbatch=timesteps_per_actorbatch,
+            clip_param=0.2,
+            optim_epochs=1,
+            optim_stepsize=1e-5,
+            optim_batchsize=optim_batchsize,
+            lam=0.95,
+            adam_epsilon=1e-5,
+            schedule='constant',
+            policy_kwargs=policy_kwargs,
+            tensorboard_log=self._output_dir,
+            verbose=1)
 
         if self._model_file != "":
             model.load_parameters(self._model_file)
@@ -120,7 +119,7 @@ class RunUtils():
         else:
             save_path = os.path.join(self._output_dir, "model.zip")
             if not os.path.exists(self._output_dir):
-                os.makedirs(self._output_dir)
+                os.makedirs(self._output_dir, exist_ok=True)
 
         callbacks = []
         # Save a checkpoint every n steps
@@ -181,10 +180,8 @@ class RunUtils():
         self._built_model = self.build_model(self._built_env, TIMESTEPS_PER_ACTORBATCH, OPTIM_BATCHSIZE)
 
 
-
 if __name__ == '__main__':
-                       
-                     
+
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--seed", dest="seed", type=int, default=None)
     arg_parser.add_argument("--mode", dest="mode", type=str, default="train")
@@ -197,7 +194,13 @@ if __name__ == '__main__':
                             default=0)  # save intermediate model every n policy steps
 
     args = arg_parser.parse_args()
-    
+
+    # print("args.seed:", args.seed)
+    # print("args.mode:", args.mode)
+    # print("int_save_freq:", args.int_save_freq)
+    # print("args.output_dir:", args.output_dir)
+
+    # assert 0 == 1
     run = RunUtils(seed=args.seed,
                    mode=args.mode,
                    visualize=args.visualize,
@@ -207,16 +210,10 @@ if __name__ == '__main__':
                    total_timesteps=args.total_timesteps,
                    int_save_freq=args.int_save_freq)
 
+    # assert 0==1
     if args.mode == 'test':
         run.test(model, env)
     elif args.mode == 'train':
-        run.test(run.get_built_model(), run.get_built_env())
+        run.train(run.get_built_model(), run.get_built_env())
     else:
         raise ValueError("Unsupported mode: " + args.mode)
-
-    
-
-
-
-
-
