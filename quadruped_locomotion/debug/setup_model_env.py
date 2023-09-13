@@ -195,11 +195,12 @@ if __name__ == '__main__':
 
     args = arg_parser.parse_args()
 
-    # print("args.seed:", args.seed)
-    # print("args.mode:", args.mode)
-    # print("int_save_freq:", args.int_save_freq)
-    # print("args.output_dir:", args.output_dir)
-
+    print("args.seed:", args.seed)
+    print("args.mode:", args.mode)
+    print("int_save_freq:", args.int_save_freq)
+    print("args.output_dir:", args.output_dir)
+    print("args.total_timesteps:", args.total_timesteps)
+    #
     # assert 0 == 1
     run = RunUtils(seed=args.seed,
                    mode=args.mode,

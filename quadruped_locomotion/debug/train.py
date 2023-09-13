@@ -47,7 +47,6 @@ def train():
     visualize = os.environ['VISUALIZE']
     int_save_freq = int(os.environ['INT_SAVE_FREQ'])
     setup_path = os.environ['SETUP_PATH']
-
     output_dir = os.path.join(root_dir, 'policies')
 
     print("root_dir:", root_dir)
@@ -61,7 +60,6 @@ def train():
     print("setup_path:", setup_path)
     print("output_dir:", output_dir)
 
-    # return
     train_eval(root_dir=root_dir,
                seed=seed,
                output_dir=output_dir,
