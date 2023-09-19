@@ -16,6 +16,7 @@ def train_eval(
         optim_batchsize=256,
         mode="train",
         total_timesteps=2e8,
+        motion_file_path=None,
         output_dir="output",
         visualize=False,
         int_save_freq=10000000,
@@ -25,7 +26,13 @@ def train_eval(
 
         try:
             # mpi_command = f"mpiexec -n {parallel_cores} python {setup_path} --mode {mode} --int_save_freq {int_save_freq} --output_dir {output_dir} --seed {seed} --total_timesteps {total_timesteps} --int_save_freq {int_save_freq} {'--visualize' if visualize else ''}"
-            mpi_command = f"mpiexec -n {parallel_cores} python {setup_path} --mode {mode} --int_save_freq {int_save_freq} --output_dir {output_dir} --seed {seed} --total_timesteps {total_timesteps} --int_save_freq {int_save_freq}"
+            mpi_command = f"mpiexec -n {parallel_cores} python {setup_path}" \
+                          f" --mode {mode}" \
+                          f" --int_save_freq {int_save_freq}" \
+                          f" --output_dir {output_dir}" \
+                          f" --seed {seed}" \
+                          f" --total_timesteps {total_timesteps}" \
+                          f" --motion_file_path {motion_file_path}"
 
             subprocess.run(mpi_command, shell=True, check=True)
         except subprocess.CalledProcessError as e:
@@ -48,7 +55,7 @@ def train():
     int_save_freq = int(os.environ['INT_SAVE_FREQ'])
     setup_path = os.environ['SETUP_PATH']
     output_dir = os.path.join(root_dir, 'policies')
-
+    motion_file_path = os.environ['MOTION_FILE_PATH']
     print("root_dir:", root_dir)
     print("seed:", seed)
     print("total_timesteps:", total_timesteps)
@@ -70,6 +77,8 @@ def train():
                visualize=visualize,
                int_save_freq=int_save_freq,
                setup_path=setup_path
+               ,
+               motion_file_path=motion_file_path
                )
 
 

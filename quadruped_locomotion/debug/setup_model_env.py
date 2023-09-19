@@ -34,15 +34,18 @@ class RunUtils():
                  output_dir="output",
                  num_test_episodes=None,
                  model_file="",
+                 motion_files=None,
                  total_timesteps=2e8,
                  int_save_freq=0):
 
         self._seed = seed
         self._mode = mode
+        self._motion_files = motion_files
         self._visualize = visualize
         self._output_dir = output_dir
         self._num_test_episodes = num_test_episodes
         self._model_file = model_file
+        self._motion_files = motion_files
         self._total_timesteps = total_timesteps
         self._int_save_freq = int_save_freq
 
@@ -65,6 +68,7 @@ class RunUtils():
         '''Build Environment'''
 
         env = gym.make('QuadrupedLocomotionEnv-v0',
+                       motion_files=self._motion_files,
                        mode=self._mode,
                        enable_rendering=self._visualize)
 
@@ -189,6 +193,7 @@ if __name__ == '__main__':
     arg_parser.add_argument("--output_dir", dest="output_dir", type=str, default="output")
     arg_parser.add_argument("--num_test_episodes", dest="num_test_episodes", type=int, default=None)
     arg_parser.add_argument("--model_file", dest="model_file", type=str, default="")
+    arg_parser.add_argument("--motion_file_path", dest="motion_file_path", type=str, default=None)
     arg_parser.add_argument("--total_timesteps", dest="total_timesteps", type=int, default=2e8)
     arg_parser.add_argument("--int_save_freq", dest="int_save_freq", type=int,
                             default=0)  # save intermediate model every n policy steps
@@ -200,6 +205,10 @@ if __name__ == '__main__':
     print("int_save_freq:", args.int_save_freq)
     print("args.output_dir:", args.output_dir)
     print("args.total_timesteps:", args.total_timesteps)
+    print("args.motion_file_path:", args.motion_file_path)
+    print("args.model_file:", args.model_file)
+    print("args.visualize:", args.visualize)
+
     #
     # assert 0 == 1
     run = RunUtils(seed=args.seed,
@@ -208,6 +217,7 @@ if __name__ == '__main__':
                    output_dir=args.output_dir,
                    num_test_episodes=args.num_test_episodes,
                    model_file=args.model_file,
+                   motion_files=[args.motion_file_path],
                    total_timesteps=args.total_timesteps,
                    int_save_freq=args.int_save_freq)
 
