@@ -3,6 +3,9 @@ import os
 import subprocess
 from absl import app
 
+TIMESTEPS_PER_ACTORBATCH = 4096
+OPTIM_BATCHSIZE = 256
+
 
 def train():
     root_dir = os.environ['ROOT_DIR']
@@ -16,7 +19,7 @@ def train():
     setup_path = os.environ['SETUP_PATH']
     motion_file_path = os.environ['MOTION_FILE_PATH']
     output_dir = os.path.join(root_dir, 'policies')
-
+    total_timesteps = total_timesteps // parallel_cores
     print("root_dir:", root_dir)
     print("seed:", seed)
     print("total_timesteps:", total_timesteps)
@@ -28,7 +31,7 @@ def train():
     print("setup_path:", setup_path)
     print("output_dir:", output_dir)
 
-    mpi_command = f"mpiexec -n {parallel_cores} python {setup_path} --mode {mode} --int_save_freq {int_save_freq} --output_dir {output_dir} --seed {seed} --total_timesteps {total_timesteps} --int_save_freq {int_save_freq} --motion_file_path {motion_file_path}"
+    mpi_command = f"mpiexec -n {parallel_cores} python3.7 {setup_path} --mode {mode} --int_save_freq {int_save_freq} --output_dir {output_dir} --seed {seed} --total_timesteps {total_timesteps} --int_save_freq {int_save_freq} --motion_file_path {motion_file_path}"
     subprocess.run(mpi_command, shell=True, check=True)
 
 
