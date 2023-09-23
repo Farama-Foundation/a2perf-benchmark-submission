@@ -1,18 +1,21 @@
+import inspect
+import os.path
+
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+os.sys.path.insert(0, parentdir)
 import argparse
 import logging
-import os.path
 
 import numpy as np
 import tensorflow as tf
 from mpi4py import MPI
-from stable_baselines import DDPG, TD3
 from stable_baselines.common.callbacks import CheckpointCallback
 from stable_baselines.common.noise import NormalActionNoise
 from stable_baselines.ddpg.policies import MlpPolicy
 
 import gym
 from rl_perf.domains.quadruped_locomotion.motion_imitation.learning.ddpg_imitation import DDPGImitation
-from rl_perf.domains import quadruped_locomotion
 
 TIMESTEPS_PER_ACTORBATCH = 4096
 OPTIM_BATCHSIZE = 256
@@ -35,17 +38,11 @@ def train(motion_file_path,
     eval_env = None
 
     if rank == 0:
-        # eval_env = gym.make('QuadrupedLocomotionEnv-v0', motion_files=[motion_file_path], mode='test',
-        #                     enable_rendering=False)
-        # logging.info("Creating eval env for rank %d", rank)
         logging.info('Testing not creating eval env for rank %d', rank)
     else:
         logging.info("eval_env is not created for rank %d", rank)
 
-    n_actions = env.action_space.shape[-1]
     param_noise = None
-
-    action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.01 * np.ones(n_actions))
     action_noise = None
     callbacks = []
 
@@ -61,10 +58,6 @@ def train(motion_file_path,
     print('observation_space lowest low:', np.min(env.observation_space.low))
     print('action_space highest high:', np.max(env.action_space.high))
     print('action_space lowest low:', np.min(env.action_space.low))
-    # for envs in gym.envs.registry.all():
-    #     if 'Quadruped' in env.id:
-    #         print(env)
-    # return
 
     if rank == 0:
         callbacks.append(CheckpointCallback(save_freq=int_save_freq,
@@ -91,8 +84,8 @@ def train(motion_file_path,
                           nb_train_steps=100,
                           nb_rollout_steps=100,
                           random_exploration=0.05,
-                          verbose=2 if rank == 0 else 0,
-                          full_tensorboard_log=True,
+                          verbose=2 * (rank == 0),
+                          full_tensorboard_log=rank == 0,
                           tensorboard_log=output_dir if rank == 0 else None,
                           param_noise=param_noise,
                           action_noise=action_noise)
@@ -102,7 +95,7 @@ def train(motion_file_path,
                 tb_log_name="DDPG")
 
     if rank == 0:
-        model.save("ddpg_test_out")
+        model.save("final_ddpg_policy")
 
 
 if __name__ == '__main__':
