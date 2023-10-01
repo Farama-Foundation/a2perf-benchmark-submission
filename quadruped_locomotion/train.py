@@ -1,5 +1,5 @@
-import numpy as np
 import os
+
 import subprocess
 from absl import app
 
@@ -14,13 +14,13 @@ def train():
     parallel_mode = os.environ['PARALLEL_MODE']
     parallel_cores = int(os.environ['PARALLEL_CORES'])
     mode = os.environ['MODE']
-    visualize = bool(os.environ['VISUALIZE'])
+    visualize = os.environ['VISUALIZE']
     int_save_freq = int(os.environ['INT_SAVE_FREQ'])
     setup_path = os.environ['SETUP_PATH']
     motion_file_path = os.environ['MOTION_FILE_PATH']
-    timesteps_per_actorbatch = int(np.ceil(float(TIMESTEPS_PER_ACTORBATCH) / parallel_cores))
-    optim_batchsize = int(np.ceil(float(OPTIM_BATCHSIZE) / parallel_cores))
     output_dir = root_dir
+    total_timesteps = total_timesteps // parallel_cores
+
     print("root_dir:", root_dir)
     print("seed:", seed)
     print("total_timesteps:", total_timesteps)
@@ -31,23 +31,8 @@ def train():
     print("int_save_freq:", int_save_freq)
     print("setup_path:", setup_path)
     print("output_dir:", output_dir)
-    print("timesteps_per_actorbatch:", timesteps_per_actorbatch)
-    print("optim_batchsize:", optim_batchsize)
 
-    mpi_command = f'mpiexec -n {parallel_cores}' \
-                  f' python3.7 {setup_path}' \
-                  f' --mode {mode}' \
-                  f' --int_save_freq {int_save_freq}' \
-                  f' --output_dir {output_dir}' \
-                  f' --seed {seed}' \
-                  f' --total_timesteps {total_timesteps}' \
-                  f' {"--visualize" if visualize == "True" else ""}' \
-                  f' --total_timesteps {total_timesteps}' \
-                  f' --motion_file_path {motion_file_path}' \
-                  f' --timesteps_per_actorbatch {timesteps_per_actorbatch}' \
-                  f' --optim_batchsize {optim_batchsize}'
-
-    print("mpi_command:", mpi_command)
+    mpi_command = f"mpiexec -n {parallel_cores} python3.7 {setup_path} --mode {mode} --int_save_freq {int_save_freq} --output_dir {output_dir} --seed {seed} --total_timesteps {total_timesteps} --int_save_freq {int_save_freq} --motion_file_path {motion_file_path}"
     subprocess.run(mpi_command, shell=True, check=True)
 
 
