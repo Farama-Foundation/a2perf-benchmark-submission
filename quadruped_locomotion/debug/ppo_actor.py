@@ -49,7 +49,7 @@ def train(
     #     callbacks.append(CheckpointCallback(save_freq=int_save_freq,
     #                                         save_path=policy_save_path,
     #                                         name_prefix='rl_model'))
-
+    tensorboard_log_dir = os.path.join(output_dir, 'tensorboard')
     model = ppo_imitation.PPOImitation(
         policy=imitation_policies.ImitationPolicy,
         env=env,
@@ -61,9 +61,10 @@ def train(
         optim_batchsize=optim_batchsize,
         lam=0.95,
         adam_epsilon=1e-5,
+        full_tensorboard_log=rank == 0,
         schedule='constant',
         policy_kwargs=policy_kwargs,
-        tensorboard_log=output_dir if rank == 0 else None,
+        tensorboard_log=tensorboard_log_dir if rank == 0 else None,
         verbose=2 * (rank == 0),
 
     )
@@ -75,7 +76,7 @@ def train(
                 callback=callbacks,
                 save_path=policy_save_path,
                 save_iters=save_iters,
-                tb_log_name="PPO")
+                tb_log_name=f'PPO_{str(rank)}')
 
     if rank == 0:
         model.save("final_ppo_policy")
