@@ -35,7 +35,8 @@ def train(motion_file_path,
     optim_batchsize = int(np.ceil(float(OPTIM_BATCHSIZE) / parallel_cores))
 
     env = gym.make('QuadrupedLocomotionEnv-v0', motion_files=[motion_file_path], mode='train', enable_rendering=False)
-    eval_env = None
+    eval_env = gym.make('QuadrupedLocomotionEnv-v0', motion_files=[motion_file_path], mode='test',
+                        enable_rendering=False)
 
     if rank == 0:
         logging.info('Testing not creating eval env for rank %d', rank)
