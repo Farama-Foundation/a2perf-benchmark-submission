@@ -79,7 +79,7 @@ def train(
                           policy_kwargs=dict(act_fun=tf.nn.relu,
                                              layers=[512, 256]),
                           eval_env=eval_env,
-                          buffer_size=timesteps_per_actorbatch,
+                          buffer_size=int(1e5),
                           normalize_observations=False,
                           # nb_eval_steps=100,
                           nb_eval_episodes=1,

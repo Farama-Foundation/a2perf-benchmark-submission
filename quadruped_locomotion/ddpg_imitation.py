@@ -118,7 +118,7 @@ class DDPGImitation(DDPG):
         super(DDPGImitation, self).__init__(
             policy=policy,
             env=env,
-            gamma=gamma,
+               gamma=gamma,
             memory_policy=memory_policy,
             eval_env=eval_env,
             nb_train_steps=nb_train_steps,
