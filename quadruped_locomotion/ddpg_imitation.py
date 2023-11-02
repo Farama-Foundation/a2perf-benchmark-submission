@@ -3,16 +3,31 @@ import os
 import pickle
 import time
 from collections import deque
+from functools import reduce
 
 import numpy as np
 import tensorflow as tf
-from absl import logging
+import tensorflow.contrib as tc
 from mpi4py import MPI
 from stable_baselines import logger
 from stable_baselines.common import tf_util, SetVerbosity, TensorboardWriter
 from stable_baselines.common.math_util import unscale_action, scale_action
+from stable_baselines.common.mpi_adam import MpiAdam
 from stable_baselines.common.vec_env import VecEnv
 from stable_baselines.ddpg import DDPG
+
+
+def normalize(tensor, stats):
+    """
+    normalize a tensor using a running mean and std
+
+    :param tensor: (TensorFlow Tensor) the input tensor
+    :param stats: (RunningMeanStd) the running mean and std of the input to normalize
+    :return: (TensorFlow Tensor) the normalized tensor
+    """
+    if stats is None:
+        return tensor
+    return (tensor - stats.mean) / stats.std
 
 
 def total_eval_episode_reward_logger(rew_acc, rewards, masks, writer, steps):
@@ -107,18 +122,19 @@ class DDPGImitation(DDPG):
     """
 
     def __init__(self, policy, env, gamma=0.99, memory_policy=None, eval_env=None, nb_train_steps=50,
-                 nb_rollout_steps=-1, nb_eval_steps=100, param_noise=None, action_noise=None,
+                 nb_rollout_steps=-1, nb_eval_steps=100, param_noise=None, action_noise=None, adam_epsilon=1e-8,
                  normalize_observations=False, tau=0.001, batch_size=128, param_noise_adaption_interval=50,
                  normalize_returns=False, enable_popart=False, observation_range=(-5., 5.), critic_l2_reg=0.,
                  return_range=(-np.inf, np.inf), actor_lr=1e-4, critic_lr=1e-3, clip_norm=None, reward_scale=1.,
                  render=False, render_eval=False, memory_limit=None, buffer_size=50000, random_exploration=0.0,
                  verbose=0, tensorboard_log=None, _init_setup_model=True, policy_kwargs=None,
                  full_tensorboard_log=False, seed=None, nb_eval_episodes=1, n_cpu_tf_sess=1):
+        self.adam_epsilon = adam_epsilon
 
         super(DDPGImitation, self).__init__(
             policy=policy,
             env=env,
-               gamma=gamma,
+            gamma=gamma,
             memory_policy=memory_policy,
             eval_env=eval_env,
             nb_train_steps=nb_train_steps,
@@ -216,21 +232,20 @@ class DDPGImitation(DDPG):
 
                 start_time = time.time()
 
-                epoch_episode_rewards = []
-                epoch_episode_steps = []
-                epoch_actor_losses = []
-                epoch_critic_losses = []
-                epoch_adaptive_distances = []
-                eval_episode_rewards = []
-                eval_qs = []
-                epoch_actions = []
-                epoch_qs = []
-                epoch_episodes = 0
-                epoch = 0
-
                 callback.on_training_start(locals(), globals())
-
                 while True:
+                    epoch_episode_rewards = []
+                    epoch_episode_steps = []
+                    epoch_actor_losses = []
+                    epoch_critic_losses = []
+                    epoch_adaptive_distances = []
+                    eval_episode_rewards = []
+                    eval_qs = []
+                    epoch_actions = []
+                    epoch_qs = []
+                    epoch_episodes = 0
+                    epoch = 0
+
                     callback.on_rollout_start()
                     # Perform rollouts.
                     timesteps_this_iter = 0
@@ -245,7 +260,7 @@ class DDPGImitation(DDPG):
                         assert action.shape == self.env.action_space.shape
 
                         # Execute next action.
-                        if rank == 0 and self.render:
+                        if is_root and self.render:
                             self.env.render()
 
                         # Randomly sample actions from a uniform distribution
@@ -270,7 +285,7 @@ class DDPGImitation(DDPG):
                         step += 1
                         total_steps += 1
                         timesteps_this_iter += 1
-                        if rank == 0 and self.render:
+                        if is_root and self.render:
                             self.env.render()
 
                         # Book-keeping.
@@ -293,12 +308,6 @@ class DDPGImitation(DDPG):
 
                         episode_reward += reward_
                         episode_step += 1
-
-                        if writer is not None:
-                            ep_rew = np.array([reward_]).reshape((1, -1))
-                            ep_done = np.array([done]).reshape((1, -1))
-                            tf_util.total_episode_reward_logger(self.episode_reward, ep_rew, ep_done,
-                                                                writer, self.num_timesteps)
 
                         if done:
                             # Episode done.
@@ -371,11 +380,12 @@ class DDPGImitation(DDPG):
 
                                 eval_qs.append(eval_q)
 
-                                if writer is not None:
+                                if writer is not None and is_root:
                                     ep_rew = np.array([eval_r]).reshape((1, -1))
                                     ep_done = np.array([eval_done]).reshape((1, -1))
                                     total_eval_episode_reward_logger(self.eval_episode_reward, ep_rew, ep_done,
                                                                      writer, self.num_timesteps)
+                                    writer.flush()
 
                                 if eval_done:
                                     break  # If episode is done, break the inner loop and start next episode
@@ -388,9 +398,11 @@ class DDPGImitation(DDPG):
                     duration = time.time() - start_time
                     stats = self._get_stats()
                     combined_stats = stats.copy()
-                    combined_stats['rollout/return'] = np.mean(epoch_episode_rewards)
+                    combined_stats['rollout/return'] = np.sum(epoch_episode_rewards) if len(
+                        epoch_episode_rewards) > 0 else 0.0
                     combined_stats['rollout/return_history'] = np.mean(episode_rewards_history)
-                    combined_stats['rollout/episode_steps'] = np.mean(epoch_episode_steps)
+                    combined_stats['rollout/episode_steps'] = np.mean(epoch_episode_steps) if len(
+                        epoch_episode_steps) > 0 else 0.0
                     combined_stats['rollout/actions_mean'] = np.mean(epoch_actions)
                     combined_stats['rollout/Q_mean'] = np.mean(epoch_qs)
                     combined_stats['train/loss_actor'] = np.mean(epoch_actor_losses)
@@ -406,7 +418,8 @@ class DDPGImitation(DDPG):
 
                     # Evaluation statistics.
                     if self.eval_env is not None:
-                        combined_stats['eval/return'] = np.mean(eval_episode_rewards)
+                        combined_stats['eval/return'] = np.mean(eval_episode_rewards) if len(
+                            eval_episode_rewards) > 0 else 0.0
                         combined_stats['eval/return_history'] = np.mean(eval_episode_rewards_history)
                         combined_stats['eval/Q'] = np.mean(eval_qs)
                         combined_stats['eval/episodes'] = len(eval_episode_rewards)
@@ -427,7 +440,8 @@ class DDPGImitation(DDPG):
                             raise ValueError('expected scalar, got %s' % scalar)
 
                     # Define which keys are sum-able and which are average-able
-                    sum_keys = ['total/timesteps_this_iter', 'total/episodes', 'rollout/episodes', 'eval/episodes']
+                    sum_keys = ['total/timesteps_this_iter', 'total/episodes', 'rollout/episodes', 'eval/episodes',
+                                'rollout/return']
                     average_keys = list(set(combined_stats.keys()) - set(sum_keys))
 
                     # Aggregate stats using MPI allreduce with sorted keys
@@ -444,10 +458,40 @@ class DDPGImitation(DDPG):
                     combined_stats.update(summed_stats)
                     combined_stats.update(averaged_stats)
 
+                    total_completed_episodes = combined_stats['rollout/episodes']
+
+                    total_reward = combined_stats['rollout/return']
+                    if total_completed_episodes > 0:
+                        logger.info(f'{total_completed_episodes} episodes completed in this rollout')
+                        logger.info(f'Total return: {total_reward}')
+
+                        total_reward_fixed = total_reward / total_completed_episodes
+                        logger.info(f'Average return: {total_reward_fixed}')
+                        combined_stats['rollout/return'] = total_reward_fixed
+                    else:
+                        combined_stats['rollout/return'] = 0.0
+
+                    if is_root and writer is not None:
+                        logger.info(
+                            f'Logging episode_reward at {iters_so_far} iterations and {self.num_timesteps} steps')
+                        logger.info(f'\tepisode_reward: {combined_stats["rollout/return"]}')
+
+                        combined_summary = tf.Summary(
+                            value=[
+                                tf.Summary.Value(tag="episode_reward", simple_value=combined_stats["rollout/return"]),
+                                tf.Summary.Value(tag="iterations", simple_value=iters_so_far),
+                                tf.Summary.Value(tag="num_timesteps", simple_value=self.num_timesteps)
+                            ]
+                        )
+
+                        # Add the combined summary to the writer
+                        writer.add_summary(combined_summary, iters_so_far)
+                        writer.flush()
+
                     self.num_timesteps += combined_stats['total/timesteps_this_iter']
                     total_steps += combined_stats['total/timesteps_this_iter']
 
-                    if rank == 0:
+                    if is_root:
                         # print out the dictionary nicely to show "after allreduce"
                         logger.info('*********** Iteration %i ************' % iters_so_far)
                         for key in sorted_keys:
@@ -476,3 +520,49 @@ class DDPGImitation(DDPG):
 
                         path = os.path.join(save_path, '{}_{}_steps'.format('rl_policy', int(self.num_timesteps)))
                         self.save(path)
+
+    def _setup_actor_optimizer(self):
+        """
+        setup the optimizer for the actor
+        """
+        if self.verbose >= 2:
+            logger.info('setting up actor optimizer')
+        self.actor_loss = -tf.reduce_mean(self.critic_with_actor_tf)
+        actor_shapes = [var.get_shape().as_list() for var in tf_util.get_trainable_vars('model/pi/')]
+        actor_nb_params = sum([reduce(lambda x, y: x * y, shape) for shape in actor_shapes])
+        if self.verbose >= 2:
+            logger.info('  actor shapes: {}'.format(actor_shapes))
+            logger.info('  actor params: {}'.format(actor_nb_params))
+        self.actor_grads = tf_util.flatgrad(self.actor_loss, tf_util.get_trainable_vars('model/pi/'),
+                                            clip_norm=self.clip_norm)
+        self.actor_optimizer = MpiAdam(var_list=tf_util.get_trainable_vars('model/pi/'), epsilon=self.adam_epsilon)
+
+    def _setup_critic_optimizer(self):
+        """
+        setup the optimizer for the critic
+        """
+        if self.verbose >= 2:
+            logger.info('setting up critic optimizer')
+        normalized_critic_target_tf = tf.clip_by_value(normalize(self.critic_target, self.ret_rms),
+                                                       self.return_range[0], self.return_range[1])
+        self.critic_loss = tf.reduce_mean(tf.square(self.normalized_critic_tf - normalized_critic_target_tf))
+        if self.critic_l2_reg > 0.:
+            critic_reg_vars = [var for var in tf_util.get_trainable_vars('model/qf/')
+                               if 'bias' not in var.name and 'qf_output' not in var.name and 'b' not in var.name]
+            if self.verbose >= 2:
+                for var in critic_reg_vars:
+                    logger.info('  regularizing: {}'.format(var.name))
+                logger.info('  applying l2 regularization with {}'.format(self.critic_l2_reg))
+            critic_reg = tc.layers.apply_regularization(
+                tc.layers.l2_regularizer(self.critic_l2_reg),
+                weights_list=critic_reg_vars
+            )
+            self.critic_loss += critic_reg
+        critic_shapes = [var.get_shape().as_list() for var in tf_util.get_trainable_vars('model/qf/')]
+        critic_nb_params = sum([reduce(lambda x, y: x * y, shape) for shape in critic_shapes])
+        if self.verbose >= 2:
+            logger.info('  critic shapes: {}'.format(critic_shapes))
+            logger.info('  critic params: {}'.format(critic_nb_params))
+        self.critic_grads = tf_util.flatgrad(self.critic_loss, tf_util.get_trainable_vars('model/qf/'),
+                                             clip_norm=self.clip_norm)
+        self.critic_optimizer = MpiAdam(var_list=tf_util.get_trainable_vars('model/qf/'), epsilon=self.adam_epsilon)

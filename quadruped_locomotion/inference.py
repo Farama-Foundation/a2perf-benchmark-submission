@@ -1,94 +1,78 @@
-# import os
+import argparse
+import os.path
+import random
+import time
 
-# import gym
-# import numpy as np
-# import tensorflow as tf
-# from tf_agents.agents.dqn import dqn_agent
-# from tf_agents.environments import suite_gym, tf_py_environment
-# from tf_agents.trajectories import time_step as ts
-# from tf_agents.utils import common
+import numpy as np
+import tensorflow as tf
+from mpi4py import MPI
+from stable_baselines.common.noise import OrnsteinUhlenbeckActionNoise, NormalActionNoise
+from stable_baselines.ddpg.policies import MlpPolicy
 
-# from train import DQNLSTM
+from rl_perf.domains import quadruped_locomotion
+from ddpg_imitation import DDPGImitation
 
-# from rl_perf.domains.quadruped_locomotion.CoDE import vocabulary_node
-
-
-# def load_model():
-#     # get root dir from env var
-
-#     root_dir = os.environ['ROOT_DIR']
-#     # seed = os.environ['SEED']
-#     # env_batch_size = os.environ['ENV_BATCH_SIZE']
-
-#     root_dir = root_dir
-#     print(root_dir)
-
-#     env_name = 'WebNavigation-v0'
-#     learning_rate = 1e-4
-#     max_vocab_size = 500
-#     seed = 32
-#     designs = [{'number_of_pages': 1, 'action': [], 'action_page': [], }]
-#     train_dir = os.path.join(root_dir, 'train')
-
-#     # Load the global vocabulary
-#     global_vocab_dict = np.load(os.path.join(train_dir, 'global_vocab.npy'), allow_pickle=True).item()
-#     global_vocab = vocabulary_node.LockedVocabulary()
-#     global_vocab.restore(dict(global_vocab=global_vocab_dict))
-#     tf_env = tf_py_environment.TFPyEnvironment(suite_gym.load(environment_name=env_name,
-#                                                               spec_dtype_map={gym.spaces.Discrete: np.int32},
-#                                                               gym_kwargs={'designs': designs, 'seed': seed,
-#                                                                           'global_vocabulary': global_vocab, }))
-
-#     global_step = tf.compat.v1.train.get_or_create_global_step()
-#     q_net = DQNLSTM(
-#         observation_spec=tf_env.observation_spec(),
-#         action_spec=tf_env.action_spec(),
-#         state_spec=(),
-#         vocab_size=max_vocab_size if max_vocab_size is not None else tf_env.pyenv.envs[
-#             0].env.local_vocab.max_vocabulary_size,
-#         profile_value_dropout=0.0,
-#         q_min=None,
-#         q_max=None,
-#         embedding_dim=100,
-#         name='q_network',
-#         latent_dim=50,
-#         return_state_value=True)
-
-#     tf_agent = dqn_agent.DqnAgent(
-#         tf_env.time_step_spec(),
-#         tf_env.action_spec(),
-#         q_network=q_net,
-#         optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate),
-#         td_errors_loss_fn=common.element_wise_huber_loss,
-#         name='dqn_agent'
-#     )
-#     eval_policy = tf_agent.policy
-
-#     policy_checkpointer = common.Checkpointer(
-#         ckpt_dir=os.path.join(train_dir, 'policy'),
-#         max_to_keep=3,
-#         policy=eval_policy,
-#         global_step=global_step)
-#     policy_checkpointer.initialize_or_restore()
-
-#     return eval_policy
+TIMESTEPS_PER_ACTORBATCH = 4096
+OPTIM_BATCHSIZE = 256
+ENABLE_ENV_RANDOMIZER = True
 
 
-# def preprocess_observation(observation):
-#     # Write your code here to preprocess the observation. This function should return the preprocessed observation.
-#     time_step = ts.TimeStep(step_type=ts.StepType.FIRST, reward=0.0, discount=1.0, observation=observation)
+def load_model(env):
+    root_dir = os.environ['ROOT_DIR']
+    seed = int(os.environ['SEED'])
+    print("root_dir:", root_dir)
+    print("seed:", seed)
 
-#     # Convert the single timestep into a batch of size 1
-#     time_step = tf.nest.map_structure(lambda t: tf.expand_dims(t, 0), time_step)
+    policies_dir = os.path.join(root_dir, 'policies')
+    policy_filename = f'rl_policy_9991750_steps.zip'
+    policy_path = os.path.join(policies_dir, policy_filename)
 
-#     return time_step
+    timesteps_per_actorbatch = 4096
+    rank = 1
+    optim_batchsize = 256
+
+    model = DDPGImitation(policy=MlpPolicy,
+                          env=env,
+                          seed=seed,
+                          policy_kwargs=dict(act_fun=tf.nn.relu,
+                                             layers=[512, 256]),
+                          eval_env=eval_env,
+                          buffer_size=int(1e6),
+                          normalize_observations=False,
+                          # normalize_returns=True,
+                          normalize_returns=False,
+                          tau=0.005,
+                          nb_eval_episodes=1,
+                          # batch_size=optim_batchsize,
+                          batch_size=24,
+                          actor_lr=1e-5,
+                          critic_lr=1e-4,
+                          adam_epsilon=1e-5,
+                          random_exploration=0.0,
+                          nb_train_steps=timesteps_per_actorbatch,
+                          nb_rollout_steps=timesteps_per_actorbatch,
+                          verbose=2 if rank == 0 else 0,
+                          full_tensorboard_log=rank == 0,
+                          tensorboard_log=tensorboard_log_dir if rank == 0 else None,
+                          param_noise=None,
+                          action_noise=None)
+    model.load(policy_path)
+    return model
 
 
-# def infer_once(model, observation):
-#     # Write your code here to run inference on the model. This function should return the output of the model.
+def infer_once(model, observation):
+    # the model is from stable baselines so use it to run inference on a single observation
+    action, _states = model.predict(observation)
+    return action
 
-#     observation = preprocess_observation(observation)
 
-#     action_step = model.action(time_step=observation)
-#     action = tf.nest.map_structure(lambda t: tf.squeeze(t, axis=0), action_step.action)
-#     return action
+def preprocess_observation(observation):
+    return observation
+
+
+def main(_):
+    pass
+
+
+if __name__ == '__main__':
+    app.run(main)
