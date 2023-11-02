@@ -1,7 +1,9 @@
-import gym
-from rl_perf.domains import quadruped_locomotion
+import functools
 import os
+
 import tensorflow as tf
+from absl import app
+from rl_perf.domains import quadruped_locomotion
 from rl_perf.domains.quadruped_locomotion.motion_imitation.learning import ppo_imitation, imitation_policies
 
 
@@ -12,35 +14,11 @@ def load_model(env):
     print("seed:", seed)
 
     policies_dir = os.path.join(root_dir, 'policies')
-    policy_filename = f'rl_policy_9991750_steps.zip'
-    policy_path = os.path.join(policies_dir, policy_filename)
+    max_policy = functools.reduce(max, [int(x.split('_')[2]) for x in os.listdir(policies_dir)])
+    policy_path = os.path.join(policies_dir, f'rl_policy_{max_policy}_steps.zip')
+    print("policy_path:", policy_path)
 
-    policy_kwargs = {
-        "net_arch": [{"pi": [512, 256],
-                      "vf": [512, 256]}],
-        "act_fun": tf.nn.relu
-    }
-    timesteps_per_actorbatch = 4096
-    rank = 1
-    optim_batchsize = 256
-    model = ppo_imitation.PPOImitation(
-        policy=imitation_policies.ImitationPolicy,
-        env=env,
-        gamma=0.95,
-        timesteps_per_actorbatch=timesteps_per_actorbatch,
-        clip_param=0.2,
-        optim_epochs=1,
-        optim_stepsize=1e-5,
-        optim_batchsize=optim_batchsize,
-        lam=0.95,
-        adam_epsilon=1e-5,
-        full_tensorboard_log=rank == 0,
-        schedule='constant',
-        policy_kwargs=policy_kwargs,
-        tensorboard_log=tensorboard_log_dir if rank == 0 else None,
-        verbose=2 * (rank == 0),
-    )
-    model.load(policy_path)
+    model = ppo_imitation.PPOImitation.load(policy_path, env=env)
     return model
 
 
