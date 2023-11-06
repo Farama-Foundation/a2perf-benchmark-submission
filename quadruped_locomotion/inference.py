@@ -2,6 +2,7 @@ import argparse
 import os.path
 import random
 import time
+import functools
 
 import numpy as np
 import tensorflow as tf
@@ -24,39 +25,12 @@ def load_model(env):
     print("seed:", seed)
 
     policies_dir = os.path.join(root_dir, 'policies')
-    policy_filename = f'rl_policy_9991750_steps.zip'
-    policy_path = os.path.join(policies_dir, policy_filename)
+    max_policy = functools.reduce(max, [int(x.split('_')[2]) for x in os.listdir(policies_dir)])
+    policy_path = os.path.join(policies_dir, f'rl_policy_{max_policy}_steps.zip')
+    print("policy_path:", policy_path)
 
-    timesteps_per_actorbatch = 4096
-    rank = 1
-    optim_batchsize = 256
+    model = DDPGImitation.load(policy_path, env=env)
 
-    model = DDPGImitation(policy=MlpPolicy,
-                          env=env,
-                          seed=seed,
-                          policy_kwargs=dict(act_fun=tf.nn.relu,
-                                             layers=[512, 256]),
-                          eval_env=eval_env,
-                          buffer_size=int(1e6),
-                          normalize_observations=False,
-                          # normalize_returns=True,
-                          normalize_returns=False,
-                          tau=0.005,
-                          nb_eval_episodes=1,
-                          # batch_size=optim_batchsize,
-                          batch_size=24,
-                          actor_lr=1e-5,
-                          critic_lr=1e-4,
-                          adam_epsilon=1e-5,
-                          random_exploration=0.0,
-                          nb_train_steps=timesteps_per_actorbatch,
-                          nb_rollout_steps=timesteps_per_actorbatch,
-                          verbose=2 if rank == 0 else 0,
-                          full_tensorboard_log=rank == 0,
-                          tensorboard_log=tensorboard_log_dir if rank == 0 else None,
-                          param_noise=None,
-                          action_noise=None)
-    model.load(policy_path)
     return model
 
 
