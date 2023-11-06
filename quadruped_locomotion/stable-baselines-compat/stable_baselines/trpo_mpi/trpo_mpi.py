@@ -2,7 +2,7 @@ import time
 from contextlib import contextmanager
 from collections import deque
 
-import gym
+import gymnasium as gym
 from mpi4py import MPI
 import tensorflow as tf
 import numpy as np

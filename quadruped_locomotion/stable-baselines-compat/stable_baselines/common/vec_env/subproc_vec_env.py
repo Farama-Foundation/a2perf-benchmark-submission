@@ -3,7 +3,7 @@ import multiprocessing
 from collections import OrderedDict
 from typing import Sequence
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 from stable_baselines.common.vec_env.base_vec_env import VecEnv, CloudpickleWrapper

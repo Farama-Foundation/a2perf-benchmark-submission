@@ -71,7 +71,7 @@ Example
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
   import numpy as np
 
   from stable_baselines.sac.policies import MlpPolicy
@@ -133,7 +133,7 @@ You can easily define a custom architecture for the policy network:
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
 
   from stable_baselines.sac.policies import FeedForwardPolicy
   from stable_baselines.common.vec_env import DummyVecEnv

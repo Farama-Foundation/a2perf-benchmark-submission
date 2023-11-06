@@ -99,7 +99,7 @@ Example
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
 
   from stable_baselines import GAIL, SAC
   from stable_baselines.gail import ExpertDataset, generate_expert_traj

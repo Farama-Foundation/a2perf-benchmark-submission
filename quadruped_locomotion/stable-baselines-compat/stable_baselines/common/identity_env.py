@@ -1,8 +1,8 @@
 import numpy as np
 from typing import Optional
 
-from gym import Env, Space
-from gym.spaces import Discrete, MultiDiscrete, MultiBinary, Box
+from gymnasium import Env, Space
+from gymnasium.spaces import Discrete, MultiDiscrete, MultiBinary, Box
 
 
 class IdentityEnv(Env):

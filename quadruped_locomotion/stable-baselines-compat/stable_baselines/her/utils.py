@@ -1,7 +1,7 @@
 from collections import OrderedDict
 
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 
 # Important: gym mixes up ordered and unordered keys
 # and the Dict space may return a different order of keys that the actual one

@@ -1,7 +1,7 @@
 from collections import OrderedDict
 
 import numpy as np
-from gym import GoalEnv, spaces
+from gymnasium import GoalEnv, spaces
 
 
 class BitFlippingEnv(GoalEnv):

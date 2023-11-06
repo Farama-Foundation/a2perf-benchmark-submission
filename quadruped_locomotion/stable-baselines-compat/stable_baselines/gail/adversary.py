@@ -2,7 +2,7 @@
 Reference: https://github.com/openai/imitation
 I follow the architecture from the official repository
 """
-import gym
+import gymnasium as gym
 import tensorflow as tf
 import numpy as np
 

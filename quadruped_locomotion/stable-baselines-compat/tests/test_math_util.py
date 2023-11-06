@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from gym.spaces.box import Box
+from gymnasium.spaces.box import Box
 
 from stable_baselines.common.math_util import discount_with_boundaries, scale_action, unscale_action
 

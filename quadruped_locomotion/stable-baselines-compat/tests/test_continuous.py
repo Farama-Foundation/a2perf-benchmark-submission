@@ -1,7 +1,7 @@
 import subprocess
 import os
 
-import gym
+import gymnasium as gym
 import pytest
 import numpy as np
 

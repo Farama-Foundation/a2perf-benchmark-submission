@@ -1,8 +1,8 @@
 import os
 
-from gym.envs.classic_control import CartPoleEnv
-from gym.wrappers.time_limit import TimeLimit
-from gym import spaces
+from gymnasium.envs.classic_control import CartPoleEnv
+from gymnasium.wrappers.time_limit import TimeLimit
+from gymnasium import spaces
 import numpy as np
 import pytest
 

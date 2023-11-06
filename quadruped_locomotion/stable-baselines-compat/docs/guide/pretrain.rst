@@ -62,7 +62,7 @@ The idea is that this callable can be a PID controller, asking a human player, .
 
 .. code-block:: python
 
-		import gym
+		import gymnasium as gym
 
 		from stable_baselines.gail import generate_expert_traj
 

@@ -97,7 +97,7 @@ def conv(input_tensor, scope, *, n_filters, filter_size, stride,
     else:
         raise NotImplementedError
     bias_var_shape = [n_filters] if one_dim_bias else [1, n_filters, 1, 1]
-    n_input = input_tensor.get_shape()[channel_ax].value
+    n_input = input_tensor.get_shape()[channel_ax]
     wshape = [filter_height, filter_width, n_input, n_filters]
     with tf.compat.v1.variable_scope(scope):
         weight = tf.compat.v1.get_variable("w", wshape, initializer=ortho_init(init_scale))
@@ -119,7 +119,7 @@ def linear(input_tensor, scope, n_hidden, *, init_scale=1.0, init_bias=0.0):
     :return: (TensorFlow Tensor) fully connected layer
     """
     with tf.compat.v1.variable_scope(scope):
-        n_input = input_tensor.get_shape()[1].value
+        n_input = input_tensor.get_shape()[1]
         weight = tf.compat.v1.get_variable("w", [n_input, n_hidden], initializer=ortho_init(init_scale))
         bias = tf.compat.v1.get_variable("b", [n_hidden], initializer=tf.compat.v1.constant_initializer(init_bias))
         return tf.matmul(input_tensor, weight) + bias

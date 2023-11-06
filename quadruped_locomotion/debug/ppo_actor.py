@@ -35,7 +35,7 @@ def train(
     rank = MPI.COMM_WORLD.Get_rank()
     parallel_cores = MPI.COMM_WORLD.Get_size()
     set_rand_seed(seed * rank)
-    env = gym.make('QuadrupedLocomotionEnv-v0', motion_files=[motion_file_path], mode=mode, enable_rendering=visualize)
+    env = gym.make('QuadrupedLocomotion-v0', motion_files=[motion_file_path], mode=mode, enable_rendering=visualize)
 
     policy_kwargs = {
         "net_arch": [{"pi": [512, 256],

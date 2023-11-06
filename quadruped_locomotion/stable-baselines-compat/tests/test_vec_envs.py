@@ -4,7 +4,7 @@ import itertools
 import multiprocessing
 
 import pytest
-import gym
+import gymnasium as gym
 import numpy as np
 
 from stable_baselines.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize, VecFrameStack

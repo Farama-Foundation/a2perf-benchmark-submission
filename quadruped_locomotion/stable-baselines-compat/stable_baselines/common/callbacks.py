@@ -4,7 +4,7 @@ import warnings
 import typing
 from typing import Union, List, Dict, Any, Optional
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 from stable_baselines.common.vec_env import VecEnv, sync_envs_normalization, DummyVecEnv

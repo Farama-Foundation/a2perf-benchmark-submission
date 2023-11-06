@@ -1,6 +1,6 @@
 import os
 
-import gym
+import gymnasium as gym
 import pytest
 import tensorflow as tf
 

@@ -2,7 +2,7 @@ import os
 import shutil
 
 import pytest
-import gym
+import gymnasium as gym
 
 from stable_baselines import A2C
 from stable_baselines.bench.monitor import Monitor

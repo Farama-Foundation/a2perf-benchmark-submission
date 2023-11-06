@@ -1,5 +1,5 @@
 import tensorflow as tf
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from stable_baselines.common.policies import BasePolicy, nature_cnn, register_policy
 

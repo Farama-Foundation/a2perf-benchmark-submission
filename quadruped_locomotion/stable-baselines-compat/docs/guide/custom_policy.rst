@@ -11,7 +11,7 @@ using ``policy_kwargs`` parameter:
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
   import tensorflow as tf
 
   from stable_baselines import PPO2
@@ -44,7 +44,7 @@ You can also easily define a custom architecture for the policy (or value) netwo
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
 
   from stable_baselines.common.policies import FeedForwardPolicy, register_policy
   from stable_baselines.common.vec_env import DummyVecEnv
@@ -83,7 +83,7 @@ You can also register your policy, to help with code simplicity: you can refer t
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
 
   from stable_baselines.common.policies import FeedForwardPolicy, register_policy
   from stable_baselines.common.vec_env import DummyVecEnv
@@ -186,7 +186,7 @@ If your task requires even more granular control over the policy architecture, y
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
   import tensorflow as tf
 
   from stable_baselines.common.policies import ActorCriticPolicy, register_policy, nature_cnn

@@ -1,8 +1,8 @@
 import warnings
 from typing import Union
 
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 
 from stable_baselines.common.vec_env import DummyVecEnv, VecCheckNan
@@ -93,7 +93,7 @@ def _check_returned_values(env: gym.Env, observation_space: spaces.Space, action
     """
     Check the returned values by the env when calling `.reset()` or `.step()` methods.
     """
-    # because env inherits from gym.Env, we assume that `reset()` and `step()` methods exists
+    # because env inherits from gymnasium.Env, we assume that `reset()` and `step()` methods exists
     obs = env.reset()
 
     _check_obs(obs, observation_space, 'reset')
@@ -122,7 +122,7 @@ def _check_returned_values(env: gym.Env, observation_space: spaces.Space, action
 def _check_spaces(env: gym.Env) -> None:
     """
     Check that the observation and action spaces are defined
-    and inherit from gym.spaces.Space.
+    and inherit from gymnasium.spaces.Space.
     """
     # Helper to link to the code, because gym has no proper documentation
     gym_spaces = " cf https://github.com/openai/gym/blob/master/gym/spaces/"
@@ -131,8 +131,8 @@ def _check_spaces(env: gym.Env) -> None:
     assert hasattr(env, 'action_space'), "You must specify an action space (cf gym.spaces)" + gym_spaces
 
     assert isinstance(env.observation_space,
-                      spaces.Space), "The observation space must inherit from gym.spaces" + gym_spaces
-    assert isinstance(env.action_space, spaces.Space), "The action space must inherit from gym.spaces" + gym_spaces
+                      spaces.Space), "The observation space must inherit from gymnasium.spaces" + gym_spaces
+    assert isinstance(env.action_space, spaces.Space), "The action space must inherit from gymnasium.spaces" + gym_spaces
 
 
 def _check_render(env: gym.Env, warn: bool = True, headless: bool = False) -> None:

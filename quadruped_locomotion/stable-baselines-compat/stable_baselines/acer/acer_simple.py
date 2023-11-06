@@ -3,7 +3,7 @@ import warnings
 
 import numpy as np
 import tensorflow as tf
-from gym.spaces import Discrete, Box
+from gymnasium.spaces import Discrete, Box
 from collections import deque
 
 from stable_baselines import logger

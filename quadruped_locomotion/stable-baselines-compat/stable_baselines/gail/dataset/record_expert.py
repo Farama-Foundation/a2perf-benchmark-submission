@@ -4,7 +4,7 @@ from typing import Dict
 
 import cv2  # pytype:disable=import-error
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 
 from stable_baselines.common.base_class import BaseRLModel
 from stable_baselines.common.vec_env import VecEnv, VecFrameStack

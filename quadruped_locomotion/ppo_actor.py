@@ -3,7 +3,7 @@ import os
 import random
 import time
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 from mpi4py import MPI
@@ -17,7 +17,7 @@ ENABLE_ENV_RANDOMIZER = True
 def set_rand_seed(seed=None):
     if seed is not None:
         seed = int(time.time())
-        tf.set_random_seed(seed)
+        tf.random.set_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
 
@@ -35,7 +35,7 @@ def train(
     rank = MPI.COMM_WORLD.Get_rank()
     parallel_cores = MPI.COMM_WORLD.Get_size()
     set_rand_seed(seed * rank)
-    env = gym.make('QuadrupedLocomotionEnv-v0', motion_files=[motion_file_path], mode=mode, enable_rendering=visualize)
+    env = gym.make('QuadrupedLocomotion-v0', motion_files=[motion_file_path], mode=mode, enable_rendering=visualize)
 
     policy_kwargs = {
         "net_arch": [{"pi": [512, 256],

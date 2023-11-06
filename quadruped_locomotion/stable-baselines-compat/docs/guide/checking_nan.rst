@@ -188,8 +188,8 @@ It will monitor the actions, observations, and rewards, indicating what action o
 
 .. code-block:: python
 
-  import gym
-  from gym import spaces
+  import gymnasium as gym
+  from gymnasium import spaces
   import numpy as np
 
   from stable_baselines import PPO2

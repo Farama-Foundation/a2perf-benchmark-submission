@@ -2,7 +2,7 @@ from functools import partial
 
 import tensorflow as tf
 import numpy as np
-import gym
+import gymnasium as gym
 
 from stable_baselines import logger
 from stable_baselines.common import tf_util, OffPolicyRLModel, SetVerbosity, TensorboardWriter

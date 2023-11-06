@@ -1,7 +1,7 @@
 import os
 
 import pytest
-import gym
+import gymnasium as gym
 
 from stable_baselines import PPO2
 from stable_baselines.common import make_vec_env

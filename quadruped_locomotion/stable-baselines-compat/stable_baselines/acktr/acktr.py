@@ -2,7 +2,7 @@ import time
 import warnings
 
 import tensorflow as tf
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 
 from stable_baselines import logger
 from stable_baselines.a2c.a2c import A2CRunner

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import numpy as np
-import gym
+import gymnasium as gym
 
 from stable_baselines.common.cmd_util import mujoco_arg_parser
 from stable_baselines import bench, logger

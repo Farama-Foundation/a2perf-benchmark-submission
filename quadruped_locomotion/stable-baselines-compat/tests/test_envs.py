@@ -1,6 +1,6 @@
 import pytest
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 
 from stable_baselines.common.env_checker import check_env

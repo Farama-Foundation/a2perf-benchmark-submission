@@ -57,7 +57,7 @@ In the following example, we will train, save and load a DQN model on the Lunar 
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
 
   from stable_baselines import DQN
   from stable_baselines.common.evaluation import evaluate_policy
@@ -102,7 +102,7 @@ Multiprocessing: Unleashing the Power of Vectorized Environments
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
   import numpy as np
 
   from stable_baselines.common.policies import MlpPolicy
@@ -171,7 +171,7 @@ If your callback returns False, training is aborted early.
 
   import os
 
-  import gym
+  import gymnasium as gym
   import numpy as np
   import matplotlib.pyplot as plt
 
@@ -312,7 +312,7 @@ will compute a running average and standard deviation of input features (it can 
 
   import os
 
-  import gym
+  import gymnasium as gym
   import pybullet_envs
 
   from stable_baselines.common.vec_env import DummyVecEnv, VecNormalize
@@ -357,7 +357,7 @@ However, you can also easily define a custom architecture for the policy network
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
 
   from stable_baselines.common.policies import FeedForwardPolicy
   from stable_baselines.common.vec_env import DummyVecEnv
@@ -393,7 +393,7 @@ A2C policy gradient updates on the model.
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
   import numpy as np
 
   from stable_baselines import A2C
@@ -520,7 +520,7 @@ The parking env is a goal-conditioned continuous control task, in which the vehi
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
   import highway_env
   import numpy as np
 
@@ -628,7 +628,7 @@ Record a mp4 video (here using a random agent).
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
   from stable_baselines.common.vec_env import VecVideoRecorder, DummyVecEnv
 
   env_id = 'CartPole-v1'

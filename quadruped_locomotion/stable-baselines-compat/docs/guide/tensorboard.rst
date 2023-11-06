@@ -10,7 +10,7 @@ To use Tensorboard with the rl baselines, you simply need to define a log locati
 
 .. code-block:: python
 
-    import gym
+    import gymnasium as gym
 
     from stable_baselines import A2C
 
@@ -22,7 +22,7 @@ Or after loading an existing model (by default the log path is not saved):
 
 .. code-block:: python
 
-    import gym
+    import gymnasium as gym
 
     from stable_baselines.common.vec_env import DummyVecEnv
     from stable_baselines import A2C
@@ -38,7 +38,7 @@ You can also define custom logging name when training (by default it is the algo
 
 .. code-block:: python
 
-    import gym
+    import gymnasium as gym
 
     from stable_baselines import A2C
 

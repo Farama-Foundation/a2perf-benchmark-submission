@@ -108,7 +108,7 @@ Most of the library tries to follow a sklearn-like syntax for the Reinforcement 
 
 Here is a quick example of how to train and run PPO2 on a cartpole environment:
 ```python
-import gym
+import gymnasium as gym
 
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv

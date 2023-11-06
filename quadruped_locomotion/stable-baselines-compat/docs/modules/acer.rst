@@ -40,7 +40,7 @@ Example
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
 
   from stable_baselines.common.policies import MlpPolicy, MlpLstmPolicy, MlpLnLstmPolicy
   from stable_baselines.common import make_vec_env

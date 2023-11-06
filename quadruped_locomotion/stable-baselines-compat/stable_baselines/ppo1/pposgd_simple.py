@@ -1,7 +1,7 @@
 import time
 from collections import deque
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 from mpi4py import MPI

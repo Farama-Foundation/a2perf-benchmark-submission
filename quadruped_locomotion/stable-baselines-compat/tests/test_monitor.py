@@ -3,7 +3,7 @@ import json
 import os
 
 import pandas
-import gym
+import gymnasium as gym
 
 from stable_baselines.bench import Monitor
 from stable_baselines.bench.monitor import get_monitor_files, load_results

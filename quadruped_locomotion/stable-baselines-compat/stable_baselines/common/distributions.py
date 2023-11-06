@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.ops import math_ops
-from gym import spaces
+from gymnasium import spaces
 
 from stable_baselines.common.tf_layers import linear
 

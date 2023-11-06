@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from collections import OrderedDict, deque
 from typing import Union, List, Callable, Optional
 
-import gym
+import gymnasium as gym
 import cloudpickle
 import numpy as np
 import tensorflow as tf
@@ -184,8 +184,8 @@ class BaseRLModel(ABC):
         pass
 
     def _init_callback(self,
-                      callback: Union[None, Callable, List[BaseCallback], BaseCallback]
-                      ) -> BaseCallback:
+                       callback: Union[None, Callable, List[BaseCallback], BaseCallback]
+                       ) -> BaseCallback:
         """
         :param callback: (Union[None, Callable, List[BaseCallback], BaseCallback])
         :return: (BaseCallback)
@@ -863,7 +863,7 @@ class ActorCriticRLModel(BaseRLModel):
                 # Discrete action probability, over multiple categories
                 actions = np.swapaxes(actions, 0, 1)  # swap axis for easier categorical split
                 prob = np.prod([proba[np.arange(act.shape[0]), act]
-                                         for proba, act in zip(actions_proba, actions)], axis=0)
+                                for proba, act in zip(actions_proba, actions)], axis=0)
 
             elif isinstance(self.action_space, gym.spaces.MultiBinary):
                 actions = actions.reshape((-1, self.action_space.n))
@@ -873,7 +873,7 @@ class ActorCriticRLModel(BaseRLModel):
                 prob = np.prod(actions_proba * actions + (1 - actions_proba) * (1 - actions), axis=1)
 
             elif isinstance(self.action_space, gym.spaces.Box):
-                actions = actions.reshape((-1, ) + self.action_space.shape)
+                actions = actions.reshape((-1,) + self.action_space.shape)
                 mean, std = actions_proba
                 logstd = np.log(std)
 
@@ -1126,7 +1126,7 @@ class SetVerbosity:
     def __enter__(self):
         self.tf_level = os.environ.get('TF_CPP_MIN_LOG_LEVEL', '0')
         self.log_level = logger.get_level()
-        self.gym_level = gym.logger.MIN_LEVEL
+        self.gym_level = gym.logger.min_level
 
         if self.verbose <= 1:
             os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'

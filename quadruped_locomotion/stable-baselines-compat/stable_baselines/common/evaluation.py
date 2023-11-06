@@ -1,7 +1,7 @@
 import typing
 from typing import Callable, List, Optional, Tuple, Union
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 from stable_baselines.common.vec_env import VecEnv

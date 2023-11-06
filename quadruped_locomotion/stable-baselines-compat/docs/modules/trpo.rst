@@ -46,7 +46,7 @@ Example
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
 
   from stable_baselines.common.policies import MlpPolicy
   from stable_baselines import TRPO
