@@ -8,7 +8,6 @@ import warnings
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
-# import tensorflow.contrib as tc
 from mpi4py import MPI
 
 from stable_baselines import logger
@@ -129,7 +128,8 @@ def get_perturbed_actor_updates(actor, perturbed_actor, param_noise_stddev, verb
                 logger.info('  {} <- {} + noise'.format(perturbed_var.name, var.name))
             # Add Gaussian noise to the parameter
             updates.append(tf.compat.v1.assign(perturbed_var,
-                                     var + tf.random.normal(tf.shape(var), mean=0., stddev=param_noise_stddev)))
+                                               var + tf.random.normal(tf.shape(var), mean=0.,
+                                                                      stddev=param_noise_stddev)))
         else:
             if verbose >= 2:
                 logger.info('  {} <- {}'.format(perturbed_var.name, var.name))
@@ -196,6 +196,7 @@ class DDPG(OffPolicyRLModel):
     :param n_cpu_tf_sess: (int) The number of threads for TensorFlow operations
         If None, the number of cpu of the current machine will be used.
     """
+
     def __init__(self, policy, env, gamma=0.99, memory_policy=None, eval_env=None, nb_train_steps=50,
                  nb_rollout_steps=100, nb_eval_steps=100, param_noise=None, action_noise=None,
                  normalize_observations=False, tau=0.001, batch_size=128, param_noise_adaption_interval=50,
@@ -354,9 +355,9 @@ class DDPG(OffPolicyRLModel):
                     self.action_target = self.target_policy.action_ph
 
                     normalized_obs = tf.clip_by_value(normalize(self.policy_tf.processed_obs, self.obs_rms),
-                                                       self.observation_range[0], self.observation_range[1])
+                                                      self.observation_range[0], self.observation_range[1])
                     normalized_next_obs = tf.clip_by_value(normalize(self.target_policy.processed_obs, self.obs_rms),
-                                                       self.observation_range[0], self.observation_range[1])
+                                                           self.observation_range[0], self.observation_range[1])
 
                     if self.param_noise is not None:
                         # Configure perturbed actor.
@@ -377,7 +378,8 @@ class DDPG(OffPolicyRLModel):
                     self.action_train_ph = self.policy_tf.action_ph
                     self.terminals_ph = tf.compat.v1.placeholder(tf.float32, shape=(None, 1), name='terminals')
                     self.rewards = tf.compat.v1.placeholder(tf.float32, shape=(None, 1), name='rewards')
-                    self.actions = tf.compat.v1.placeholder(tf.float32, shape=(None,) + self.action_space.shape, name='actions')
+                    self.actions = tf.compat.v1.placeholder(tf.float32, shape=(None,) + self.action_space.shape,
+                                                            name='actions')
                     self.critic_target = tf.compat.v1.placeholder(tf.float32, shape=(None, 1), name='critic_target')
                     self.param_noise_stddev = tf.compat.v1.placeholder(tf.float32, shape=(), name='param_noise_stddev')
 
@@ -438,7 +440,7 @@ class DDPG(OffPolicyRLModel):
                     tf.compat.v1.summary.scalar('critic_loss', self.critic_loss)
 
                 self.params = tf_util.get_trainable_vars("model") \
-                    + tf_util.get_trainable_vars('noise/') + tf_util.get_trainable_vars('noise_adapt/')
+                              + tf_util.get_trainable_vars('noise/') + tf_util.get_trainable_vars('noise_adapt/')
 
                 self.target_params = tf_util.get_trainable_vars("target")
                 self.obs_rms_params = [var for var in tf.compat.v1.global_variables()
@@ -1165,8 +1167,8 @@ class DDPG(OffPolicyRLModel):
             n_normalisation_params = len(model.obs_rms_params) + len(model.ret_rms_params)
             # Check that the issue is the one from
             # https://github.com/hill-a/stable-baselines/issues/363
-            assert len(params) == 2 * (n_params + n_target_params) + n_normalisation_params,\
-                "The number of parameter saved differs from the number of parameters"\
+            assert len(params) == 2 * (n_params + n_target_params) + n_normalisation_params, \
+                "The number of parameter saved differs from the number of parameters" \
                 " that should be loaded: {}!={}".format(len(params), len(model.get_parameter_list()))
             # Remove duplicates
             params_ = params[:n_params + n_target_params]

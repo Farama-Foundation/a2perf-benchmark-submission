@@ -4,7 +4,7 @@ import time
 
 from absl import logging
 import gin
-import gym
+import gymnasium
 import numpy as np
 import pandas as pd
 from rl_perf.domains.web_nav.CoDE import q_networks

@@ -3,7 +3,7 @@ import random
 import time
 
 import gin
-import gym
+import gymnasium
 import numpy as np
 import pandas as pd
 import tensorflow as tf  # pylint: disable=g-explicit-tensorflow-version-import

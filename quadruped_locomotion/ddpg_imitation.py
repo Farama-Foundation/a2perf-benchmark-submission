@@ -1,13 +1,13 @@
 import copy
+import gym as legacy_gym
 import os
 import pickle
 import time
 from collections import deque
 from functools import reduce
-
+import gymnasium as gym
 import numpy as np
 import tensorflow as tf
-import tensorflow.contrib as tc
 from mpi4py import MPI
 from stable_baselines import logger
 from stable_baselines.common import tf_util, SetVerbosity, TensorboardWriter
@@ -15,19 +15,11 @@ from stable_baselines.common.math_util import unscale_action, scale_action
 from stable_baselines.common.mpi_adam import MpiAdam
 from stable_baselines.common.vec_env import VecEnv
 from stable_baselines.ddpg import DDPG
+from stable_baselines.common.buffers import ReplayBuffer
+from stable_baselines.common.mpi_running_mean_std import RunningMeanStd
 
-
-def normalize(tensor, stats):
-    """
-    normalize a tensor using a running mean and std
-
-    :param tensor: (TensorFlow Tensor) the input tensor
-    :param stats: (RunningMeanStd) the running mean and std of the input to normalize
-    :return: (TensorFlow Tensor) the normalized tensor
-    """
-    if stats is None:
-        return tensor
-    return (tensor - stats.mean) / stats.std
+from stable_baselines.ddpg.ddpg import normalize, denormalize
+from stable_baselines.ddpg.policies import DDPGPolicy
 
 
 def total_eval_episode_reward_logger(rew_acc, rewards, masks, writer, steps):
@@ -170,7 +162,6 @@ class DDPGImitation(DDPG):
         )
         self.nb_eval_episodes = nb_eval_episodes
         self.eval_episode_reward = None
-        # Parameters.
 
     def _setup_learn(self):
         """
@@ -537,6 +528,177 @@ class DDPGImitation(DDPG):
                                             clip_norm=self.clip_norm)
         self.actor_optimizer = MpiAdam(var_list=tf_util.get_trainable_vars('model/pi/'), epsilon=self.adam_epsilon)
 
+    def setup_model(self):
+        with SetVerbosity(self.verbose):
+
+            assert isinstance(self.action_space, legacy_gym.spaces.Box), \
+                "Error: DDPG cannot output a {} action space, only spaces.Box is supported.".format(self.action_space)
+            assert issubclass(self.policy, DDPGPolicy), "Error: the input policy for the DDPG model must be " \
+                                                        "an instance of DDPGPolicy."
+
+            self.graph = tf.Graph()
+            with self.graph.as_default():
+                # self.set_random_seed(self.seed)
+                self.sess = tf_util.make_session(num_cpu=self.n_cpu_tf_sess, graph=self.graph)
+
+                self.replay_buffer = ReplayBuffer(self.buffer_size)
+
+                with tf.compat.v1.variable_scope("input", reuse=False):
+                    # Observation normalization.
+                    if self.normalize_observations:
+                        with tf.compat.v1.variable_scope('obs_rms'):
+                            self.obs_rms = RunningMeanStd(shape=self.observation_space.shape)
+                    else:
+                        self.obs_rms = None
+
+                    # Return normalization.
+                    if self.normalize_returns:
+                        with tf.compat.v1.variable_scope('ret_rms'):
+                            self.ret_rms = RunningMeanStd()
+                    else:
+                        self.ret_rms = None
+
+                    self.policy_tf = self.policy(self.sess, self.observation_space, self.action_space, 1, 1, None,
+                                                 **self.policy_kwargs)
+
+                    # Create target networks.
+                    self.target_policy = self.policy(self.sess, self.observation_space, self.action_space, 1, 1, None,
+                                                     **self.policy_kwargs)
+                    self.obs_target = self.target_policy.obs_ph
+                    self.action_target = self.target_policy.action_ph
+
+                    normalized_obs = tf.clip_by_value(normalize(self.policy_tf.processed_obs, self.obs_rms),
+                                                      self.observation_range[0], self.observation_range[1])
+                    normalized_next_obs = tf.clip_by_value(normalize(self.target_policy.processed_obs, self.obs_rms),
+                                                           self.observation_range[0], self.observation_range[1])
+
+                    if self.param_noise is not None:
+                        # Configure perturbed actor.
+                        self.param_noise_actor = self.policy(self.sess, self.observation_space, self.action_space, 1, 1,
+                                                             None, **self.policy_kwargs)
+                        self.obs_noise = self.param_noise_actor.obs_ph
+                        self.action_noise_ph = self.param_noise_actor.action_ph
+
+                        # Configure separate copy for stddev adoption.
+                        self.adaptive_param_noise_actor = self.policy(self.sess, self.observation_space,
+                                                                      self.action_space, 1, 1, None,
+                                                                      **self.policy_kwargs)
+                        self.obs_adapt_noise = self.adaptive_param_noise_actor.obs_ph
+                        self.action_adapt_noise = self.adaptive_param_noise_actor.action_ph
+
+                    # Inputs.
+                    self.obs_train = self.policy_tf.obs_ph
+                    self.action_train_ph = self.policy_tf.action_ph
+                    self.terminals_ph = tf.compat.v1.placeholder(tf.float32, shape=(None, 1), name='terminals')
+                    self.rewards = tf.compat.v1.placeholder(tf.float32, shape=(None, 1), name='rewards')
+                    self.actions = tf.compat.v1.placeholder(tf.float32, shape=(None,) + self.action_space.shape,
+                                                            name='actions')
+                    self.critic_target = tf.compat.v1.placeholder(tf.float32, shape=(None, 1), name='critic_target')
+                    self.param_noise_stddev = tf.compat.v1.placeholder(tf.float32, shape=(), name='param_noise_stddev')
+
+                # Create networks and core TF parts that are shared across setup parts.
+                with tf.compat.v1.variable_scope("model", reuse=False):
+                    self.actor_tf = self.policy_tf.make_actor(normalized_obs)
+                    self.normalized_critic_tf = self.policy_tf.make_critic(normalized_obs, self.actions)
+                    self.normalized_critic_with_actor_tf = self.policy_tf.make_critic(normalized_obs,
+                                                                                      self.actor_tf,
+                                                                                      reuse=True)
+                # Noise setup
+                if self.param_noise is not None:
+                    self._setup_param_noise(normalized_obs)
+
+                with tf.compat.v1.variable_scope("target", reuse=False):
+                    critic_target = self.target_policy.make_critic(normalized_next_obs,
+                                                                   self.target_policy.make_actor(normalized_next_obs))
+
+                with tf.compat.v1.variable_scope("loss", reuse=False):
+                    self.critic_tf = denormalize(
+                        tf.clip_by_value(self.normalized_critic_tf, self.return_range[0], self.return_range[1]),
+                        self.ret_rms)
+
+                    self.critic_with_actor_tf = denormalize(
+                        tf.clip_by_value(self.normalized_critic_with_actor_tf,
+                                         self.return_range[0], self.return_range[1]),
+                        self.ret_rms)
+
+                    q_next_obs = denormalize(critic_target, self.ret_rms)
+                    self.target_q = self.rewards + (1. - self.terminals_ph) * self.gamma * q_next_obs
+
+                    tf.compat.v1.summary.scalar('critic_target', tf.reduce_mean(self.critic_target))
+                    if self.full_tensorboard_log:
+                        tf.compat.v1.summary.histogram('critic_target', self.critic_target)
+
+                    # Set up parts.
+                    if self.normalize_returns and self.enable_popart:
+                        self._setup_popart()
+                    self._setup_stats()
+                    self._setup_target_network_updates()
+
+                with tf.compat.v1.variable_scope("input_info", reuse=False):
+                    tf.compat.v1.summary.scalar('rewards', tf.reduce_mean(self.rewards))
+                    tf.compat.v1.summary.scalar('param_noise_stddev', tf.reduce_mean(self.param_noise_stddev))
+
+                    if self.full_tensorboard_log:
+                        tf.compat.v1.summary.histogram('rewards', self.rewards)
+                        tf.compat.v1.summary.histogram('param_noise_stddev', self.param_noise_stddev)
+                        if len(self.observation_space.shape) == 3 and self.observation_space.shape[0] in [1, 3, 4]:
+                            tf.compat.v1.summary.image('observation', self.obs_train)
+                        else:
+                            tf.compat.v1.summary.histogram('observation', self.obs_train)
+
+                with tf.compat.v1.variable_scope("Adam_mpi", reuse=False):
+                    self._setup_actor_optimizer()
+                    self._setup_critic_optimizer()
+                    tf.compat.v1.summary.scalar('actor_loss', self.actor_loss)
+                    tf.compat.v1.summary.scalar('critic_loss', self.critic_loss)
+
+                self.params = tf_util.get_trainable_vars("model") \
+                              + tf_util.get_trainable_vars('noise/') + tf_util.get_trainable_vars('noise_adapt/')
+
+                self.target_params = tf_util.get_trainable_vars("target")
+                self.obs_rms_params = [var for var in tf.compat.v1.global_variables()
+                                       if "obs_rms" in var.name]
+                self.ret_rms_params = [var for var in tf.compat.v1.global_variables()
+                                       if "ret_rms" in var.name]
+
+                with self.sess.as_default():
+                    self._initialize(self.sess)
+
+                self.summary = tf.compat.v1.summary.merge_all()
+
+    @classmethod
+    def load(cls, load_path, env=None, custom_objects=None, **kwargs):
+        data, params = cls._load_from_file(load_path, custom_objects=custom_objects)
+
+        if 'policy_kwargs' in kwargs and kwargs['policy_kwargs'] != data['policy_kwargs']:
+            raise ValueError("The specified policy kwargs do not equal the stored policy kwargs. "
+                             "Stored kwargs: {}, specified kwargs: {}".format(data['policy_kwargs'],
+                                                                              kwargs['policy_kwargs']))
+
+        model = cls(None, env, _init_setup_model=False)
+        model.__dict__.update(data)
+        model.__dict__.update(kwargs)
+        # model.set_env(env)
+        model.setup_model()
+        # Patch for version < v2.6.0, duplicated keys where saved
+        if len(params) > len(model.get_parameter_list()):
+            n_params = len(model.params)
+            n_target_params = len(model.target_params)
+            n_normalisation_params = len(model.obs_rms_params) + len(model.ret_rms_params)
+            # Check that the issue is the one from
+            # https://github.com/hill-a/stable-baselines/issues/363
+            assert len(params) == 2 * (n_params + n_target_params) + n_normalisation_params, \
+                "The number of parameter saved differs from the number of parameters" \
+                " that should be loaded: {}!={}".format(len(params), len(model.get_parameter_list()))
+            # Remove duplicates
+            params_ = params[:n_params + n_target_params]
+            if n_normalisation_params > 0:
+                params_ += params[-n_normalisation_params:]
+            params = params_
+        model.load_parameters(params)
+
+        return model
+
     def _setup_critic_optimizer(self):
         """
         setup the optimizer for the critic
@@ -553,10 +715,12 @@ class DDPGImitation(DDPG):
                 for var in critic_reg_vars:
                     logger.info('  regularizing: {}'.format(var.name))
                 logger.info('  applying l2 regularization with {}'.format(self.critic_l2_reg))
-            critic_reg = tc.layers.apply_regularization(
-                tc.layers.l2_regularizer(self.critic_l2_reg),
-                weights_list=critic_reg_vars
-            )
+            # critic_reg = tc.layers.apply_regularization(
+            #     tc.layers.l2_regularizer(self.critic_l2_reg),
+            #     weights_list=critic_reg_vars
+            # )
+            # Need to change this to work with tf 1.14
+            critic_reg = tf.add_n([tf.nn.l2_loss(var) for var in critic_reg_vars]) * self.critic_l2_reg
             self.critic_loss += critic_reg
         critic_shapes = [var.get_shape().as_list() for var in tf_util.get_trainable_vars('model/qf/')]
         critic_nb_params = sum([reduce(lambda x, y: x * y, shape) for shape in critic_shapes])

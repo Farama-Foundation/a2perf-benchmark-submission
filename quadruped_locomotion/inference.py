@@ -13,10 +13,6 @@ from stable_baselines.ddpg.policies import MlpPolicy
 from rl_perf.domains import quadruped_locomotion
 from ddpg_imitation import DDPGImitation
 
-TIMESTEPS_PER_ACTORBATCH = 4096
-OPTIM_BATCHSIZE = 256
-ENABLE_ENV_RANDOMIZER = True
-
 
 def load_model(env):
     root_dir = os.environ['ROOT_DIR']

@@ -37,7 +37,7 @@ def train():
     print("optim_batchsize:", optim_batchsize)
 
     mpi_command = f'mpiexec -n {parallel_cores}' \
-                  f' python3.7 {setup_path}' \
+                  f' python3.9 {setup_path}' \
                   f' --mode {mode}' \
                   f' --int_save_freq {int_save_freq}' \
                   f' --int_eval_freq {int_eval_freq}' \
