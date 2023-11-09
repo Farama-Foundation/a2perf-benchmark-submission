@@ -16,7 +16,8 @@ def _worker(remote, parent_remote, env_fn_wrapper):
         try:
             cmd, data = remote.recv()
             if cmd == 'step':
-                observation, reward, done, info = env.step(data)
+                observation, reward, terminated, truncated, info = env.step(data)
+                done = terminated or truncated
                 if done:
                     # save final observation where user can get it, then reset
                     info['terminal_observation'] = observation
