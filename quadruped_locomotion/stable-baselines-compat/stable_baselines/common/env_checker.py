@@ -94,7 +94,7 @@ def _check_returned_values(env: gym.Env, observation_space: spaces.Space, action
     Check the returned values by the env when calling `.reset()` or `.step()` methods.
     """
     # because env inherits from gymnasium.Env, we assume that `reset()` and `step()` methods exists
-    obs = env.reset()
+    obs, info = env.reset()
 
     _check_obs(obs, observation_space, 'reset')
 

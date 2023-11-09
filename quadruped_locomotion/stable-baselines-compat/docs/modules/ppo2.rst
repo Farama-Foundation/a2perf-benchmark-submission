@@ -76,7 +76,7 @@ Train a PPO agent on `CartPole-v1` using 4 processes.
    model = PPO2.load("ppo2_cartpole")
 
    # Enjoy trained agent
-   obs = env.reset()
+   obs, info = env.reset()
    while True:
        action, _states = model.predict(obs)
        obs, rewards, dones, info = env.step(action)

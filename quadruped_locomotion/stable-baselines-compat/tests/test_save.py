@@ -84,7 +84,7 @@ def test_model_manipulation(request, model_class, storage_method, store_format):
 
         # test action probability for given (obs, action) pair
         env = model.get_env()
-        obs = env.reset()
+        obs, info = env.reset()
         observations = np.array([env.step([env.action_space.sample()])[0] for _ in range(10)])
         observations = np.squeeze(observations)
         selected_actions, _ = model.predict(observations, deterministic=True)

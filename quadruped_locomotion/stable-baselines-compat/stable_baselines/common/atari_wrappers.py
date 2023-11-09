@@ -33,7 +33,7 @@ class NoopResetEnv(gym.Wrapper):
         for _ in range(noops):
             obs, _, done, _ = self.env.step(self.noop_action)
             if done:
-                obs = self.env.reset(**kwargs)
+                obs, info = self.env.reset(**kwargs)
         return obs
 
     def step(self, action):
@@ -101,7 +101,7 @@ class EpisodicLifeEnv(gym.Wrapper):
         :return: ([int] or [float]) the first observation of the environment
         """
         if self.was_real_done:
-            obs = self.env.reset(**kwargs)
+            obs, info = self.env.reset(**kwargs)
         else:
             # no-op step to advance from terminal/lost life state
             obs, _, _, _ = self.env.step(0)
@@ -215,7 +215,7 @@ class FrameStack(gym.Wrapper):
                                             dtype=env.observation_space.dtype)
 
     def reset(self, **kwargs):
-        obs = self.env.reset(**kwargs)
+        obs, info = self.env.reset(**kwargs)
         for _ in range(self.n_frames):
             self.frames.append(obs)
         return self._get_ob()

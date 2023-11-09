@@ -81,7 +81,7 @@ In the following example, we will train, save and load a DQN model on the Lunar 
   mean_reward, std_reward = evaluate_policy(model, model.get_env(), n_eval_episodes=10)
 
   # Enjoy trained agent
-  obs = env.reset()
+  obs, info = env.reset()
   for i in range(1000):
       action, _states = model.predict(obs)
       obs, rewards, dones, info = env.step(action)
@@ -139,7 +139,7 @@ Multiprocessing: Unleashing the Power of Vectorized Environments
       model = ACKTR(MlpPolicy, env, verbose=1)
       model.learn(total_timesteps=25000)
 
-      obs = env.reset()
+      obs, info = env.reset()
       for _ in range(1000):
           action, _states = model.predict(obs)
           obs, rewards, dones, info = env.step(action)
@@ -287,7 +287,7 @@ and multiprocessing for you.
   model = ACER('CnnPolicy', env, verbose=1)
   model.learn(total_timesteps=25000)
 
-  obs = env.reset()
+  obs, info = env.reset()
   while True:
       action, _states = model.predict(obs)
       obs, rewards, dones, info = env.step(action)
@@ -409,7 +409,7 @@ A2C policy gradient updates on the model.
       for _ in range(10):
           reward_sum = 0
           done = False
-          obs = env.reset()
+          obs, info = env.reset()
           while not done:
               action, _states = model.predict(obs)
               obs, reward, done, info = env.step(action)
@@ -479,7 +479,7 @@ This example demonstrate how to train a recurrent policy and how to test it prop
   # Retrieve the env
   env = model.get_env()
 
-  obs = env.reset()
+  obs, info = env.reset()
   # Passing state=None to the predict function means
   # it is the initial state
   state = None
@@ -559,7 +559,7 @@ The parking env is a goal-conditioned continuous control task, in which the vehi
   # Load saved model
   model = HER.load('her_sac_highway', env=env)
 
-  obs = env.reset()
+  obs, info = env.reset()
 
   # Evaluate the agent
   episode_reward = 0
@@ -571,7 +571,7 @@ The parking env is a goal-conditioned continuous control task, in which the vehi
     if done or info.get('is_success', False):
       print("Reward:", episode_reward, "Success?", info.get('is_success', False))
       episode_reward = 0.0
-      obs = env.reset()
+      obs, info = env.reset()
 
 
 
@@ -593,7 +593,7 @@ You can also move from learning on one environment to another for `continual lea
   model = PPO2('CnnPolicy', env, verbose=1)
   model.learn(total_timesteps=10000)
 
-  obs = env.reset()
+  obs, info = env.reset()
   for i in range(1000):
       action, _states = model.predict(obs)
       obs, rewards, dones, info = env.step(action)
@@ -609,7 +609,7 @@ You can also move from learning on one environment to another for `continual lea
   model.set_env(env)
   model.learn(total_timesteps=10000)
 
-  obs = env.reset()
+  obs, info = env.reset()
   while True:
       action, _states = model.predict(obs)
       obs, rewards, dones, info = env.step(action)
@@ -637,7 +637,7 @@ Record a mp4 video (here using a random agent).
 
   env = DummyVecEnv([lambda: gym.make(env_id)])
 
-  obs = env.reset()
+  obs, info = env.reset()
 
   # Record the video starting at the first step
   env = VecVideoRecorder(env, video_folder,

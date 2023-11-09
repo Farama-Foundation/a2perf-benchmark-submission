@@ -57,7 +57,7 @@ Example
 
   model = ACER.load("acer_cartpole")
 
-  obs = env.reset()
+  obs, info = env.reset()
   while True:
       action, _states = model.predict(obs)
       obs, rewards, dones, info = env.step(action)

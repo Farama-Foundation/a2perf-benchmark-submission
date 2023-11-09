@@ -93,7 +93,7 @@ def generate_expert_traj(model, save_path=None, env=None, n_timesteps=0,
     episode_starts = []
 
     ep_idx = 0
-    obs = env.reset()
+    obs, info = env.reset()
     episode_starts.append(True)
     reward_sum = 0.0
     idx = 0
@@ -137,7 +137,7 @@ def generate_expert_traj(model, save_path=None, env=None, n_timesteps=0,
         idx += 1
         if done:
             if not is_vec_env:
-                obs = env.reset()
+                obs, info = env.reset()
                 # Reset the state in case of a recurrent policy
                 state = None
 

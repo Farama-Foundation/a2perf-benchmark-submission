@@ -121,7 +121,7 @@ Example
   model = GAIL.load("gail_pendulum")
 
   env = gym.make('Pendulum-v0')
-  obs = env.reset()
+  obs, info = env.reset()
   while True:
     action, _states = model.predict(obs)
     obs, rewards, dones, info = env.step(action)

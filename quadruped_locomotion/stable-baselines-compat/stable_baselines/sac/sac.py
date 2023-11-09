@@ -375,7 +375,7 @@ class SAC(OffPolicyRLModel):
             episode_successes = []
             if self.action_noise is not None:
                 self.action_noise.reset()
-            obs = self.env.reset()
+            obs, info = self.env.reset()
             # Retrieve unnormalized observation for saving into the buffer
             if self._vec_normalize_env is not None:
                 obs_ = self._vec_normalize_env.get_original_obs().squeeze()
@@ -476,7 +476,7 @@ class SAC(OffPolicyRLModel):
                     if self.action_noise is not None:
                         self.action_noise.reset()
                     if not isinstance(self.env, VecEnv):
-                        obs = self.env.reset()
+                        obs, info = self.env.reset()
                     episode_rewards.append(0.0)
 
                     maybe_is_success = info.get('is_success')

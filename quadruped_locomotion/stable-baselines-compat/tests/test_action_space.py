@@ -29,7 +29,7 @@ def test_identity_multidiscrete(model_class):
     model = model_class("MlpPolicy", env)
     model.learn(total_timesteps=1000)
     evaluate_policy(model, env, n_eval_episodes=5)
-    obs = env.reset()
+    obs, info = env.reset()
 
     assert np.array(model.action_probability(obs)).shape == (2, 1, 10), \
         "Error: action_probability not returning correct shape"
@@ -52,7 +52,7 @@ def test_identity_multibinary(model_class):
     model = model_class("MlpPolicy", env)
     model.learn(total_timesteps=1000)
     evaluate_policy(model, env, n_eval_episodes=5)
-    obs = env.reset()
+    obs, info = env.reset()
 
     assert model.action_probability(obs).shape == (1, 10), \
         "Error: action_probability not returning correct shape"

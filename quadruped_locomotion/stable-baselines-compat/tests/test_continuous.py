@@ -69,7 +69,7 @@ def test_model_manipulation(request, model_class):
         env = DummyVecEnv([lambda: IdentityEnvBox(eps=0.5)])
         model.set_env(env)
 
-        obs = env.reset()
+        obs, info = env.reset()
         with pytest.warns(None) as record:
             act_prob = model.action_probability(obs)
 
@@ -84,7 +84,7 @@ def test_model_manipulation(request, model_class):
         # test action probability for given (obs, action) pair
         # must return zero and raise a warning or raise an exception if not defined
         env = model.get_env()
-        obs = env.reset()
+        obs, info = env.reset()
         observations = np.array([obs for _ in range(10)])
         observations = np.squeeze(observations)
         observations = observations.reshape((-1, 1))

@@ -34,7 +34,7 @@ def test_load_parameters(request, model_class):
 
     # test action probability for given (obs, action) pair
     env = model.get_env()
-    obs = env.reset()
+    obs, info = env.reset()
     observations = np.array([obs for _ in range(10)])
     observations = np.squeeze(observations)
 

@@ -78,7 +78,7 @@ Example
 
   model = DQN.load("deepq_cartpole")
 
-  obs = env.reset()
+  obs, info = env.reset()
   while True:
       action, _states = model.predict(obs)
       obs, rewards, dones, info = env.step(action)
@@ -103,7 +103,7 @@ With Atari:
 
   model = DQN.load("deepq_breakout")
 
-  obs = env.reset()
+  obs, info = env.reset()
   while True:
       action, _states = model.predict(obs)
       obs, rewards, dones, info = env.step(action)

@@ -105,12 +105,12 @@ Here is a simple example on how to log both additional tensor or arbitrary scala
           # Log additional tensor
           if not self.is_tb_set:
               with self.model.graph.as_default():
-                  tf.summary.scalar('value_target', tf.reduce_mean(self.model.value_target))
-                  self.model.summary = tf.summary.merge_all()
+                  tf.compat.v1.summary.scalar('value_target', tf.reduce_mean(self.model.value_target))
+                  self.model.summary = tf.compat.v1.summary.merge_all()
               self.is_tb_set = True
           # Log scalar value (here a random variable)
           value = np.random.random()
-          summary = tf.Summary(value=[tf.Summary.Value(tag='random_value', simple_value=value)])
+          summary = tf.compat.v1.summary.Summary(value=[tf.compat.v1.Summary.Value(tag='random_value', simple_value=value)])
           self.locals['writer'].add_summary(summary, self.num_timesteps)
           return True
 

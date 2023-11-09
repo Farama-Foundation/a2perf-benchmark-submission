@@ -193,7 +193,7 @@ If you want to quickly try a random agent on your environment, you can also do:
 .. code-block:: python
 
 	env = YourEnv()
-	obs = env.reset()
+	obs, info = env.reset()
 	n_steps = 10
 	for _ in range(n_steps):
 	    # Random action
