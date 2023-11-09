@@ -63,7 +63,7 @@ Train a A2C agent on `CartPole-v1` using 4 processes.
 
   model = A2C.load("a2c_cartpole")
 
-  obs = env.reset()
+  obs, info = env.reset()
   while True:
       action, _states = model.predict(obs)
       obs, rewards, dones, info = env.step(action)

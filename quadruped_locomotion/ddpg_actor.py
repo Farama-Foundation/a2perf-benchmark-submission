@@ -3,6 +3,7 @@ import os.path
 import random
 import time
 
+import gymnasium
 import numpy as np
 import tensorflow as tf
 from mpi4py import MPI
@@ -20,7 +21,7 @@ ENABLE_ENV_RANDOMIZER = True
 def set_rand_seed(seed=None):
     if seed is not None:
         seed = int(time.time())
-        tf.set_random_seed(seed)
+        tf.random.set_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
 
@@ -41,23 +42,23 @@ def train(
     parallel_cores = MPI.COMM_WORLD.Get_size()
     set_rand_seed(seed * rank)
 
-    env = quadruped_locomotion.motion_imitation.envs.env_builder.build_imitation_env(
-        motion_files=[motion_file_path], enable_randomizer=ENABLE_ENV_RANDOMIZER,
-        enable_rendering=visualize, mode=mode)
-
-    eval_env = quadruped_locomotion.motion_imitation.envs.env_builder.build_imitation_env(
-        motion_files=[motion_file_path], enable_rendering=visualize, mode='test')
-
+    # env = quadruped_locomotion.motion_imitation.envs.env_builder.build_imitation_env(
+    #     motion_files=[motion_file_path], enable_randomizer=ENABLE_ENV_RANDOMIZER,
+    #     enable_rendering=visualize, mode=mode)
+    env = gymnasium.make('QuadrupedLocomotion-v0',
+                         motion_files=[motion_file_path],
+                         mode=mode,
+                         enable_randomizer=ENABLE_ENV_RANDOMIZER,
+                         enable_rendering=visualize)
+    # eval_env = quadruped_locomotion.motion_imitation.envs.env_builder.build_imitation_env(
+    #     motion_files=[motion_file_path], enable_rendering=visualize, mode='test')
+    eval_env = gymnasium.make('QuadrupedLocomotion-v0', motion_files=[motion_file_path], mode='test',
+                              enable_rendering=visualize)
     n_actions = env.action_space.shape[-1]
     param_noise = None
 
-    print(env.action_space.high)
-    print(env.action_space.low)
-
     # this means that 67% of the time, the action will be within 0.1 of the mean
     action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=float(0.1) * np.ones(n_actions))
-    print(env.observation_space.high)
-    print(env.observation_space.low)
 
     policy_save_path = os.path.join(output_dir, 'policies')
     os.makedirs(policy_save_path, exist_ok=True)
@@ -98,7 +99,7 @@ def train(
                           nb_train_steps=timesteps_per_actorbatch,
                           nb_rollout_steps=timesteps_per_actorbatch,
                           verbose=2 if rank == 0 else 0,
-                          full_tensorboard_log=rank == 0,
+                          full_tensorboard_log=False,
                           tensorboard_log=tensorboard_log_dir if rank == 0 else None,
                           param_noise=param_noise,
                           action_noise=action_noise)

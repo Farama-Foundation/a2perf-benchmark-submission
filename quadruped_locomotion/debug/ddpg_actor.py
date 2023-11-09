@@ -20,7 +20,7 @@ ENABLE_ENV_RANDOMIZER = True
 def set_rand_seed(seed=None):
     if seed is not None:
         seed = int(time.time())
-        tf.set_random_seed(seed)
+        tf.random.set_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
 
@@ -51,9 +51,6 @@ def train(
     n_actions = env.action_space.shape[-1]
     param_noise = None
     action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=float(0.5) * np.ones(n_actions))
-
-    print(env.observation_space.high)
-    print(env.observation_space.low)
 
     policy_save_path = os.path.join(output_dir, 'policies')
     os.makedirs(policy_save_path, exist_ok=True)

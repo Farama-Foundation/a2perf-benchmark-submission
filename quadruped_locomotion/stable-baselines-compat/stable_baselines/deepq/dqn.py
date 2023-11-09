@@ -189,7 +189,7 @@ class DQN(OffPolicyRLModel):
             callback.on_rollout_start()
 
             reset = True
-            obs = self.env.reset()
+            obs, info = self.env.reset()
             # Retrieve unnormalized observation for saving into the buffer
             if self._vec_normalize_env is not None:
                 obs_ = self._vec_normalize_env.get_original_obs().squeeze()
@@ -251,7 +251,7 @@ class DQN(OffPolicyRLModel):
                     if maybe_is_success is not None:
                         episode_successes.append(float(maybe_is_success))
                     if not isinstance(self.env, VecEnv):
-                        obs = self.env.reset()
+                        obs, info = self.env.reset()
                     episode_rewards.append(0.0)
                     reset = True
 

@@ -27,7 +27,7 @@ def total_eval_episode_reward_logger(rew_acc, rewards, masks, writer, steps):
     :return: (np.array float) the updated total running reward
     :return: (np.array float) the updated total running reward
     """
-    with tf.variable_scope("environment_info", reuse=True):
+    with tf.compat.v1.variable_scope("environment_info", reuse=True):
         for env_idx in range(rewards.shape[0]):
             dones_idx = np.sort(np.argwhere(masks[env_idx]))
 
@@ -35,12 +35,12 @@ def total_eval_episode_reward_logger(rew_acc, rewards, masks, writer, steps):
                 rew_acc[env_idx] += sum(rewards[env_idx])
             else:
                 rew_acc[env_idx] += sum(rewards[env_idx, :dones_idx[0, 0]])
-                summary = tf.Summary(value=[tf.Summary.Value(tag="eval_episode_reward", simple_value=rew_acc[env_idx])])
+                summary = tf.compat.v1.summary.Summary(value=[tf.compat.v1.Summary.Value(tag="eval_episode_reward", simple_value=rew_acc[env_idx])])
                 writer.add_summary(summary, steps + dones_idx[0, 0])
                 for k in range(1, len(dones_idx[:, 0])):
                     rew_acc[env_idx] = sum(rewards[env_idx, dones_idx[k - 1, 0]:dones_idx[k, 0]])
-                    summary = tf.Summary(
-                        value=[tf.Summary.Value(tag="eval_episode_reward", simple_value=rew_acc[env_idx])])
+                    summary = tf.compat.v1.summary.Summary(
+                        value=[tf.compat.v1.Summary.Value(tag="eval_episode_reward", simple_value=rew_acc[env_idx])])
                     writer.add_summary(summary, steps + dones_idx[k, 0])
                 rew_acc[env_idx] = sum(rewards[env_idx, dones_idx[-1, 0]:])
 
@@ -200,13 +200,13 @@ class DDPGImitation(DDPG):
             with self.sess.as_default(), self.graph.as_default():
                 # Prepare everything.
                 self._reset()
-                obs = self.env.reset()
+                obs, info = self.env.reset()
                 # Retrieve unnormalized observation for saving into the buffer
                 if self._vec_normalize_env is not None:
                     obs_ = self._vec_normalize_env.get_original_obs().squeeze()
                 eval_obs = None
                 if self.eval_env is not None:
-                    eval_obs = self.eval_env.reset()
+                    eval_obs, eval_info = self.eval_env.reset()
                 episode_reward = 0.
                 episode_step = 0
                 episodes = 0
@@ -285,7 +285,7 @@ class DDPGImitation(DDPG):
                             # Avoid changing the original ones
                             obs_, new_obs_, reward_ = obs, new_obs, reward
 
-                        self._store_transition(obs_, action, reward_, new_obs_, done)
+                        self._store_transition(obs_, action, reward_, new_obs_, done,info)
                         obs = new_obs
                         # Save the unnormalized observation
                         if self._vec_normalize_env is not None:
@@ -316,7 +316,7 @@ class DDPGImitation(DDPG):
 
                             self._reset()
                             if not isinstance(self.env, VecEnv):
-                                obs = self.env.reset()
+                                obs, info = self.env.reset()
 
                     callback.on_rollout_end()
                     # Train.
@@ -354,7 +354,7 @@ class DDPGImitation(DDPG):
                         logger.log(f'eval_iters: {eval_iters}')
                         for _ in range(self.nb_eval_episodes):  # Looping over episodes
                             eval_episode_reward = 0.
-                            eval_obs = self.eval_env.reset()
+                            eval_obs, eval_info = self.eval_env.reset()
 
                             while True:  # Inner loop for each step of the episode
                                 if total_steps >= total_timesteps:

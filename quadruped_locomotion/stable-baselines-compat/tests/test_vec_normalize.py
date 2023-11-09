@@ -161,7 +161,7 @@ def test_sync_vec_normalize():
     for _ in range(100):
         env.step([env.action_space.sample()])
 
-    obs = env.reset()
+    obs, info = env.reset()
     original_obs = env.get_original_obs()
     dummy_rewards = np.random.rand(10)
     # Normalization must be different

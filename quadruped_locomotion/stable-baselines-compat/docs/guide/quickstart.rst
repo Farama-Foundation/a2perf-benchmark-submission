@@ -24,7 +24,7 @@ Here is a quick example of how to train and run PPO2 on a cartpole environment:
   model = PPO2(MlpPolicy, env, verbose=1)
   model.learn(total_timesteps=10000)
 
-  obs = env.reset()
+  obs, info = env.reset()
   for i in range(1000):
       action, _states = model.predict(obs)
       obs, rewards, dones, info = env.step(action)

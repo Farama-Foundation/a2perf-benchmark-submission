@@ -609,7 +609,10 @@ class DDPG(OffPolicyRLModel):
         :param compute_q: (bool) compute the critic output
         :return: ([float], float) the action and critic value
         """
-        obs = np.array(obs).reshape((-1,) + self.observation_space.shape)
+        obs = np.array(obs)
+        obs = obs.reshape(self.observation_space.shape)
+        obs = np.expand_dims(obs, axis=0)
+
         feed_dict = {self.obs_train: obs}
         if self.param_noise is not None and apply_noise:
             actor_tf = self.perturbed_actor_tf
@@ -838,13 +841,16 @@ class DDPG(OffPolicyRLModel):
             with self.sess.as_default(), self.graph.as_default():
                 # Prepare everything.
                 self._reset()
-                obs = self.env.reset()
+                obs, info = self.env.reset()
+                print(f'obs shape: {obs.shape}')
+                print(f'info: {info}')
+                assert 0 == 1
                 # Retrieve unnormalized observation for saving into the buffer
                 if self._vec_normalize_env is not None:
                     obs_ = self._vec_normalize_env.get_original_obs().squeeze()
                 eval_obs = None
                 if self.eval_env is not None:
-                    eval_obs = self.eval_env.reset()
+                    eval_obs, eval_info = self.eval_env.reset()
                 episode_reward = 0.
                 episode_step = 0
                 episodes = 0
@@ -952,7 +958,7 @@ class DDPG(OffPolicyRLModel):
 
                                 self._reset()
                                 if not isinstance(self.env, VecEnv):
-                                    obs = self.env.reset()
+                                    obs, info = self.env.reset()
 
                         callback.on_rollout_end()
                         # Train.

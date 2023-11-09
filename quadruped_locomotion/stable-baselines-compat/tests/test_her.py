@@ -19,7 +19,7 @@ def model_predict(model, env, n_steps, additional_check=None):
     :param n_steps: (int)
     :param additional_check: (callable)
     """
-    obs = env.reset()
+    obs, info = env.reset()
     for _ in range(n_steps):
         action, _ = model.predict(obs)
         obs, reward, done, _ = env.step(action)
@@ -28,7 +28,7 @@ def model_predict(model, env, n_steps, additional_check=None):
             additional_check(obs, action, reward, done)
 
         if done:
-            obs = env.reset()
+            obs, info = env.reset()
 
 
 @pytest.mark.parametrize('goal_selection_strategy', list(GoalSelectionStrategy))

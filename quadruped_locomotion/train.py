@@ -3,6 +3,8 @@ import os
 import subprocess
 from absl import app
 
+TIMESTEPS_PER_ACTORBATCH = 4096
+OPTIM_BATCHSIZE = 256
 
 
 def train():

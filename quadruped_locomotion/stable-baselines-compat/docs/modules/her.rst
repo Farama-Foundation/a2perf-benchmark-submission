@@ -69,13 +69,13 @@ Example
 	# or wrap your environment with HERGoalEnvWrapper to use the predict method
 	model = HER.load('./her_bit_env', env=env)
 
-	obs = env.reset()
+	obs, info = env.reset()
 	for _ in range(100):
 	    action, _ = model.predict(obs)
 	    obs, reward, done, _ = env.step(action)
 
 	    if done:
-	        obs = env.reset()
+	        obs, info = env.reset()
 
 
 Parameters

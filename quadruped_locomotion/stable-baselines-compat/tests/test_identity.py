@@ -87,7 +87,7 @@ def test_identity_discrete(model_name):
     model = LEARN_FUNC_DICT[model_name](env)
     evaluate_policy(model, env, n_eval_episodes=20, reward_threshold=90)
 
-    obs = env.reset()
+    obs, info = env.reset()
     assert model.action_probability(obs).shape == (
         1,
         10,

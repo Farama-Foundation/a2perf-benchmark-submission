@@ -1,5 +1,4 @@
 import copy
-import gym as legacy_gym
 import os
 import pickle
 import time
@@ -34,7 +33,7 @@ def total_eval_episode_reward_logger(rew_acc, rewards, masks, writer, steps):
     :return: (np.array float) the updated total running reward
     :return: (np.array float) the updated total running reward
     """
-    with tf.variable_scope("environment_info", reuse=True):
+    with tf.compat.v1.variable_scope("environment_info", reuse=True):
         for env_idx in range(rewards.shape[0]):
             dones_idx = np.sort(np.argwhere(masks[env_idx]))
 
@@ -42,12 +41,12 @@ def total_eval_episode_reward_logger(rew_acc, rewards, masks, writer, steps):
                 rew_acc[env_idx] += sum(rewards[env_idx])
             else:
                 rew_acc[env_idx] += sum(rewards[env_idx, :dones_idx[0, 0]])
-                summary = tf.Summary(value=[tf.Summary.Value(tag="eval_episode_reward", simple_value=rew_acc[env_idx])])
+                summary = tf.compat.v1.summary.Summary(value=[tf.compat.v1.Summary.Value(tag="eval_episode_reward", simple_value=rew_acc[env_idx])])
                 writer.add_summary(summary, steps + dones_idx[0, 0])
                 for k in range(1, len(dones_idx[:, 0])):
                     rew_acc[env_idx] = sum(rewards[env_idx, dones_idx[k - 1, 0]:dones_idx[k, 0]])
-                    summary = tf.Summary(
-                        value=[tf.Summary.Value(tag="eval_episode_reward", simple_value=rew_acc[env_idx])])
+                    summary = tf.compat.v1.summary.Summary(
+                        value=[tf.compat.v1.Summary.Value(tag="eval_episode_reward", simple_value=rew_acc[env_idx])])
                     writer.add_summary(summary, steps + dones_idx[k, 0])
                 rew_acc[env_idx] = sum(rewards[env_idx, dones_idx[-1, 0]:])
 
@@ -207,13 +206,14 @@ class DDPGImitation(DDPG):
             with self.sess.as_default(), self.graph.as_default():
                 # Prepare everything.
                 self._reset()
-                obs = self.env.reset()
+                obs, info = self.env.reset()
+
                 # Retrieve unnormalized observation for saving into the buffer
                 if self._vec_normalize_env is not None:
                     obs_ = self._vec_normalize_env.get_original_obs().squeeze()
                 eval_obs = None
                 if self.eval_env is not None:
-                    eval_obs = self.eval_env.reset()
+                    eval_obs, eval_info = self.eval_env.reset()
                 episode_reward = 0.
                 episode_step = 0
                 episodes = 0
@@ -265,8 +265,8 @@ class DDPGImitation(DDPG):
                             # inferred actions need to be transformed to environment action_space before stepping
                             unscaled_action = unscale_action(self.action_space, action)
 
-                        new_obs, reward, done, info = self.env.step(unscaled_action)
-
+                        new_obs, reward, terminated, truncated, info = self.env.step(unscaled_action)
+                        done = truncated or terminated
                         self.num_timesteps += 1
 
                         if callback.on_step() is False:
@@ -291,7 +291,7 @@ class DDPGImitation(DDPG):
                             # Avoid changing the original ones
                             obs_, new_obs_, reward_ = obs, new_obs, reward
 
-                        self._store_transition(obs_, action, reward_, new_obs_, done)
+                        self._store_transition(obs_, action, reward_, new_obs_, done, info)
                         obs = new_obs
                         # Save the unnormalized observation
                         if self._vec_normalize_env is not None:
@@ -316,7 +316,7 @@ class DDPGImitation(DDPG):
 
                             self._reset()
                             if not isinstance(self.env, VecEnv):
-                                obs = self.env.reset()
+                                obs, info = self.env.reset()
 
                     callback.on_rollout_end()
                     # Train.
@@ -354,7 +354,7 @@ class DDPGImitation(DDPG):
                         logger.log(f'eval_iters: {eval_iters}')
                         for _ in range(self.nb_eval_episodes):  # Looping over episodes
                             eval_episode_reward = 0.
-                            eval_obs = self.eval_env.reset()
+                            eval_obs, eval_info = self.eval_env.reset()
 
                             while True:  # Inner loop for each step of the episode
                                 if total_steps >= total_timesteps:
@@ -362,7 +362,8 @@ class DDPGImitation(DDPG):
 
                                 eval_action, eval_q = self._policy(eval_obs, apply_noise=False, compute_q=True)
                                 unscaled_action = unscale_action(self.action_space, eval_action)
-                                eval_obs, eval_r, eval_done, _ = self.eval_env.step(unscaled_action)
+                                eval_obs, eval_r, eval_terminated, eval_truncated, _ = self.eval_env.step(
+                                    unscaled_action)
 
                                 if self.render_eval:
                                     self.eval_env.render()
@@ -373,12 +374,13 @@ class DDPGImitation(DDPG):
 
                                 if writer is not None and is_root:
                                     ep_rew = np.array([eval_r]).reshape((1, -1))
-                                    ep_done = np.array([eval_done]).reshape((1, -1))
+                                    ep_done = np.array([eval_terminated]).reshape((1, -1)) and np.array(
+                                        [eval_truncated]).reshape((1, -1))
                                     total_eval_episode_reward_logger(self.eval_episode_reward, ep_rew, ep_done,
                                                                      writer, self.num_timesteps)
                                     writer.flush()
 
-                                if eval_done:
+                                if eval_terminated or eval_truncated:
                                     break  # If episode is done, break the inner loop and start next episode
 
                             eval_episode_rewards.append(eval_episode_reward)
@@ -467,11 +469,11 @@ class DDPGImitation(DDPG):
                             f'Logging episode_reward at {iters_so_far} iterations and {self.num_timesteps} steps')
                         logger.info(f'\tepisode_reward: {combined_stats["rollout/return"]}')
 
-                        combined_summary = tf.Summary(
+                        combined_summary = tf.compat.v1.summary.Summary(
                             value=[
-                                tf.Summary.Value(tag="episode_reward", simple_value=combined_stats["rollout/return"]),
-                                tf.Summary.Value(tag="iterations", simple_value=iters_so_far),
-                                tf.Summary.Value(tag="num_timesteps", simple_value=self.num_timesteps)
+                                tf.compat.v1.Summary.Value(tag="episode_reward", simple_value=combined_stats["rollout/return"]),
+                                tf.compat.v1.Summary.Value(tag="iterations", simple_value=iters_so_far),
+                                tf.compat.v1.Summary.Value(tag="num_timesteps", simple_value=self.num_timesteps)
                             ]
                         )
 
@@ -531,7 +533,7 @@ class DDPGImitation(DDPG):
     def setup_model(self):
         with SetVerbosity(self.verbose):
 
-            assert isinstance(self.action_space, legacy_gym.spaces.Box), \
+            assert isinstance(self.action_space, gym.spaces.Box), \
                 "Error: DDPG cannot output a {} action space, only spaces.Box is supported.".format(self.action_space)
             assert issubclass(self.policy, DDPGPolicy), "Error: the input policy for the DDPG model must be " \
                                                         "an instance of DDPGPolicy."

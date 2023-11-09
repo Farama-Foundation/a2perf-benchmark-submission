@@ -377,12 +377,12 @@ def train(
     with (
         learner.train_summary_writer.as_default(),
         common.soft_device_placement(),
-        tf.summary.record_if(lambda: True),
+        tf.compat.v1.summary.record_if(lambda: True),
     ):
       with tf.name_scope('RunTime/'):
-        tf.summary.scalar(
+        tf.compat.v1.summary.scalar(
             name='step_per_sec', data=num_steps / run_time, step=train_step
         )
         if debug_summaries:
-          tf.summary.scalar(
+          tf.compat.v1.summary.scalar(
               name='data_wait_time_sec', data=data_wait_time, step=train_step)

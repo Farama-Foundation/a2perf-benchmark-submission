@@ -81,7 +81,7 @@ def test_custom_policy(request, model_name):
 
         env = model.get_env()
         # predict and measure the acc reward
-        obs = env.reset()
+        obs, info = env.reset()
         for _ in range(N_TRIALS):
             action, _ = model.predict(obs)
             # Test action probability method

@@ -22,7 +22,7 @@ def test_deterministic_td3():
         model = TD3('MlpPolicy', env_id, seed=SEED, **kwargs)
         model.learn(N_STEPS_TRAINING)
         env = model.get_env()
-        obs = env.reset()
+        obs, info = env.reset()
         for _ in range(20):
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, _, _ = env.step(action)
@@ -50,7 +50,7 @@ def test_deterministic_training_common(algo):
         model = algo('MlpPolicy', env_id, seed=SEED, **kwargs)
         model.learn(N_STEPS_TRAINING)
         env = model.get_env()
-        obs = env.reset()
+        obs, info = env.reset()
         for _ in range(20):
             action, _ = model.predict(obs, deterministic=False)
             obs, reward, _, _ = env.step(action)

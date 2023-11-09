@@ -108,7 +108,7 @@ Using the ``expert_cartpole.npz`` dataset generated with the previous script.
 
 	# Test the pre-trained model
 	env = model.get_env()
-	obs = env.reset()
+	obs, info = env.reset()
 
 	reward_sum = 0.0
 	for _ in range(1000):
@@ -119,7 +119,7 @@ Using the ``expert_cartpole.npz`` dataset generated with the previous script.
 		if done:
 			print(reward_sum)
 			reward_sum = 0.0
-			obs = env.reset()
+			obs, info = env.reset()
 
 	env.close()
 
