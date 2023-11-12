@@ -4,7 +4,7 @@ import random
 import time
 import logging
 import gin
-import gym
+import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 import tf_agents
@@ -21,11 +21,8 @@ from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
-import rl_perf.domains.web_nav
 from rl_perf.domains.web_nav.gwob.CoDE import q_networks
-
-OPTIM_BATCHSIZE = 32
-TIMESTEPS_PER_ACTORBATCH = 256
+from rl_perf.domains.web_nav.gwob.CoDE import vocabulary_node
 
 
 class DQNLSTM(network.Network):
@@ -139,7 +136,7 @@ def train_eval(
     manager = multiprocessing.Manager()
     lock = manager.Lock()
     global_vocab = (
-        rl_perf.domains.web_nav.gwob.CoDE.vocabulary_node.LockedVocabulary(
+        vocabulary_node.LockedVocabulary(
             multiprocessing_lock=lock)
     )
     envs = [lambda: create_env(seed + i, env_name=env_name, difficulty=difficulty, global_vocab=global_vocab,
@@ -151,7 +148,7 @@ def train_eval(
                             global_vocab=global_vocab,
                             env_args=env_args)])
     eval_tf_env = tf_py_environment.TFPyEnvironment(eval_env)
-    parallel_py_env = tf_agents.environments.ParallelPyEnvironment(envs, blocking=False, start_serially=False)
+    parallel_py_env = tf_agents.environments.ParallelPyEnvironment(envs, blocking=True, start_serially=True)
     tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
 
     time_step_spec = tf_env.time_step_spec()
@@ -202,6 +199,7 @@ def train_eval(
         batch_size=tf_env.batch_size,
         max_length=replay_buffer_capacity,
         device='/gpu:*',
+        # device='/cpu:*',
     )
     replay_observer = [replay_buffer.add_batch]
 
@@ -305,7 +303,10 @@ def train_eval(
         return ~trajectories.is_boundary()[0]
 
     dataset = (
-        replay_buffer.as_dataset(sample_batch_size=batch_size, num_steps=2, num_parallel_calls=tf.data.AUTOTUNE)
+        replay_buffer.as_dataset(sample_batch_size=batch_size,
+                                 num_steps=2,
+                                 num_parallel_calls=tf.data.AUTOTUNE
+                                 )
         .unbatch()
         .filter(_filter_invalid_transition)
         .batch(batch_size)
@@ -316,8 +317,7 @@ def train_eval(
 
     def train_step():
         experience, _ = next(iterator)
-        ret = tf_agent.train(experience)
-        return ret
+        return tf_agent.train(experience)
 
     if use_tf_functions:
         train_step = common.function(train_step)
@@ -333,9 +333,9 @@ def train_eval(
             time_step=time_step,
             policy_state=policy_state,
         )
+
         for _ in range(train_steps_per_iteration):
             train_loss = train_step()
-            global_step.assign_add(1)
 
         time_acc += time.time() - start_time
 
@@ -371,6 +371,7 @@ def train_eval(
                 train_step=global_step,
                 summary_writer=eval_summary_writer,
                 summary_prefix='Metrics',
+                use_function=False,
             )
             if eval_metrics_callback is not None:
                 eval_metrics_callback(results, global_step)
@@ -386,7 +387,6 @@ def train_eval(
 
         iters_so_far += 1
 
-    # clean up the environments and the global vocab
     manager.shutdown()
     tf_env.close()
     eval_tf_env.close()
@@ -395,60 +395,77 @@ def train_eval(
 
 def train_mp(_):
     # Extract environment variables
-    seed = int(os.environ.get('SEED', 0))
-    root_dir = os.environ.get('ROOT_DIR', "/a2perf/dqn_lstm")
-    env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', 8))
-    total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', 10000))
-    difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', 0))
-    eval_interval = int(os.environ.get('EVAL_INTERVAL', 100))
-    train_checkpoint_interval = int(os.environ.get('TRAIN_CHECKPOINT_INTERVAL', 100))
-    policy_checkpoint_interval = int(os.environ.get('POLICY_CHECKPOINT_INTERVAL', 1000))
-    rb_checkpoint_interval = int(os.environ.get('RB_CHECKPOINT_INTERVAL', 20000))
-    log_interval = int(os.environ.get('LOG_INTERVAL', 100))
-    summary_interval = int(os.environ.get('SUMMARY_INTERVAL', 100))
-
+    seed = int(os.environ.get('SEED', None))
+    root_dir = os.environ.get('ROOT_DIR', None)
+    env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
+    total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
+    difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
+    eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
+    train_checkpoint_interval = int(os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
+    policy_checkpoint_interval = int(os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
+    rb_checkpoint_interval = int(os.environ.get('RB_CHECKPOINT_INTERVAL', None))
+    rb_capacity = int(os.environ.get('RB_CAPACITY', None))
+    log_interval = int(os.environ.get('LOG_INTERVAL', None))
+    learning_rate = float(os.environ.get('LEARNING_RATE', None))
+    batch_size = int(os.environ.get('BATCH_SIZE', None))
+    summary_interval = int(os.environ.get('SUMMARY_INTERVAL', None))
+    timesteps_per_actorbatch_param = int(
+        os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
+    )
     batched_total_env_steps = total_env_steps // env_batch_size
-    timesteps_per_actorbatch = max(1, TIMESTEPS_PER_ACTORBATCH // env_batch_size)
+    timesteps_per_actorbatch = max(
+        1, timesteps_per_actorbatch_param // env_batch_size
+    )
     num_iterations = max(1, batched_total_env_steps // timesteps_per_actorbatch)
 
     # Print extracted and computed values
-    print(f"seed: {seed}")
-    print(f"root_dir: {root_dir}")
-    print(f"env_batch_size: {env_batch_size}")
-    print(f"total_env_steps: {total_env_steps}")
-    print(f"num_iterations: {num_iterations}")
-    print(f"difficulty_level: {difficulty_level}")
-    print(f"train_steps_per_iteration: {TIMESTEPS_PER_ACTORBATCH}")
-    print(f"eval_interval: {eval_interval}")
-    print(f"train_checkpoint_interval: {train_checkpoint_interval}")
-    print(f"policy_checkpoint_interval: {policy_checkpoint_interval}")
-    print(f"rb_checkpoint_interval: {rb_checkpoint_interval}")
-    print(f"log_interval: {log_interval}")
-    print(f"summary_interval: {summary_interval}")
+    print(f'seed: {seed}')
+    print(f'root_dir: {root_dir}')
+    print(f'env_batch_size: {env_batch_size}')
+    print(f'total_env_steps: {total_env_steps}')
+    print(f'num_iterations: {num_iterations}')
+    print(f'difficulty_level: {difficulty_level}')
+    print(f'train_steps_per_iteration: {timesteps_per_actorbatch_param}')
+    print(f'eval_interval: {eval_interval}')
+    print(f'train_checkpoint_interval: {train_checkpoint_interval}')
+    print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
+    print(f'rb_checkpoint_interval: {rb_checkpoint_interval}')
+    print(f'log_interval: {log_interval}')
+    print(f'summary_interval: {summary_interval}')
+    print(f'learning_rate: {learning_rate}')
 
     # Convert all of the intervals to be in terms of iterations instead of environment steps
-    eval_interval = max(1, eval_interval // TIMESTEPS_PER_ACTORBATCH)
-    train_checkpoint_interval = max(1, train_checkpoint_interval // TIMESTEPS_PER_ACTORBATCH)
-    policy_checkpoint_interval = max(1, policy_checkpoint_interval // TIMESTEPS_PER_ACTORBATCH)
-    rb_checkpoint_interval = max(1, rb_checkpoint_interval // TIMESTEPS_PER_ACTORBATCH)
-    log_interval = max(1, log_interval // TIMESTEPS_PER_ACTORBATCH)
-    summary_interval = max(1, summary_interval // TIMESTEPS_PER_ACTORBATCH)
+    eval_interval = max(1, eval_interval // timesteps_per_actorbatch_param)
+    train_checkpoint_interval = max(
+        1, train_checkpoint_interval // timesteps_per_actorbatch_param
+    )
+    policy_checkpoint_interval = max(
+        1, policy_checkpoint_interval // timesteps_per_actorbatch_param
+    )
+    rb_checkpoint_interval = max(
+        1, rb_checkpoint_interval // timesteps_per_actorbatch_param
+    )
+    log_interval = max(1, log_interval // timesteps_per_actorbatch_param)
+    summary_interval = max(1, summary_interval // timesteps_per_actorbatch_param)
 
-    print(f"eval_interval: {eval_interval}")
-    print(f"train_checkpoint_interval: {train_checkpoint_interval}")
-    print(f"policy_checkpoint_interval: {policy_checkpoint_interval}")
-    print(f"rb_checkpoint_interval: {rb_checkpoint_interval}")
-    print(f"log_interval: {log_interval}")
-    print(f"summary_interval: {summary_interval}")  # Call train_eval function with required parameters
+    print(f'eval_interval: {eval_interval}')
+    print(f'train_checkpoint_interval: {train_checkpoint_interval}')
+    print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
+    print(f'rb_checkpoint_interval: {rb_checkpoint_interval}')
+    print(f'log_interval: {log_interval}')
+    print(
+        f'summary_interval: {summary_interval}'
+    )  # Call train_eval function with required parameters
     train_eval(
         seed=seed,
         root_dir=root_dir,
         difficulty=difficulty_level,
-        batch_size=OPTIM_BATCHSIZE,
+        batch_size=batch_size,
         environment_batch_size=env_batch_size,
-        train_steps_per_iteration=TIMESTEPS_PER_ACTORBATCH,
-        replay_buffer_capacity=10000,
+        train_steps_per_iteration=timesteps_per_actorbatch,
+        replay_buffer_capacity=rb_capacity,
         num_iterations=num_iterations,
+        learning_rate=learning_rate,
         eval_interval=eval_interval,
         collect_steps_per_iteration=timesteps_per_actorbatch,
         train_checkpoint_interval=train_checkpoint_interval,
@@ -457,6 +474,7 @@ def train_mp(_):
         initial_collect_steps=timesteps_per_actorbatch,
         log_interval=log_interval,
         summary_interval=summary_interval,
+        env_args=dict()
     )
 
 
