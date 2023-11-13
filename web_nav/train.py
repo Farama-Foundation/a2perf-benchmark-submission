@@ -1,14 +1,15 @@
+import logging
 import multiprocessing
 import os
 import random
 import time
-import logging
+
+import absl
 import gin
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 import tf_agents
-import absl
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
@@ -23,6 +24,9 @@ from tf_agents.utils import common
 
 from rl_perf.domains.web_nav.gwob.CoDE import q_networks
 from rl_perf.domains.web_nav.gwob.CoDE import vocabulary_node
+
+OPTIM_BATCHSIZE = 32
+TIMESTEPS_PER_ACTORBATCH = 256
 
 
 class DQNLSTM(network.Network):
@@ -136,8 +140,8 @@ def train_eval(
     manager = multiprocessing.Manager()
     lock = manager.Lock()
     global_vocab = (
-        vocabulary_node.LockedVocabulary(
-            multiprocessing_lock=lock)
+        vocabulary_node.LockedVocabulary(max_vocabulary_size=max_vocab_size,
+                                         multiprocessing_lock=lock)
     )
     envs = [lambda: create_env(seed + i, env_name=env_name, difficulty=difficulty, global_vocab=global_vocab,
                                env_args=env_args) for i
@@ -198,8 +202,7 @@ def train_eval(
         data_spec=tf_agent.collect_data_spec,
         batch_size=tf_env.batch_size,
         max_length=replay_buffer_capacity,
-        device='/gpu:*',
-        # device='/cpu:*',
+        device='/cpu:*',
     )
     replay_observer = [replay_buffer.add_batch]
 
@@ -474,7 +477,7 @@ def train_mp(_):
         initial_collect_steps=timesteps_per_actorbatch,
         log_interval=log_interval,
         summary_interval=summary_interval,
-        env_args=dict()
+        env_args=dict(),
     )
 
 

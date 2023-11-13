@@ -1,14 +1,15 @@
+import logging
 import multiprocessing
 import os
 import random
 import time
-import logging
+
+import absl
 import gin
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 import tf_agents
-import absl
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
@@ -56,8 +57,6 @@ def remove_config_lines(config_string, key):
 
 
 def create_env(env_seed: int, env_name='CartPole-v0', difficulty=None, global_vocab=None, env_args=None):
-    # return gym.make(env_name, difficulty=difficulty, seed=env_seed, global_vocabulary=global_vocab,
-    #                 **env_args)
     return suite_gym.load(
         environment_name=env_name,
         spec_dtype_map={gym.spaces.Discrete: np.int32},
@@ -141,8 +140,8 @@ def train_eval(
     manager = multiprocessing.Manager()
     lock = manager.Lock()
     global_vocab = (
-        vocabulary_node.LockedVocabulary(
-            multiprocessing_lock=lock)
+        vocabulary_node.LockedVocabulary(max_vocabulary_size=max_vocab_size,
+                                         multiprocessing_lock=lock)
     )
     envs = [lambda: create_env(seed + i, env_name=env_name, difficulty=difficulty, global_vocab=global_vocab,
                                env_args=env_args) for i
@@ -203,7 +202,7 @@ def train_eval(
         data_spec=tf_agent.collect_data_spec,
         batch_size=tf_env.batch_size,
         max_length=replay_buffer_capacity,
-        device='/gpu:*',
+        device='/cpu:*',
     )
     replay_observer = [replay_buffer.add_batch]
 
