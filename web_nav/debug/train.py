@@ -1,4 +1,3 @@
-import logging
 import multiprocessing
 import os
 
@@ -484,10 +483,8 @@ def train_mp(_):
 
 
 def train():
-    logging.basicConfig(level=logging.WARNING)
     tf_agents.system.multiprocessing.handle_main(train_mp)
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.WARNING)
     tf_agents.system.multiprocessing.handle_main(train_mp)

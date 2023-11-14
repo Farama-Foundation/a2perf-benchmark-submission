@@ -478,15 +478,13 @@ def train_mp(_):
         initial_collect_steps=timesteps_per_actorbatch,
         log_interval=log_interval,
         summary_interval=summary_interval,
-        env_args=dict(),
+        env_args=dict()
     )
 
 
 def train():
-    logging.basicConfig(level=logging.WARNING)
     tf_agents.system.multiprocessing.handle_main(train_mp)
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.WARNING)
     tf_agents.system.multiprocessing.handle_main(train_mp)
