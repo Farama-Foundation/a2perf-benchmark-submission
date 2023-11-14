@@ -1,6 +1,7 @@
-import logging
 import multiprocessing
 import os
+
+os.environ['WRAPT_DISABLE_EXTENSIONS'] = '1'
 import random
 import time
 
