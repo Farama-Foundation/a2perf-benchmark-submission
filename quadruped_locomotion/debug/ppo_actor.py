@@ -17,7 +17,7 @@ ENABLE_ENV_RANDOMIZER = True
 def set_rand_seed(seed=None):
     if seed is not None:
         seed = int(time.time())
-        tf.set_random_seed(seed)
+        tf.random.set_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
 
@@ -45,15 +45,11 @@ def train(
     policy_save_path = os.path.join(output_dir, 'policies')
     os.makedirs(policy_save_path, exist_ok=True)
     callbacks = []
-    # if rank == 0:
-    #     callbacks.append(CheckpointCallback(save_freq=int_save_freq,
-    #                                         save_path=policy_save_path,
-    #                                         name_prefix='rl_model'))
     tensorboard_log_dir = os.path.join(output_dir, 'tensorboard')
     model = ppo_imitation.PPOImitation(
         policy=imitation_policies.ImitationPolicy,
         env=env,
-        gamma=0.95,
+        gamma=0.99,
         timesteps_per_actorbatch=timesteps_per_actorbatch,
         clip_param=0.2,
         optim_epochs=1,
