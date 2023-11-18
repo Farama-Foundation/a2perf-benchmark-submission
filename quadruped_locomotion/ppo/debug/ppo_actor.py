@@ -75,7 +75,7 @@ def train(
                 tb_log_name=f'PPO_{str(rank)}')
 
     if rank == 0:
-        model.save("final_ppo_policy")
+      model.save(os.path.join(output_dir, "final_ppo_policy"))
 
 
 if __name__ == '__main__':

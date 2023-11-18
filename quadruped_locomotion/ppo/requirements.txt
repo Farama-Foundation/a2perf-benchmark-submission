@@ -1,1 +1,1 @@
--e rl_perf/rlperf_benchmark_submission/quadruped_locomotion/stable-baselines-compat
+-e rl_perf/rlperf_benchmark_submission/quadruped_locomotion/ppo/stable-baselines-compat
