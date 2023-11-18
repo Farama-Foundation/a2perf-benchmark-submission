@@ -6,7 +6,7 @@ for name in list(flags.FLAGS):
 
 import os
 import numpy as np
-import gym
+import gymnasium
 import tensorflow as tf
 from absl import app
 from tf_agents.train.utils import spec_utils, train_utils, strategy_utils
