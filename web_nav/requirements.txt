@@ -1,4 +1,0 @@
--e rl_perf/rlperf_benchmark_submission/web_nav/sonnet
-regex
-tf-agents[reverb]==0.18.0
-wrapt==1.14.1
