@@ -28,7 +28,7 @@ from environment_module import observation_extractor
 from environment_module import placement_util
 from environment_module import plc_client
 import gin
-import gym
+import gymnasium
 import numpy as np
 import tensorflow as tf
 from tf_agents.environments import suite_gym

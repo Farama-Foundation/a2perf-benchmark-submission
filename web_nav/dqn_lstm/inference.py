@@ -1,6 +1,10 @@
 import os
 
+<<<<<<< HEAD
 import gymnasium as gym
+=======
+import gymnasium
+>>>>>>> origin/quad_integration
 import numpy as np
 import tensorflow as tf
 from tf_agents.agents.dqn import dqn_agent

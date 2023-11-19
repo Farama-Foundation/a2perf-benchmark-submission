@@ -17,7 +17,7 @@
 from typing import Dict, List, Optional, Text, Tuple, Union
 
 import gin
-import gym
+import gymnasium
 import numpy as np
 import tensorflow as tf
 
