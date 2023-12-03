@@ -1,4 +1,4 @@
--e rl_perf/rlperf_benchmark_submission/web_nav/debug/sonnet-debug
+rl_perf/rlperf_benchmark_submission/web_nav/sonnet
 tensorflow
 tf-agents[reverb]
 gymnasium

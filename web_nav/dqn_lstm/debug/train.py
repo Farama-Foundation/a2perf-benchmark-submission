@@ -23,8 +23,8 @@ from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
-from rl_perf.domains.web_nav.CoDE import q_networks
-from rl_perf.domains.web_nav.CoDE import vocabulary_node
+from rl_perf.domains.web_nav.gwob.CoDE import q_networks
+from rl_perf.domains.web_nav.gwob.CoDE import vocabulary_node
 
 OPTIM_BATCHSIZE = 32
 TIMESTEPS_PER_ACTORBATCH = 256
@@ -152,11 +152,13 @@ def train_eval(
                              global_vocab=global_vocab,
                              env_args=env_args) for i
           in range(environment_batch_size)]
+  eval_env_args= env_args.copy()
+  eval_env_args.update(dict(cyclic_action_penalty=0.0, timestep_penalty=0.0,))
   eval_env = tf_agents.environments.ParallelPyEnvironment(
       [lambda: create_env(seed + environment_batch_size, env_name=env_name,
                           difficulty=difficulty,
                           global_vocab=global_vocab,
-                          env_args=env_args)])
+                          env_args=eval_env_args)])
   eval_tf_env = tf_py_environment.TFPyEnvironment(eval_env)
   parallel_py_env = tf_agents.environments.ParallelPyEnvironment(envs,
                                                                  blocking=True,
