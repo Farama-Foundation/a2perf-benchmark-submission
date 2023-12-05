@@ -23,31 +23,11 @@ from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
-from rl_perf.domains.web_nav.gwob.CoDE import ppo_networks
+from rl_perf.domains.web_nav.gwob.CoDE import networks
 from rl_perf.domains.web_nav.gwob.CoDE import vocabulary_node
 
 OPTIM_BATCHSIZE = 32
 TIMESTEPS_PER_ACTORBATCH = 256
-
-
-class PPOLSTM(network.Network):
-  def __init__(
-      self,
-      observation_spec,
-      action_spec,
-      state_spec=(),
-      name='PPOLSTM',
-      **kwargs,
-  ):
-    super().__init__(
-        input_tensor_spec=observation_spec, state_spec=state_spec, name=name
-    )
-    self._action_spec = action_spec
-    self._lstm = ppo_networks.PPOWebLSTM(**kwargs)
-
-  def call(self, observation, step_type=None, network_state=(), training=False):
-    logits, _ = self._lstm(observation, is_training=training)
-    return logits, network_state
 
 
 def remove_config_lines(config_string, key):
@@ -70,6 +50,48 @@ def create_env(env_seed: int, env_name='CartPole-v0', difficulty=None,
   )
 
 
+class PPOLSTMActor(network.DistributionNetwork):
+  """Creates an actor network."""
+
+  def __init__(self,
+      observation_spec,
+      action_spec,
+      state_spec=(),
+      name='PPOLSTMActor', **kwargs):
+    super(PPOLSTMActor, self).__init__(
+        input_tensor_spec=observation_spec,
+        state_spec=state_spec,
+        output_spec=action_spec,
+        name=name)
+    self.lstm = networks.WebLSTMActor(**kwargs)
+
+  def call(self, observation, step_type=None, network_state=(), training=False):
+    logits, _ = self.lstm(observation, is_training=training)
+    return logits, network_state
+
+
+class PPOLSTMCritic(network.Network):
+  """Creates a critic network."""
+
+  def __init__(
+      self,
+      observation_spec,
+      action_spec,
+      state_spec=(),
+      name='PPOLSMTCritic',
+      **kwargs,
+  ):
+    super().__init__(
+        input_tensor_spec=observation_spec, state_spec=state_spec, name=name
+    )
+    self._action_spec = action_spec
+    self.lstm = networks.WebLSTMCritic(**kwargs)
+
+  def call(self, observation, step_type=None, network_state=(), training=False):
+    value_estimate, _ = self.lstm(observation, is_training=training)
+    return value_estimate, network_state
+
+
 @gin.configurable
 def train_eval(
     root_dir,
@@ -77,32 +99,22 @@ def train_eval(
     difficulty=None,
     num_iterations=100000,
     # Params for collect
-    initial_collect_steps=5,
     collect_steps_per_iteration=1,
-    epsilon_greedy=0.05,
     max_vocab_size=500,
-    replay_buffer_capacity=100000,
-    # Params for target update
-    target_update_tau=0.05,
-    target_update_period=5000,
     # Params for train
     train_steps_per_iteration=1,
     batch_size=32,
     environment_batch_size=1,
     learning_rate=1e-4,
-    n_step_update=1,
     gamma=0.99,
     reward_scale_factor=1.0,
     gradient_clipping=None,
     use_tf_functions=True,
-    # Params for eval
-    num_eval_episodes=10,
-    eval_interval=1000,
     # Params for checkpoints
     train_checkpoint_interval=10000,
     policy_checkpoint_interval=5000,
-    rb_checkpoint_interval=20000,
     # Params for summaries and logging
+    num_eval_episodes=10,
     log_interval=1000,
     summary_interval=1000,
     summaries_flush_secs=10,
@@ -166,8 +178,9 @@ def train_eval(
   observation_spec = time_step_spec.observation
   action_spec = tf_env.action_spec()
 
-  with tf.name_scope('DQNAgent'):
-    q_net = DQNLSTM(
+  with tf.name_scope('PPOAgent'):
+
+    actor_net = PPOLSTMActor(
         observation_spec=observation_spec,
         action_spec=action_spec,
         state_spec=(),
@@ -175,155 +188,144 @@ def train_eval(
         if max_vocab_size is not None
         else tf_env.pyenv.envs[0].env.local_vocab.max_vocabulary_size,
         profile_value_dropout=0.0,
-        q_min=None,
-        q_max=None,
         embedding_dim=100,
-        name='q_network',
+        name='actor',
         latent_dim=50,
-        return_state_value=True,
     )
-    tf_agent = dqn_agent.DqnAgent(
+    critic_net = PPOLSTMCritic(
+        observation_spec=observation_spec,
+        action_spec=action_spec,
+        embedder=actor_net.lstm.embedder,
+        dom_element_encoder=actor_net.lstm.dom_element_encoder,
+        dom_encoder=actor_net.lstm.dom_encoder,
+        profile_encoder=actor_net.lstm.profile_encoder,
+        fw_bs_encoder=actor_net.lstm.fw_bs_encoder,
+        dom_encoder_bw=actor_net.lstm.dom_encoder_bw,
+        vocab_size=max_vocab_size
+        if max_vocab_size is not None
+        else tf_env.pyenv.envs[0].env.local_vocab.max_vocabulary_size,
+        profile_value_dropout=0.0,
+        embedding_dim=100,
+        name='actor',
+        latent_dim=50,
+    )
+
+    tf_agent = ppo_agent.PPOAgent(
         time_step_spec=time_step_spec,
         action_spec=action_spec,
-        q_network=q_net,
-        epsilon_greedy=epsilon_greedy,
-        n_step_update=n_step_update,
-        target_update_tau=target_update_tau,
-        target_update_period=target_update_period,
-        optimizer=tf.compat.v1.train.AdamOptimizer(
-            learning_rate=learning_rate
-        ),
-        td_errors_loss_fn=common.element_wise_huber_loss,
-        gamma=gamma,
-        reward_scale_factor=reward_scale_factor,
-        gradient_clipping=gradient_clipping,
-        debug_summaries=debug_summaries,
+        optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate, ),
+        actor_net=actor_net,  # Optional, default is None
+        value_net=critic_net,  # Optional, default is None
+        greedy_eval=True,  # Optional, default is True
+        importance_ratio_clipping=0.0,  # Optional, default is 0.0
+        lambda_value=0.95,  # Optional, default is 0.95
+        discount_factor=gamma,  # Optional, default is 0.99
+        entropy_regularization=0.0,  # Optional, default is 0.0
+        policy_l2_reg=0.0,  # Optional, default is 0.0
+        value_function_l2_reg=0.0,  # Optional, default is 0.0
+        shared_vars_l2_reg=0.0,  # Optional, default is 0.0
+        value_pred_loss_coef=0.5,  # Optional, default is 0.5
+        num_epochs=1,  # Optional, default is 25
+        use_gae=False,  # Optional, default is False
+        use_td_lambda_return=False,  # Optional, default is False
+        normalize_rewards=True,  # Optional, default is True
+        reward_norm_clipping=10.0,  # Optional, default is 10.0
+        normalize_observations=True,  # Optional, default is True
+        log_prob_clipping=0.0,  # Optional, default is 0.0
+        kl_cutoff_factor=2.0,  # Optional, default is 2.0
+        kl_cutoff_coef=1000.0,  # Optional, default is 1000.0
+        initial_adaptive_kl_beta=1.0,  # Optional, default is 1.0
+        adaptive_kl_target=0.01,  # Optional, default is 0.01
+        adaptive_kl_tolerance=0.3,  # Optional, default is 0.3
+        gradient_clipping=gradient_clipping,  # Optional, default is None
+        value_clipping=None,  # Optional, default is None
+        check_numerics=False,  # Optional, default is False
+        compute_value_and_advantage_in_train=True,  # Optional, default is True
+        update_normalizers_in_train=True,  # Optional, default is True
+        aggregate_losses_across_replicas=True,  # Optional, default is True
+        debug_summaries=debug_summaries,  # Optional, default is False
         summarize_grads_and_vars=summarize_grads_and_vars,
-        train_step_counter=global_step,
-        name='dqn_agent',
+        # Optional, default is False
+        train_step_counter=global_step,  # Optional, default is None
+        name='PPOAgent',  # Optional, default is 'PPOAgent'
     )
+
     tf_agent.initialize()
 
-  # Make the replay buffer.
-  replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
-      data_spec=tf_agent.collect_data_spec,
-      batch_size=tf_env.batch_size,
-      max_length=replay_buffer_capacity,
-      device='/cpu:*',
-  )
-  replay_observer = [replay_buffer.add_batch]
+    train_metrics = [
+        tf_metrics.NumberOfEpisodes(),
+        tf_metrics.EnvironmentSteps(),
+        tf_metrics.AverageReturnMetric(
+            buffer_size=10, batch_size=tf_env.batch_size
+        ),
+        tf_metrics.AverageEpisodeLengthMetric(
+            buffer_size=10, batch_size=tf_env.batch_size
+        ),
+    ]
 
-  train_metrics = [
-      tf_metrics.NumberOfEpisodes(),
-      tf_metrics.EnvironmentSteps(),
-      tf_metrics.AverageReturnMetric(
-          buffer_size=num_eval_episodes, batch_size=tf_env.batch_size
-      ),
-      tf_metrics.AverageEpisodeLengthMetric(
-          buffer_size=num_eval_episodes, batch_size=tf_env.batch_size
-      ),
-  ]
+    eval_policy = greedy_policy.GreedyPolicy(tf_agent.policy)
+    collect_policy = tf_agent.collect_policy
 
-  eval_policy = greedy_policy.GreedyPolicy(tf_agent.policy)
-  initial_collect_policy = random_tf_policy.RandomTFPolicy(
-      tf_env.time_step_spec(), tf_env.action_spec()
-  )
-  collect_policy = tf_agent.collect_policy
+    train_checkpointer = common.Checkpointer(
+        ckpt_dir=os.path.join(train_dir, 'train'),
+        agent=tf_agent,
+        global_step=global_step,
+        metrics=metric_utils.MetricsGroup(train_metrics, 'train_metrics'),
+    )
+    policy_checkpointer = common.Checkpointer(
+        ckpt_dir=os.path.join(train_dir, 'policy'),
+        policy=eval_policy,
+        global_step=global_step,
+    )
 
-  train_checkpointer = common.Checkpointer(
-      ckpt_dir=os.path.join(train_dir, 'train'),
-      agent=tf_agent,
-      global_step=global_step,
-      metrics=metric_utils.MetricsGroup(train_metrics, 'train_metrics'),
-  )
-  policy_checkpointer = common.Checkpointer(
-      ckpt_dir=os.path.join(train_dir, 'policy'),
-      policy=eval_policy,
-      global_step=global_step,
-  )
-  rb_checkpointer = common.Checkpointer(
-      ckpt_dir=os.path.join(train_dir, 'replay_buffer'),
-      max_to_keep=1,
-      replay_buffer=replay_buffer,
-  )
+    train_checkpointer.initialize_or_restore()
 
-  train_checkpointer.initialize_or_restore()
-  rb_checkpointer.initialize_or_restore()
+    collect_driver = dynamic_step_driver.DynamicStepDriver(
+        tf_env,
+        collect_policy,
+        observers=train_metrics,
+        num_steps=collect_steps_per_iteration,
+    )
 
-  initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
-      tf_env,
-      initial_collect_policy,
-      observers=replay_observer + train_metrics,
-      num_steps=initial_collect_steps,
-  )
-
-  collect_driver = dynamic_step_driver.DynamicStepDriver(
-      tf_env,
-      collect_policy,
-      observers=replay_observer + train_metrics,
-      num_steps=collect_steps_per_iteration,
-  )
-
-  if use_tf_functions:
-    initial_collect_driver.run = common.function(initial_collect_driver.run)
-    collect_driver.run = common.function(collect_driver.run)
+    if use_tf_functions:
+      collect_driver.run = common.function(collect_driver.run)
     tf_agent.train = common.function(tf_agent.train)
 
-  if replay_buffer.num_frames() == 0:
-    # Collect initial replay data.
-    absl.logging.info(
-        'Initializing replay buffer by collecting experience for %d steps '
-        'with a random policy.',
-        initial_collect_steps,
+    # Compute eval metrics once at the beginning of training
+    results = metric_utils.eager_compute(
+        eval_metrics,
+        eval_tf_env,
+        eval_policy,
+        num_episodes=10,
+        train_step=global_step,
+        summary_writer=eval_summary_writer,
+        summary_prefix='Metrics',
     )
-    initial_collect_driver.run()
 
-  # Compute eval metrics once at the beginning of training
-  results = metric_utils.eager_compute(
-      eval_metrics,
-      eval_tf_env,
-      eval_policy,
-      num_episodes=num_eval_episodes,
-      train_step=global_step,
-      summary_writer=eval_summary_writer,
-      summary_prefix='Metrics',
-  )
+    # Compute train metrics once at the beginning of training
+    with train_summary_writer.as_default():
+      for train_metric in train_metrics:
+        metric_value = train_metric.result()
+        # Prefix the metric's name with 'Metrics/'
+        metric_name = f"Metrics/{train_metric.name}"
+        tf.summary.scalar(metric_name, metric_value, step=global_step)
+    train_summary_writer.flush()
 
-  # Compute train metrics once at the beginning of training
-  with train_summary_writer.as_default():
-    for train_metric in train_metrics:
-      metric_value = train_metric.result()
-      # Prefix the metric's name with 'Metrics/'
-      metric_name = f"Metrics/{train_metric.name}"
-      tf.summary.scalar(metric_name, metric_value, step=global_step)
-  train_summary_writer.flush()
+    if eval_metrics_callback is not None:
+      eval_metrics_callback(results, global_step.numpy())
+    metric_utils.log_metrics(eval_metrics)
 
-  if eval_metrics_callback is not None:
-    eval_metrics_callback(results, global_step.numpy())
-  metric_utils.log_metrics(eval_metrics)
+    time_step = None
+    policy_state = collect_policy.get_initial_state(tf_env.batch_size)
 
-  time_step = None
-  policy_state = collect_policy.get_initial_state(tf_env.batch_size)
+    timed_at_step = global_step.numpy()
+    time_acc = 0
 
-  timed_at_step = global_step.numpy()
-  time_acc = 0
+    # Prepare replay buffer as dataset with invalid transitions filtered.
+    dataset = None
 
-  # Prepare replay buffer as dataset with invalid transitions filtered.
-  def _filter_invalid_transition(trajectories, _):
-    return ~trajectories.is_boundary()[0]
-
-  dataset = (
-      replay_buffer.as_dataset(sample_batch_size=batch_size,
-                               num_steps=2,
-                               num_parallel_calls=tf.data.AUTOTUNE
-                               )
-      .unbatch()
-      .filter(_filter_invalid_transition)
-      .batch(batch_size)
-      .prefetch(tf.data.AUTOTUNE)
-  )
-  # Dataset generates trajectories with shape [Bx2x...]
-  iterator = iter(dataset)
+    # Dataset generates trajectories with shape [Bx2x...]
+    iterator = iter(dataset)
 
   def train_step():
     experience, _ = next(iterator)
@@ -373,20 +375,20 @@ def train_eval(
           tf.summary.scalar(metric_name, metric_value, step=global_step)
       train_summary_writer.flush()
 
-    if iters_so_far % eval_interval == 0:
-      results = metric_utils.eager_compute(
-          eval_metrics,
-          eval_tf_env,
-          eval_policy,
-          num_episodes=num_eval_episodes,
-          train_step=global_step,
-          summary_writer=eval_summary_writer,
-          summary_prefix='Metrics',
-          use_function=False,
-      )
-      if eval_metrics_callback is not None:
-        eval_metrics_callback(results, global_step)
-      metric_utils.log_metrics(eval_metrics)
+    # if iters_so_far % eval_interval == 0:
+    #   results = metric_utils.eager_compute(
+    #       eval_metrics,
+    #       eval_tf_env,
+    #       eval_policy,
+    #       num_episodes=num_eval_episodes,
+    #       train_step=global_step,
+    #       summary_writer=eval_summary_writer,
+    #       summary_prefix='Metrics',
+    #       use_function=False,
+    #   )
+    #   if eval_metrics_callback is not None:
+    #     eval_metrics_callback(results, global_step)
+    #   metric_utils.log_metrics(eval_metrics)
 
     if iters_so_far % train_checkpoint_interval == 0:
       train_checkpointer.save(global_step=global_step)
@@ -487,8 +489,7 @@ def train_mp(_):
       initial_collect_steps=timesteps_per_actorbatch,
       log_interval=log_interval,
       summary_interval=summary_interval,
-      env_args={'designs': [
-          {'number_of_pages': 1, 'action': [], 'action_page': [], }]}
+      env_args=dict()
   )
 
 
