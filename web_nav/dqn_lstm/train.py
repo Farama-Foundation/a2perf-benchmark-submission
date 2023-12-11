@@ -23,7 +23,7 @@ from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
-from rl_perf.domains.web_nav.gwob.CoDE import q_networks
+from rl_perf.domains.web_nav.gwob.CoDE import networks
 from rl_perf.domains.web_nav.gwob.CoDE import vocabulary_node
 
 OPTIM_BATCHSIZE = 32
@@ -44,7 +44,7 @@ class DQNLSTM(network.Network):
         input_tensor_spec=observation_spec, state_spec=state_spec, name=name
     )
     self._action_spec = action_spec
-    self._lstm = q_networks.DQNWebLSTM(**kwargs)
+    self._lstm = networks.DQNWebLSTM(**kwargs)
 
   def call(self, observation, step_type=None, network_state=(), training=False):
     q_values, _ = self._lstm(observation, is_training=training)
@@ -152,8 +152,8 @@ def train_eval(
                              global_vocab=global_vocab,
                              env_args=env_args) for i
           in range(environment_batch_size)]
-  eval_env_args= env_args.copy()
-  eval_env_args.update(dict(cyclic_action_penalty=0.0, timestep_penalty=0.0,))
+  eval_env_args = env_args.copy()
+  eval_env_args.update(dict(cyclic_action_penalty=0.0, timestep_penalty=0.0, ))
   eval_env = tf_agents.environments.ParallelPyEnvironment(
       [lambda: create_env(seed + environment_batch_size, env_name=env_name,
                           difficulty=difficulty,
@@ -416,9 +416,9 @@ def train_mp(_):
   difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
   eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
   train_checkpoint_interval = int(
-    os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
   policy_checkpoint_interval = int(
-    os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
+      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
   rb_checkpoint_interval = int(os.environ.get('RB_CHECKPOINT_INTERVAL', None))
   rb_capacity = int(os.environ.get('RB_CAPACITY', None))
   log_interval = int(os.environ.get('LOG_INTERVAL', None))

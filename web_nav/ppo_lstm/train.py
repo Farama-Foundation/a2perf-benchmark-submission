@@ -4,9 +4,12 @@ import os
 os.environ['WRAPT_DISABLE_EXTENSIONS'] = '1'
 import random
 import time
-
+import functools
 import absl
 import gin
+from absl import app
+from absl import flags
+from absl import logging
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
@@ -19,15 +22,11 @@ from tf_agents.eval import metric_utils
 from tf_agents.metrics import tf_metrics
 from tf_agents.networks import network
 from tf_agents.policies import greedy_policy
-from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
-
+from tf_agents.networks import actor_distribution_network
 from rl_perf.domains.web_nav.gwob.CoDE import networks
 from rl_perf.domains.web_nav.gwob.CoDE import vocabulary_node
-
-OPTIM_BATCHSIZE = 32
-TIMESTEPS_PER_ACTORBATCH = 256
 
 
 def remove_config_lines(config_string, key):
@@ -50,24 +49,24 @@ def create_env(env_seed: int, env_name='CartPole-v0', difficulty=None,
   )
 
 
-class PPOLSTMActor(network.DistributionNetwork):
+class PPOLSTMActor(actor_distribution_network.ActorDistributionNetwork):
   """Creates an actor network."""
 
-  def __init__(self,
-      observation_spec,
-      action_spec,
-      state_spec=(),
+  def __init__(self, observation_spec, action_spec, state_spec=(),
       name='PPOLSTMActor', **kwargs):
+    # Initialize the parent class
+    self.lstm = networks.WebLSTMActor(**kwargs)
     super(PPOLSTMActor, self).__init__(
         input_tensor_spec=observation_spec,
-        state_spec=state_spec,
-        output_spec=action_spec,
-        name=name)
-    self.lstm = networks.WebLSTMActor(**kwargs)
+        output_tensor_spec=action_spec,
+        preprocessing_layers=None,
 
-  def call(self, observation, step_type=None, network_state=(), training=False):
-    logits, _ = self.lstm(observation, is_training=training)
-    return logits, network_state
+        preprocessing_combiner=self.lstm,
+        fc_layer_params=None,
+        dropout_layer_params=None,
+        activation_fn=tf.keras.activations.relu,
+        kernel_initializer=None,
+        name=name)
 
 
 class PPOLSTMCritic(network.Network):
@@ -88,7 +87,7 @@ class PPOLSTMCritic(network.Network):
     self.lstm = networks.WebLSTMCritic(**kwargs)
 
   def call(self, observation, step_type=None, network_state=(), training=False):
-    value_estimate, _ = self.lstm(observation, is_training=training)
+    value_estimate = self.lstm(observation, is_training=training)
     return value_estimate, network_state
 
 
@@ -104,17 +103,18 @@ def train_eval(
     # Params for train
     train_steps_per_iteration=1,
     batch_size=32,
+    replay_buffer_capacity=1001,
     environment_batch_size=1,
     learning_rate=1e-4,
     gamma=0.99,
     reward_scale_factor=1.0,
     gradient_clipping=None,
-    use_tf_functions=True,
+    use_tf_functions=False,
     # Params for checkpoints
     train_checkpoint_interval=10000,
     policy_checkpoint_interval=5000,
     # Params for summaries and logging
-    num_eval_episodes=10,
+    num_eval_episodes=1,
     log_interval=1000,
     summary_interval=1000,
     summaries_flush_secs=10,
@@ -192,15 +192,19 @@ def train_eval(
         name='actor',
         latent_dim=50,
     )
+    extra_args = dict(fw_bs_encoder=actor_net.lstm._fw_bs_encoder if hasattr(
+        actor_net.lstm, '_fw_bs_encoder') else None,
+                      dom_encoder_bw=actor_net.lstm._dom_encoder_bw if hasattr(
+                          actor_net.lstm, '_dom_encoder_bw') else None)
+    extra_args = {k: v for k, v in extra_args.items() if v is not None}
+
     critic_net = PPOLSTMCritic(
         observation_spec=observation_spec,
         action_spec=action_spec,
-        embedder=actor_net.lstm.embedder,
-        dom_element_encoder=actor_net.lstm.dom_element_encoder,
-        dom_encoder=actor_net.lstm.dom_encoder,
-        profile_encoder=actor_net.lstm.profile_encoder,
-        fw_bs_encoder=actor_net.lstm.fw_bs_encoder,
-        dom_encoder_bw=actor_net.lstm.dom_encoder_bw,
+        embedder=actor_net.lstm._embedder,
+        dom_element_encoder=actor_net.lstm._dom_element_encoder,
+        dom_encoder=actor_net.lstm._dom_encoder,
+        profile_encoder=actor_net.lstm._profile_encoder,
         vocab_size=max_vocab_size
         if max_vocab_size is not None
         else tf_env.pyenv.envs[0].env.local_vocab.max_vocabulary_size,
@@ -208,6 +212,7 @@ def train_eval(
         embedding_dim=100,
         name='actor',
         latent_dim=50,
+        **extra_args
     )
 
     tf_agent = ppo_agent.PPOAgent(
@@ -256,10 +261,10 @@ def train_eval(
         tf_metrics.NumberOfEpisodes(),
         tf_metrics.EnvironmentSteps(),
         tf_metrics.AverageReturnMetric(
-            buffer_size=10, batch_size=tf_env.batch_size
+            buffer_size=num_eval_episodes, batch_size=tf_env.batch_size
         ),
         tf_metrics.AverageEpisodeLengthMetric(
-            buffer_size=10, batch_size=tf_env.batch_size
+            buffer_size=num_eval_episodes, batch_size=tf_env.batch_size
         ),
     ]
 
@@ -280,10 +285,16 @@ def train_eval(
 
     train_checkpointer.initialize_or_restore()
 
+    replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
+        tf_agent.collect_data_spec,
+        batch_size=environment_batch_size,
+        max_length=replay_buffer_capacity,
+    )
+
     collect_driver = dynamic_step_driver.DynamicStepDriver(
         tf_env,
         collect_policy,
-        observers=train_metrics,
+        observers=[replay_buffer.add_batch] + train_metrics,
         num_steps=collect_steps_per_iteration,
     )
 
@@ -296,7 +307,7 @@ def train_eval(
         eval_metrics,
         eval_tf_env,
         eval_policy,
-        num_episodes=10,
+        num_episodes=num_eval_episodes,
         train_step=global_step,
         summary_writer=eval_summary_writer,
         summary_prefix='Metrics',
@@ -322,9 +333,25 @@ def train_eval(
     time_acc = 0
 
     # Prepare replay buffer as dataset with invalid transitions filtered.
-    dataset = None
+    def _filter_invalid_transition(trajectories, _):
+      return ~trajectories.is_boundary()[0]
 
-    # Dataset generates trajectories with shape [Bx2x...]
+    # We'll use replay_buffer.as_dataset but we need it to give us ALL the data
+    # since PPO needs to do multiple passes over the data.
+
+    # dataset = replay_buffer.as_dataset(
+    #     num_parallel_calls=tf.data.AUTOTUNE,
+    #     # sample_batch_size=1,
+    #     # num_steps=2,
+    #     single_deterministic_pass=False,
+    # ).unbatch().filter(_filter_invalid_transition).batch(batch_size).prefetch(
+    #     tf.data.AUTOTUNE
+    # )
+    dataset = replay_buffer.as_dataset(
+        num_parallel_calls=tf.data.AUTOTUNE,
+        sample_batch_size=collect_steps_per_iteration * environment_batch_size,
+        num_steps=1,
+    ).batch(batch_size=32).prefetch(tf.data.AUTOTUNE)
     iterator = iter(dataset)
 
   def train_step():
@@ -375,21 +402,6 @@ def train_eval(
           tf.summary.scalar(metric_name, metric_value, step=global_step)
       train_summary_writer.flush()
 
-    # if iters_so_far % eval_interval == 0:
-    #   results = metric_utils.eager_compute(
-    #       eval_metrics,
-    #       eval_tf_env,
-    #       eval_policy,
-    #       num_episodes=num_eval_episodes,
-    #       train_step=global_step,
-    #       summary_writer=eval_summary_writer,
-    #       summary_prefix='Metrics',
-    #       use_function=False,
-    #   )
-    #   if eval_metrics_callback is not None:
-    #     eval_metrics_callback(results, global_step)
-    #   metric_utils.log_metrics(eval_metrics)
-
     if iters_so_far % train_checkpoint_interval == 0:
       train_checkpointer.save(global_step=global_step)
       tokens = global_vocab.save()
@@ -407,6 +419,9 @@ def train_eval(
 
 
 def train_mp(_):
+  logging.set_verbosity(logging.INFO)
+  tf.compat.v1.enable_v2_behavior()
+
   # Extract environment variables
   seed = int(os.environ.get('SEED', None))
   root_dir = os.environ.get('ROOT_DIR', None)
@@ -437,6 +452,7 @@ def train_mp(_):
   print(f'seed: {seed}')
   print(f'root_dir: {root_dir}')
   print(f'env_batch_size: {env_batch_size}')
+  print(f'batch_size: {batch_size}')
   print(f'total_env_steps: {total_env_steps}')
   print(f'num_iterations: {num_iterations}')
   print(f'difficulty_level: {difficulty_level}')
@@ -478,15 +494,11 @@ def train_mp(_):
       batch_size=batch_size,
       environment_batch_size=env_batch_size,
       train_steps_per_iteration=timesteps_per_actorbatch,
-      replay_buffer_capacity=rb_capacity,
       num_iterations=num_iterations,
       learning_rate=learning_rate,
-      eval_interval=eval_interval,
       collect_steps_per_iteration=timesteps_per_actorbatch,
       train_checkpoint_interval=train_checkpoint_interval,
       policy_checkpoint_interval=policy_checkpoint_interval,
-      rb_checkpoint_interval=rb_checkpoint_interval,
-      initial_collect_steps=timesteps_per_actorbatch,
       log_interval=log_interval,
       summary_interval=summary_interval,
       env_args=dict()
@@ -498,4 +510,6 @@ def train():
 
 
 if __name__ == '__main__':
-  tf_agents.system.multiprocessing.handle_main(train_mp)
+  flags.mark_flag_as_required('root_dir')
+  tf_agents.system.multiprocessing.handle_main(
+      functools.partial(app.run, train_mp))
