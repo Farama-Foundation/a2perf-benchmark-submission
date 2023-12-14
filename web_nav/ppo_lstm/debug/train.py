@@ -40,7 +40,6 @@ import gin
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf  # pylint: disable=g-explicit-tensorflow-version-import
-import tensorflow_probability as tfp
 import tf_agents
 from absl import app
 from absl import logging
@@ -51,210 +50,12 @@ from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
 from tf_agents.metrics import tf_metrics
 from tf_agents.networks import network
-from tf_agents.networks import utils
 from tf_agents.policies import policy_saver
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
-from tf_agents.specs import distribution_spec
-from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
 
 from rl_perf.domains.web_nav.gwob.CoDE import networks
 from rl_perf.domains.web_nav.gwob.CoDE import vocabulary_node
-
-
-def remove_config_lines(config_string, key):
-  lines = config_string.split('\n')
-  lines = [line for line in lines if not line.startswith(key)]
-  return '\n'.join(lines)
-
-
-class LSTMCategoricalProjectionNetwork(network.DistributionNetwork):
-  """Creates a categorical projection network."""
-
-  def __init__(self,
-      sample_spec,
-      name='LSTMCategoricalProjectionNet',
-      lstm_kwargs=None, ) -> None:
-    unique_num_actions = np.unique(sample_spec.maximum - sample_spec.minimum +
-                                   1)
-    if len(unique_num_actions) > 1 or np.any(unique_num_actions <= 0):
-      raise ValueError('Bounds on discrete actions must be the same for all '
-                       'dimensions and have at least 1 action. Projection '
-                       'Network requires num_actions to be equal across '
-                       'action dimensions. Implement a more general '
-                       'categorical projection if you need more flexibility.')
-
-    output_shape = sample_spec.shape.concatenate([int(unique_num_actions)])
-    output_spec = self._output_distribution_spec(output_shape, sample_spec,
-                                                 name)
-
-    super(LSTMCategoricalProjectionNetwork, self).__init__(
-        # We don't need these, but base class requires them.
-        input_tensor_spec=None,
-        state_spec=(),
-        output_spec=output_spec,
-        name=name)
-
-    if not tensor_spec.is_bounded(sample_spec):
-      raise ValueError(
-          'sample_spec must be bounded. Got: %s.' % type(sample_spec))
-
-    if not tensor_spec.is_discrete(sample_spec):
-      raise ValueError('sample_spec must be discrete. Got: %s.' % sample_spec)
-
-    self._sample_spec = sample_spec
-    self._output_shape = output_shape
-    self._projection_layer = networks.WebLSTMActor(**lstm_kwargs,
-                                                   name='web_lstm_projection')
-
-  def _output_distribution_spec(self, output_shape, sample_spec, network_name):
-    input_param_spec = {
-        'logits':
-          tensor_spec.TensorSpec(
-              shape=output_shape,
-              dtype=tf.float32,
-              name=network_name + '_logits')
-    }
-
-    return distribution_spec.DistributionSpec(
-        tfp.distributions.Categorical,
-        input_param_spec,
-        sample_spec=sample_spec,
-        dtype=sample_spec.dtype)
-
-  def call(self, inputs, outer_rank, training=False, mask=None):
-    # outer_rank is needed because the projection is not done on the raw
-    # observations so getting the outer rank is hard as there is no spec to
-    # compare to.
-    batch_squash = utils.BatchSquash(outer_rank)
-
-    # Our input is a dictionary, so we need to nest map batch_squash
-    inputs = tf.nest.map_structure(batch_squash.flatten, inputs)
-
-    logits = self._projection_layer(inputs, training=training)
-    logits = tf.reshape(logits, [-1] + self._output_shape.as_list())
-
-    # After squashing the batch, we need to put the batch dimension back in
-    logits = tf.nest.map_structure(batch_squash.unflatten, logits)
-
-    if mask is not None:
-      # If the action spec says each action should be shaped (1,), add another
-      # dimension so the final shape is (B, 1, A), where A is the number of
-      # actions. This will make Categorical emit events shaped (B, 1) rather
-      # than (B,). Using axis -2 to allow for (B, T, 1, A) shaped q_values.
-      if mask.shape.rank < logits.shape.rank:
-        mask = tf.expand_dims(mask, -2)
-
-      # Overwrite the logits for invalid actions to a very large negative
-      # number. We do not use -inf because it produces NaNs in many tfp
-      # functions.
-      almost_neg_inf = tf.constant(logits.dtype.min, dtype=logits.dtype)
-      logits = tf.compat.v2.where(
-          tf.cast(mask, tf.bool), logits, almost_neg_inf)
-
-    return self.output_spec.build_distribution(logits=logits), ()
-
-
-class PPOLSTMActor(network.DistributionNetwork):
-
-  def __init__(self,
-      input_tensor_spec,
-      output_tensor_spec,
-      batch_squash=True,
-      name='ActorDistributionNetwork',
-      lstm_kwargs=None):
-    lstm_projection_net = functools.partial(LSTMCategoricalProjectionNetwork,
-                                            lstm_kwargs=lstm_kwargs)
-    self._batch_squash = batch_squash
-
-    def map_proj(spec):
-      return lstm_projection_net(spec)
-
-    projection_networks = tf.nest.map_structure(map_proj, output_tensor_spec)
-    output_spec = tf.nest.map_structure(lambda proj_net: proj_net.output_spec,
-                                        projection_networks)
-
-    super(PPOLSTMActor, self).__init__(
-        input_tensor_spec=input_tensor_spec,
-        state_spec=(),
-        output_spec=output_spec,
-        name=name)
-
-    self._projection_networks = projection_networks
-    self._output_tensor_spec = output_tensor_spec
-
-  @property
-  def output_tensor_spec(self):
-    return self._output_tensor_spec
-
-  def call(self,
-      observation,
-      step_type,
-      network_state,
-      training=False,
-      mask=None):
-    batch_squash = None
-    # if self._batch_squash:
-    #   outer_rank = tf_agents.utils.nest_utils.get_outer_rank(
-    #       observation, self.input_tensor_spec)
-    #   batch_squash = tf_agents.networks.utils.BatchSquash(outer_rank)
-    #   state = tf.nest.map_structure(batch_squash.flatten, observation)
-
-    outer_rank = tf_agents.utils.nest_utils.get_outer_rank(
-        observation, self.input_tensor_spec)
-
-    def call_projection_net(proj_net):
-      distribution, _ = proj_net(
-          observation, outer_rank, training=training, mask=mask)
-      return distribution
-
-    output_actions = tf.nest.map_structure(
-        call_projection_net, self._projection_networks)
-
-    return output_actions, network_state
-
-
-class PPOLSTMValue(network.Network):
-  """Feed Forward value network. Reduces to 1 value output per batch item."""
-
-  def __init__(self,
-      input_tensor_spec,
-      batch_squash=True,
-      state_spec=(),
-      name='PPOLSTMValue', **kwargs):
-    super(PPOLSTMValue, self).__init__(
-        input_tensor_spec=input_tensor_spec,
-        state_spec=state_spec,
-        name=name)
-    self._batch_squash = batch_squash
-    self._lstm = networks.WebLSTMActor(**kwargs)
-    self._postprocessing_layers = tf.keras.layers.Dense(
-        1,
-        activation=None,
-        kernel_initializer=tf.random_uniform_initializer(
-            minval=-0.03, maxval=0.03))
-
-  def call(self, observation, step_type=None, network_state=(), training=False):
-    batch_squash = None
-    if self._batch_squash:
-      outer_rank = tf_agents.utils.nest_utils.get_outer_rank(
-          observation, self.input_tensor_spec)
-      batch_squash = tf_agents.networks.utils.BatchSquash(outer_rank)
-      observation = tf.nest.map_structure(batch_squash.flatten, observation)
-
-    # Pass input through LSTM
-    state = self._lstm(observation=observation,
-                       training=training,
-                       )
-
-    # Get the value prediction for each observation
-    output_value = tf.nest.map_structure(self._postprocessing_layers, state)
-    output_value = tf.squeeze(output_value, -1)
-
-    # After squashing the batch, we need to put the batch dimension back in
-    if batch_squash is not None:
-      output_value = tf.nest.map_structure(batch_squash.unflatten, output_value)
-    return output_value, network_state
 
 
 def create_env(env_seed: int, env_name='CartPole-v0', difficulty=None,
@@ -355,16 +156,16 @@ def train_eval(
                           env_args=eval_env_args)])
   eval_tf_env = tf_py_environment.TFPyEnvironment(eval_env)
   parallel_py_env = tf_agents.environments.ParallelPyEnvironment(envs,
-                                                                 blocking=True,
+                                                                 blocking=False,
                                                                  start_serially=True,
-                                                                 flatten=True)
+                                                                 flatten=False)
   tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
   time_step_spec = tf_env.time_step_spec()
   observation_spec = time_step_spec.observation
   action_spec = tf_env.action_spec()
 
   with tf.name_scope('Actor'):
-    actor_net = PPOLSTMActor(
+    actor_net = networks.WebLSTMActorDistributionNetwork(
         input_tensor_spec=observation_spec,
         output_tensor_spec=action_spec,
         name='actor',
@@ -379,7 +180,7 @@ def train_eval(
 
   # state spec must be defined so that it can be used to reshape our value predictions to [B, T, 1]
   with tf.name_scope('Value'):
-    critic_net = PPOLSTMValue(
+    critic_net = networks.WebLSTMValueNetwork(
         input_tensor_spec=observation_spec,
         batch_squash=True,
         state_spec=tf.TensorSpec([1]),
@@ -391,8 +192,8 @@ def train_eval(
         embedding_dim=100,
         name='value',
         latent_dim=50,
-        # **extra_args
     )
+
   with tf.name_scope('PPOAgent'):
     tf_agent = ppo_clip_agent.PPOClipAgent(
         time_step_spec=time_step_spec,
@@ -605,9 +406,18 @@ def train_mp(_):
       train_checkpoint_interval=train_checkpoint_interval,
       policy_checkpoint_interval=policy_checkpoint_interval,
       log_interval=log_interval,
+      eval_interval=eval_interval,
       summary_interval=summary_interval,
-      env_args={'designs': [
-          {'number_of_pages': 1, 'action': [], 'action_page': [], }]}
+      env_args=dict(designs=[
+          {'number_of_pages': 1, 'action': [], 'action_page': [], }],
+          kwargs_dict=dict(
+              threading=False,
+              chrome_options={
+                  # '--headless',
+                  '--no-sandbox'
+              }
+          )
+      )
   )
 
 

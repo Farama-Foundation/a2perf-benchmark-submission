@@ -43,8 +43,6 @@ def train():
 
   dataset = minari.load_dataset(dataset_id=dataset_id, download=False)
 
-  import tensorflow as tf
-
   def episode_generator():
     for episode in dataset:
       step_data = (episode.observations, episode.actions)
@@ -81,7 +79,6 @@ def train():
     next_element = iterator.get_next()
 
   model.pretrain(next_element, n_epochs=1000)
-  wxyz = 2
 
 
 def main(_):
