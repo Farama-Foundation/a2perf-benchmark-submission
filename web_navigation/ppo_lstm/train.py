@@ -31,6 +31,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import json
 import multiprocessing as mp
 import os
 import random
@@ -40,7 +41,6 @@ import gin
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf  # pylint: disable=g-explicit-tensorflow-version-import
-import tensorflow_probability as tfp
 import tf_agents
 from absl import app
 from absl import logging
@@ -50,211 +50,12 @@ from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
 from tf_agents.metrics import tf_metrics
-from tf_agents.networks import network
-from tf_agents.networks import utils
 from tf_agents.policies import policy_saver
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
-from tf_agents.specs import distribution_spec
-from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
 
-from rl_perf.domains.web_nav.gwob.CoDE import networks
-from rl_perf.domains.web_nav.gwob.CoDE import vocabulary_node
-
-
-def remove_config_lines(config_string, key):
-  lines = config_string.split('\n')
-  lines = [line for line in lines if not line.startswith(key)]
-  return '\n'.join(lines)
-
-
-class LSTMCategoricalProjectionNetwork(network.DistributionNetwork):
-  """Creates a categorical projection network."""
-
-  def __init__(self,
-      sample_spec,
-      name='LSTMCategoricalProjectionNet',
-      lstm_kwargs=None, ) -> None:
-    unique_num_actions = np.unique(sample_spec.maximum - sample_spec.minimum +
-                                   1)
-    if len(unique_num_actions) > 1 or np.any(unique_num_actions <= 0):
-      raise ValueError('Bounds on discrete actions must be the same for all '
-                       'dimensions and have at least 1 action. Projection '
-                       'Network requires num_actions to be equal across '
-                       'action dimensions. Implement a more general '
-                       'categorical projection if you need more flexibility.')
-
-    output_shape = sample_spec.shape.concatenate([int(unique_num_actions)])
-    output_spec = self._output_distribution_spec(output_shape, sample_spec,
-                                                 name)
-
-    super(LSTMCategoricalProjectionNetwork, self).__init__(
-        # We don't need these, but base class requires them.
-        input_tensor_spec=None,
-        state_spec=(),
-        output_spec=output_spec,
-        name=name)
-
-    if not tensor_spec.is_bounded(sample_spec):
-      raise ValueError(
-          'sample_spec must be bounded. Got: %s.' % type(sample_spec))
-
-    if not tensor_spec.is_discrete(sample_spec):
-      raise ValueError('sample_spec must be discrete. Got: %s.' % sample_spec)
-
-    self._sample_spec = sample_spec
-    self._output_shape = output_shape
-    self._projection_layer = networks.WebLSTMActor(**lstm_kwargs,
-                                                   name='web_lstm_projection')
-
-  def _output_distribution_spec(self, output_shape, sample_spec, network_name):
-    input_param_spec = {
-        'logits':
-          tensor_spec.TensorSpec(
-              shape=output_shape,
-              dtype=tf.float32,
-              name=network_name + '_logits')
-    }
-
-    return distribution_spec.DistributionSpec(
-        tfp.distributions.Categorical,
-        input_param_spec,
-        sample_spec=sample_spec,
-        dtype=sample_spec.dtype)
-
-  def call(self, inputs, outer_rank, training=False, mask=None):
-    # outer_rank is needed because the projection is not done on the raw
-    # observations so getting the outer rank is hard as there is no spec to
-    # compare to.
-    batch_squash = utils.BatchSquash(outer_rank)
-
-    # Our input is a dictionary, so we need to nest map batch_squash
-    inputs = tf.nest.map_structure(batch_squash.flatten, inputs)
-
-    logits = self._projection_layer(inputs, training=training)
-    logits = tf.reshape(logits, [-1] + self._output_shape.as_list())
-
-    # After squashing the batch, we need to put the batch dimension back in
-    logits = tf.nest.map_structure(batch_squash.unflatten, logits)
-
-    if mask is not None:
-      # If the action spec says each action should be shaped (1,), add another
-      # dimension so the final shape is (B, 1, A), where A is the number of
-      # actions. This will make Categorical emit events shaped (B, 1) rather
-      # than (B,). Using axis -2 to allow for (B, T, 1, A) shaped q_values.
-      if mask.shape.rank < logits.shape.rank:
-        mask = tf.expand_dims(mask, -2)
-
-      # Overwrite the logits for invalid actions to a very large negative
-      # number. We do not use -inf because it produces NaNs in many tfp
-      # functions.
-      almost_neg_inf = tf.constant(logits.dtype.min, dtype=logits.dtype)
-      logits = tf.compat.v2.where(
-          tf.cast(mask, tf.bool), logits, almost_neg_inf)
-
-    return self.output_spec.build_distribution(logits=logits), ()
-
-
-class PPOLSTMActor(network.DistributionNetwork):
-
-  def __init__(self,
-      input_tensor_spec,
-      output_tensor_spec,
-      batch_squash=True,
-      name='ActorDistributionNetwork',
-      lstm_kwargs=None):
-    lstm_projection_net = functools.partial(LSTMCategoricalProjectionNetwork,
-                                            lstm_kwargs=lstm_kwargs)
-    self._batch_squash = batch_squash
-
-    def map_proj(spec):
-      return lstm_projection_net(spec)
-
-    projection_networks = tf.nest.map_structure(map_proj, output_tensor_spec)
-    output_spec = tf.nest.map_structure(lambda proj_net: proj_net.output_spec,
-                                        projection_networks)
-
-    super(PPOLSTMActor, self).__init__(
-        input_tensor_spec=input_tensor_spec,
-        state_spec=(),
-        output_spec=output_spec,
-        name=name)
-
-    self._projection_networks = projection_networks
-    self._output_tensor_spec = output_tensor_spec
-
-  @property
-  def output_tensor_spec(self):
-    return self._output_tensor_spec
-
-  def call(self,
-      observation,
-      step_type,
-      network_state,
-      training=False,
-      mask=None):
-    batch_squash = None
-    # if self._batch_squash:
-    #   outer_rank = tf_agents.utils.nest_utils.get_outer_rank(
-    #       observation, self.input_tensor_spec)
-    #   batch_squash = tf_agents.networks.utils.BatchSquash(outer_rank)
-    #   state = tf.nest.map_structure(batch_squash.flatten, observation)
-
-    outer_rank = tf_agents.utils.nest_utils.get_outer_rank(
-        observation, self.input_tensor_spec)
-
-    def call_projection_net(proj_net):
-      distribution, _ = proj_net(
-          observation, outer_rank, training=training, mask=mask)
-      return distribution
-
-    output_actions = tf.nest.map_structure(
-        call_projection_net, self._projection_networks)
-
-    return output_actions, network_state
-
-
-class PPOLSTMValue(network.Network):
-  """Feed Forward value network. Reduces to 1 value output per batch item."""
-
-  def __init__(self,
-      input_tensor_spec,
-      batch_squash=True,
-      state_spec=(),
-      name='PPOLSTMValue', **kwargs):
-    super(PPOLSTMValue, self).__init__(
-        input_tensor_spec=input_tensor_spec,
-        state_spec=state_spec,
-        name=name)
-    self._batch_squash = batch_squash
-    self._lstm = networks.WebLSTMActor(**kwargs)
-    self._postprocessing_layers = tf.keras.layers.Dense(
-        1,
-        activation=None,
-        kernel_initializer=tf.random_uniform_initializer(
-            minval=-0.03, maxval=0.03))
-
-  def call(self, observation, step_type=None, network_state=(), training=False):
-    batch_squash = None
-    if self._batch_squash:
-      outer_rank = tf_agents.utils.nest_utils.get_outer_rank(
-          observation, self.input_tensor_spec)
-      batch_squash = tf_agents.networks.utils.BatchSquash(outer_rank)
-      observation = tf.nest.map_structure(batch_squash.flatten, observation)
-
-    # Pass input through LSTM
-    state = self._lstm(observation=observation,
-                       training=training,
-                       )
-
-    # Get the value prediction for each observation
-    output_value = tf.nest.map_structure(self._postprocessing_layers, state)
-    output_value = tf.squeeze(output_value, -1)
-
-    # After squashing the batch, we need to put the batch dimension back in
-    if batch_squash is not None:
-      output_value = tf.nest.map_structure(batch_squash.unflatten, output_value)
-    return output_value, network_state
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 
 def create_env(env_seed: int, env_name='CartPole-v0', difficulty=None,
@@ -269,6 +70,10 @@ def create_env(env_seed: int, env_name='CartPole-v0', difficulty=None,
           **env_args,  # Add env_args to the gym_kwargs dictionary
       },
   )
+
+
+def load_vocab(vocab_path):
+  return json.load(open(vocab_path, 'r'))
 
 
 @gin.configurable
@@ -298,13 +103,10 @@ def train_eval(
     summaries_flush_secs=10,
     debug_summaries=False,
     summarize_grads_and_vars=False,
-    num_epochs=1,
     env_args=None,
     seed=0,
 ):
   """A simple train and eval for PPO."""
-
-  print('IOU: Starting the training script. Print')
   tf.random.set_seed(seed)
   np.random.seed(seed)
   random.seed(seed)
@@ -312,7 +114,6 @@ def train_eval(
   root_dir = os.path.expanduser(root_dir)
   train_dir = os.path.join(root_dir, 'train')
   summary_dir = os.path.join(root_dir, 'summaries')
-  policies_dir = os.path.join(root_dir, 'policies')
 
   train_summary_writer = tf.summary.create_file_writer(
       logdir=os.path.join(summary_dir, 'train'),
@@ -337,11 +138,9 @@ def train_eval(
   ]
   global_step = tf.compat.v1.train.get_or_create_global_step()
   manager = mp.Manager()
-  lock = manager.Lock()
-  global_vocab = (
-      vocabulary_node.LockedVocabulary(max_vocabulary_size=max_vocab_size,
-                                       multiprocessing_lock=lock)
-  )
+  global_vocab = vocabulary_node.LockedVocabulary(
+      max_vocabulary_size=max_vocab_size,
+      multiprocessing_manager=manager, )
   envs = [lambda: create_env(seed + i, env_name=env_name, difficulty=difficulty,
                              global_vocab=global_vocab,
                              env_args=env_args) for i
@@ -355,16 +154,16 @@ def train_eval(
                           env_args=eval_env_args)])
   eval_tf_env = tf_py_environment.TFPyEnvironment(eval_env)
   parallel_py_env = tf_agents.environments.ParallelPyEnvironment(envs,
-                                                                 blocking=True,
+                                                                 blocking=False,
                                                                  start_serially=True,
-                                                                 flatten=True)
+                                                                 flatten=False)
   tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
   time_step_spec = tf_env.time_step_spec()
   observation_spec = time_step_spec.observation
   action_spec = tf_env.action_spec()
 
   with tf.name_scope('Actor'):
-    actor_net = PPOLSTMActor(
+    actor_net = networks.WebLSTMActorDistributionNetwork(
         input_tensor_spec=observation_spec,
         output_tensor_spec=action_spec,
         name='actor',
@@ -379,7 +178,7 @@ def train_eval(
 
   # state spec must be defined so that it can be used to reshape our value predictions to [B, T, 1]
   with tf.name_scope('Value'):
-    critic_net = PPOLSTMValue(
+    critic_net = networks.WebLSTMValueNetwork(
         input_tensor_spec=observation_spec,
         batch_squash=True,
         state_spec=tf.TensorSpec([1]),
@@ -391,8 +190,8 @@ def train_eval(
         embedding_dim=100,
         name='value',
         latent_dim=50,
-        # **extra_args
     )
+
   with tf.name_scope('PPOAgent'):
     tf_agent = ppo_clip_agent.PPOClipAgent(
         time_step_spec=time_step_spec,
@@ -401,21 +200,22 @@ def train_eval(
         actor_net=actor_net,
         value_net=critic_net,
         gradient_clipping=gradient_clipping,
-        entropy_regularization=0.0,
+        # entropy_regularization=0.1,
+        greedy_eval=False,
         importance_ratio_clipping=0.2,
         normalize_observations=False,
         normalize_rewards=False,
         use_gae=True,
-        num_epochs=num_epochs,
         debug_summaries=debug_summaries,
         summarize_grads_and_vars=summarize_grads_and_vars,
         train_step_counter=global_step,
     )
   tf_agent.initialize()
 
+  environment_steps_metric = tf_metrics.EnvironmentSteps()
   step_metrics = [
       tf_metrics.NumberOfEpisodes(),
-      tf_metrics.EnvironmentSteps()
+      environment_steps_metric,
   ]
 
   train_metrics = step_metrics + [
@@ -445,6 +245,12 @@ def train_eval(
   saved_model_dir = os.path.join(root_dir, 'policies')
   train_checkpointer.initialize_or_restore()
 
+  # Restore the vocab from the corresponding global step
+  vocab_path = os.path.join(root_dir,
+                            f'vocab_{global_step.value().numpy()}.npy')
+  if os.path.exists(vocab_path):
+    global_vocab._local_vocab = load_vocab(vocab_path)
+
   collect_driver = dynamic_step_driver.DynamicStepDriver(
       env=tf_env,
       policy=collect_policy,
@@ -460,24 +266,37 @@ def train_eval(
   if use_tf_functions:
     collect_driver.run = common.function(collect_driver.run, autograph=False)
     tf_agent.train = common.function(tf_agent.train, autograph=False)
-    train_step = common.function(train_step)
-
+  train_step = common.function(train_step)
   time_acc = 0
+  collect_time = 0
+  train_time = 0
   timed_at_step = global_step.value()
   iters_so_far = 0
+  start_time = time.time()
 
+  # Eval once before training.
+  metric_utils.eager_compute(
+      environment=eval_tf_env,
+      policy=eval_policy,
+      num_episodes=num_eval_episodes,
+      train_step=iters_so_far,
+      summary_writer=eval_summary_writer,
+      use_function=True,
+      summary_prefix='Metrics',
+      metrics=eval_metrics,
+  )
+  tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
   while iters_so_far < num_iterations:
-
-    start_time = time.time()
-    collect_time = time.time()
+    start = time.time()
     collect_driver.run()
-    collect_time = time.time() - collect_time
+    collect_time += time.time() - start
 
-    train_time = time.time()
+    start = time.time()
     train_loss = train_step()
-    train_time = time.time() - train_time
+    train_time += time.time() - start
 
-    tf.summary.scalar('iters_so_far', iters_so_far, step=iters_so_far)
+    iters_so_far += 1
+    tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
     global_step_val = global_step.value()
 
     if iters_so_far % log_interval == 0:
@@ -490,52 +309,71 @@ def train_eval(
                           global_step_val.numpy() - timed_at_step.numpy()) / time_acc
       logging.info('%.3f steps/sec', steps_per_sec)
       print('%.3f steps/sec', steps_per_sec)
-      tf.summary.scalar(name='global_steps_per_sec', data=steps_per_sec,
-                        step=iters_so_far
-                        )
+      # Add number of iters per second to the train summary writer
+      with train_summary_writer.as_default():
+        tf.summary.scalar(name='info/global_steps_per_sec', data=steps_per_sec,
+                          step=iters_so_far
+                          )
+        tf.summary.scalar(name='info/collect_time', data=collect_time,
+                          step=iters_so_far
+                          )
+        tf.summary.scalar(name='info/train_time', data=train_time,
+                          step=iters_so_far
+                          )
       print(f'collect_time: {collect_time}')
       print(f'train_time: {train_time}')
 
       timed_at_step = global_step_val
       time_acc = 0
+      collect_time = 0
+      train_time = 0
+      start_time = time.time()
 
     if iters_so_far % summary_interval == 0:
       with train_summary_writer.as_default():
         for train_metric in train_metrics:
           metric_value = train_metric.result()
           metric_name = f"Metrics/{train_metric.name}"
-          tf.summary.scalar(metric_name, metric_value, step=global_step)
+          tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
       train_summary_writer.flush()
 
     if iters_so_far % eval_interval == 0:
+      eval_start_time = time.time()
       metric_utils.eager_compute(
           eval_metrics,
           eval_tf_env,
           eval_policy,
           num_episodes=num_eval_episodes,
-          train_step=global_step,
+          train_step=iters_so_far,
           summary_writer=eval_summary_writer,
           summary_prefix='Metrics',
-          use_function=False,
+          use_function=True,
       )
+      eval_time = time.time() - eval_start_time
+      print(f'eval_time: {eval_time}')
       metric_utils.log_metrics(eval_metrics)
 
     if iters_so_far % train_checkpoint_interval == 0:
       train_checkpointer.save(global_step=global_step_val)
-      tokens = global_vocab.save()
-      np.save(os.path.join(train_dir, f'vocab_{global_step_val}'), tokens)
-
+      train_vocab_save_path = os.path.join(train_dir,
+                                           f'vocab_{global_step_val.numpy()}.npy')
+      json.dump(dict(global_vocab._local_vocab),
+                open(train_vocab_save_path, 'w'))
     if iters_so_far % policy_checkpoint_interval == 0:
-      # Use global step value for checkpoint directory name
       save_location = os.path.join(saved_model_dir, 'policy_' +
-                                   str(global_step_val))
+                                   str(
+                                       environment_steps_metric.result().numpy()))
       saved_model.save(save_location)
-
-    iters_so_far += 1
+      policy_vocab_save_path = os.path.join(saved_model_dir,
+                                            f'vocab_{environment_steps_metric.result().numpy()}.npy')
+      json.dump(dict(global_vocab._local_vocab),
+                open(policy_vocab_save_path, 'w'))
 
   manager.shutdown()
   tf_env.close()
   eval_tf_env.close()
+
+  # Save the final policy and vocabulary
 
 
 def train_mp(_):
@@ -555,7 +393,6 @@ def train_mp(_):
   timesteps_per_actorbatch_param = int(
       os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
   )
-  num_epochs = int(os.environ.get('NUM_EPOCHS', None))
   batched_total_env_steps = total_env_steps // env_batch_size
   timesteps_per_actorbatch = max(
       1, timesteps_per_actorbatch_param // env_batch_size
@@ -598,15 +435,28 @@ def train_mp(_):
       difficulty=difficulty_level,
       environment_batch_size=env_batch_size,
       num_eval_episodes=10,
-      num_epochs=num_epochs,
       optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
       total_env_steps=batched_total_env_steps,
       collect_steps_per_iteration=timesteps_per_actorbatch,
       train_checkpoint_interval=train_checkpoint_interval,
       policy_checkpoint_interval=policy_checkpoint_interval,
       log_interval=log_interval,
+      summarize_grads_and_vars=False,
+      debug_summaries=False,
+      eval_interval=eval_interval,
       summary_interval=summary_interval,
-      env_args=dict())
+      use_tf_functions=False,
+      env_args=dict(
+          kwargs_dict=dict(
+              threading=False,
+              chrome_options={
+                  '--headless',
+                  '--no-sandbox',
+                  '--disable-gpu'
+              }
+          )
+      )
+  )
 
 
 def train():

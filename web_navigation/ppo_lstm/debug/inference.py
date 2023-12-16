@@ -10,7 +10,7 @@ from tf_agents.utils import common
 
 from train import DQNLSTM
 
-from rl_perf.domains.web_nav.CoDE import vocabulary_node
+from a2perf.domains.web_navigation.CoDE import vocabulary_node
 
 
 def load_model():

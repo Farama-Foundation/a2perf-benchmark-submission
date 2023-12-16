@@ -10,7 +10,7 @@ from mpi4py import MPI
 from stable_baselines.common.noise import OrnsteinUhlenbeckActionNoise, NormalActionNoise
 from stable_baselines.ddpg.policies import MlpPolicy
 
-from rl_perf.domains import quadruped_locomotion
+from a2perf.domains import quadruped_locomotion
 from ddpg_imitation import DDPGImitation
 
 

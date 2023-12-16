@@ -10,7 +10,7 @@ from mpi4py import MPI
 from stable_baselines.common.noise import OrnsteinUhlenbeckActionNoise, NormalActionNoise
 from stable_baselines.ddpg.policies import MlpPolicy
 
-from rl_perf.domains import quadruped_locomotion
+from a2perf.domains import quadruped_locomotion
 from ddpg_imitation import DDPGImitation
 
 TIMESTEPS_PER_ACTORBATCH = 4096
@@ -122,7 +122,7 @@ if __name__ == '__main__':
     arg_parser.add_argument("--visualize", dest="visualize", action="store_true", default=False)
     arg_parser.add_argument("--output_dir", dest="output_dir", type=str, default="output")
     arg_parser.add_argument("--motion_file_path", dest="motion_file_path", type=str,
-                            default='/rl-perf/rl_perf/domains/quadruped_locomotion/motion_imitation/data/motions/dog_pace.txt')
+                            default='/rl-perf/a2perf/domains/quadruped_locomotion/motion_imitation/data/motions/dog_pace.txt')
     arg_parser.add_argument("--total_timesteps", dest="total_timesteps", type=int, default=2e8)
     arg_parser.add_argument("--int_save_freq", dest="int_save_freq", type=int,
                             default=0)  # save intermediate model every n policy steps

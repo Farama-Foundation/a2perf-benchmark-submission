@@ -8,8 +8,8 @@ import numpy as np
 import tensorflow as tf
 from mpi4py import MPI
 
-from rl_perf.domains.quadruped_locomotion.motion_imitation.learning import imitation_policies as imitation_policies
-from rl_perf.domains.quadruped_locomotion.motion_imitation.learning import ppo_imitation as ppo_imitation
+from a2perf.domains.quadruped_locomotion.motion_imitation.learning import imitation_policies as imitation_policies
+from a2perf.domains.quadruped_locomotion.motion_imitation.learning import ppo_imitation as ppo_imitation
 
 ENABLE_ENV_RANDOMIZER = True
 

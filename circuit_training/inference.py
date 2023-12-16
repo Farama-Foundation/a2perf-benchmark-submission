@@ -17,7 +17,7 @@ from learning.agent import create_circuit_ppo_agent
 from learning.train_ppo import try_load_checkpoint
 from model import create_models_lib
 import sys
-from rl_perf.domains import circuit_training
+from a2perf.domains import circuit_training
 
 FLAGS = flags.FLAGS
 

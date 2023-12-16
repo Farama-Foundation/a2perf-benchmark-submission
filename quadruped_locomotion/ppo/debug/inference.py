@@ -1,5 +1,5 @@
 import gymnasium as gym
-from rl_perf.domains import quadruped_locomotion
+from a2perf.domains import quadruped_locomotion
 
 
 def load_model():

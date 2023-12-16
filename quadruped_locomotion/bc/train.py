@@ -8,7 +8,7 @@ from stable_baselines import PPO2
 from tensorflow.python.framework.ops import enable_eager_execution
 import tensorflow.compat.v1 as tf1
 
-from rl_perf.domains import quadruped_locomotion
+from a2perf.domains import quadruped_locomotion
 
 # enable_eager_execution()
 _MINARI_DATASETS_PATH = flags.DEFINE_string('minari_datasets_path', None,

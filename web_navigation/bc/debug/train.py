@@ -20,8 +20,8 @@ from tf_agents.policies import actor_policy
 from tf_agents.policies import policy_saver
 from tf_agents.utils import common
 
-from rl_perf.domains.web_nav.gwob.CoDE import networks
-from rl_perf.domains.web_nav.gwob.CoDE import vocabulary_node
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 
 def episode_generator(dataset):

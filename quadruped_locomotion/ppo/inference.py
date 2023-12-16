@@ -3,8 +3,8 @@ import os
 
 import tensorflow as tf
 from absl import app
-from rl_perf.domains import quadruped_locomotion
-from rl_perf.domains.quadruped_locomotion.motion_imitation.learning import \
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains.quadruped_locomotion.motion_imitation.learning import \
   ppo_imitation, imitation_policies
 
 
