@@ -1,24 +1,23 @@
+import json
 import multiprocessing
 import os
-
-os.environ['WRAPT_DISABLE_EXTENSIONS'] = '1'
 import random
 import time
 
-import absl
 import gin
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 import tf_agents
+from absl import logging
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
 from tf_agents.metrics import tf_metrics
-from tf_agents.networks import network
 from tf_agents.policies import greedy_policy
+from tf_agents.policies import policy_saver
 from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
@@ -26,35 +25,9 @@ from tf_agents.utils import common
 from a2perf.domains.web_navigation.gwob.CoDE import networks
 from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
-OPTIM_BATCHSIZE = 32
-TIMESTEPS_PER_ACTORBATCH = 256
 
-
-class DQNLSTM(network.Network):
-
-  def __init__(
-      self,
-      observation_spec,
-      action_spec,
-      state_spec=(),
-      name='DQNLSTM',
-      **kwargs,
-  ):
-    super().__init__(
-        input_tensor_spec=observation_spec, state_spec=state_spec, name=name
-    )
-    self._action_spec = action_spec
-    self._lstm = networks.DQNWebLSTM(**kwargs)
-
-  def call(self, observation, step_type=None, network_state=(), training=False):
-    q_values, _ = self._lstm(observation, is_training=training)
-    return q_values, network_state
-
-
-def remove_config_lines(config_string, key):
-  lines = config_string.split('\n')
-  lines = [line for line in lines if not line.startswith(key)]
-  return '\n'.join(lines)
+def load_vocab(vocab_path):
+  return json.load(open(vocab_path, 'r'))
 
 
 def create_env(env_seed: int, env_name='CartPole-v0', difficulty=None,
@@ -69,6 +42,11 @@ def create_env(env_seed: int, env_name='CartPole-v0', difficulty=None,
           **env_args,  # Add env_args to the gym_kwargs dictionary
       },
   )
+
+
+def filter_invalid_transition(trajectories, _):
+  # Prepare replay buffer as dataset with invalid transitions filtered.
+  return ~trajectories.is_boundary()[0]
 
 
 @gin.configurable
@@ -115,39 +93,40 @@ def train_eval(
 ):
   """A simple train and eval for DQN."""
 
-  print('IOU: Starting the training script. Print')
   tf.random.set_seed(seed)
   np.random.seed(seed)
   random.seed(seed)
 
   root_dir = os.path.expanduser(root_dir)
   train_dir = os.path.join(root_dir, 'train')
-
   summary_dir = os.path.join(root_dir, 'summaries')
 
-  train_summary_writer = tf.compat.v2.summary.create_file_writer(
-      os.path.join(summary_dir, 'train'),
-      flush_millis=summaries_flush_secs * 1000
-  )
-  train_summary_writer.set_as_default()
+  train_summary_writer = tf.summary.create_file_writer(
+      logdir=os.path.join(summary_dir, 'train'),
+      name='train_summary_writer',
+      flush_millis=summaries_flush_secs * 1000,
+      max_queue=10,
+      experimental_trackable=True,
 
-  eval_summary_writer = tf.compat.v2.summary.create_file_writer(
-      os.path.join(summary_dir, 'eval'),
-      flush_millis=summaries_flush_secs * 1000
+  )
+  eval_summary_writer = tf.summary.create_file_writer(
+      logdir=os.path.join(summary_dir, 'eval'),
+      name='eval_summary_writer',
+      flush_millis=summaries_flush_secs * 1000,
+      max_queue=tf.data.experimental.AUTOTUNE,
+      experimental_trackable=True,
   )
   eval_metrics = [
       tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
       tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes),
   ]
-
-  global_step = tf.Variable(0, trainable=False, name="global_step",
-                            dtype=tf.int64)
+  global_step = tf.compat.v1.train.get_or_create_global_step()
   manager = multiprocessing.Manager()
-  lock = manager.Lock()
-  global_vocab = (
-      vocabulary_node.LockedVocabulary(max_vocabulary_size=max_vocab_size,
-                                       multiprocessing_lock=lock)
-  )
+  global_vocab = vocabulary_node.LockedVocabulary(
+      max_vocabulary_size=max_vocab_size,
+      multiprocessing_manager=manager, )
+
+  # Parallel environment creation
   envs = [lambda: create_env(seed + i, env_name=env_name, difficulty=difficulty,
                              global_vocab=global_vocab,
                              env_args=env_args) for i
@@ -161,19 +140,16 @@ def train_eval(
                           env_args=eval_env_args)])
   eval_tf_env = tf_py_environment.TFPyEnvironment(eval_env)
   parallel_py_env = tf_agents.environments.ParallelPyEnvironment(envs,
-                                                                 blocking=True,
-                                                                 start_serially=True)
+                                                                 blocking=False,
+                                                                 start_serially=True,
+                                                                 flatten=False)
   tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
-
   time_step_spec = tf_env.time_step_spec()
   observation_spec = time_step_spec.observation
   action_spec = tf_env.action_spec()
 
-  with tf.name_scope('DQNAgent'):
-    q_net = DQNLSTM(
-        observation_spec=observation_spec,
-        action_spec=action_spec,
-        state_spec=(),
+  with tf.name_scope('QNetwork'):
+    q_net = networks.WebLSTMQNetwork(
         vocab_size=max_vocab_size
         if max_vocab_size is not None
         else tf_env.pyenv.envs[0].env.local_vocab.max_vocabulary_size,
@@ -183,8 +159,9 @@ def train_eval(
         embedding_dim=100,
         name='q_network',
         latent_dim=50,
-        return_state_value=True,
+        return_state_value=False
     )
+  with tf.name_scope('DQNAgent'):
     tf_agent = dqn_agent.DqnAgent(
         time_step_spec=time_step_spec,
         action_spec=action_spec,
@@ -207,23 +184,16 @@ def train_eval(
     )
     tf_agent.initialize()
 
-  # Make the replay buffer.
-  replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
-      data_spec=tf_agent.collect_data_spec,
-      batch_size=tf_env.batch_size,
-      max_length=replay_buffer_capacity,
-      device='/cpu:*',
-  )
-  replay_observer = [replay_buffer.add_batch]
-
-  train_metrics = [
+  environment_steps_metric = tf_metrics.EnvironmentSteps()
+  step_metrics = [
       tf_metrics.NumberOfEpisodes(),
-      tf_metrics.EnvironmentSteps(),
-      tf_metrics.AverageReturnMetric(
-          buffer_size=num_eval_episodes, batch_size=tf_env.batch_size
-      ),
+      environment_steps_metric,
+  ]
+  train_metrics = step_metrics + [
+      tf_metrics.AverageReturnMetric(batch_size=environment_batch_size,
+                                     buffer_size=num_eval_episodes),
       tf_metrics.AverageEpisodeLengthMetric(
-          buffer_size=num_eval_episodes, batch_size=tf_env.batch_size
+          batch_size=environment_batch_size, buffer_size=num_eval_episodes
       ),
   ]
 
@@ -233,25 +203,31 @@ def train_eval(
   )
   collect_policy = tf_agent.collect_policy
 
+  # Make the replay buffer.
+  replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
+      data_spec=tf_agent.collect_data_spec,
+      batch_size=tf_env.batch_size,
+      max_length=replay_buffer_capacity,
+      device='/cpu:*',
+  )
+  replay_observer = [replay_buffer.add_batch]
+
   train_checkpointer = common.Checkpointer(
       ckpt_dir=os.path.join(train_dir, 'train'),
       agent=tf_agent,
       global_step=global_step,
       metrics=metric_utils.MetricsGroup(train_metrics, 'train_metrics'),
   )
-  policy_checkpointer = common.Checkpointer(
-      ckpt_dir=os.path.join(train_dir, 'policy'),
-      policy=eval_policy,
-      global_step=global_step,
-  )
-  rb_checkpointer = common.Checkpointer(
-      ckpt_dir=os.path.join(train_dir, 'replay_buffer'),
-      max_to_keep=1,
-      replay_buffer=replay_buffer,
-  )
 
+  saved_model = policy_saver.PolicySaver(eval_policy, train_step=global_step)
+  saved_model_dir = os.path.join(root_dir, 'policies')
   train_checkpointer.initialize_or_restore()
-  rb_checkpointer.initialize_or_restore()
+
+  # Restore the vocab from the corresponding global step
+  vocab_path = os.path.join(root_dir,
+                            f'vocab_{global_step.value().numpy()}.npy')
+  if os.path.exists(vocab_path):
+    global_vocab._local_vocab = load_vocab(vocab_path)
 
   initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
       tf_env,
@@ -267,64 +243,17 @@ def train_eval(
       num_steps=collect_steps_per_iteration,
   )
 
-  if use_tf_functions:
-    initial_collect_driver.run = common.function(initial_collect_driver.run)
-    collect_driver.run = common.function(collect_driver.run)
-    tf_agent.train = common.function(tf_agent.train)
-
-  if replay_buffer.num_frames() == 0:
-    # Collect initial replay data.
-    absl.logging.info(
-        'Initializing replay buffer by collecting experience for %d steps '
-        'with a random policy.',
-        initial_collect_steps,
-    )
-    initial_collect_driver.run()
-
-  # Compute eval metrics once at the beginning of training
-  results = metric_utils.eager_compute(
-      eval_metrics,
-      eval_tf_env,
-      eval_policy,
-      num_episodes=num_eval_episodes,
-      train_step=global_step,
-      summary_writer=eval_summary_writer,
-      summary_prefix='Metrics',
-  )
-
-  # Compute train metrics once at the beginning of training
-  with train_summary_writer.as_default():
-    for train_metric in train_metrics:
-      metric_value = train_metric.result()
-      # Prefix the metric's name with 'Metrics/'
-      metric_name = f"Metrics/{train_metric.name}"
-      tf.summary.scalar(metric_name, metric_value, step=global_step)
-  train_summary_writer.flush()
-
-  if eval_metrics_callback is not None:
-    eval_metrics_callback(results, global_step.numpy())
-  metric_utils.log_metrics(eval_metrics)
-
-  time_step = None
-  policy_state = collect_policy.get_initial_state(tf_env.batch_size)
-
-  timed_at_step = global_step.numpy()
-  time_acc = 0
-
-  # Prepare replay buffer as dataset with invalid transitions filtered.
-  def _filter_invalid_transition(trajectories, _):
-    return ~trajectories.is_boundary()[0]
-
   dataset = (
       replay_buffer.as_dataset(sample_batch_size=batch_size,
                                num_steps=2,
                                num_parallel_calls=tf.data.AUTOTUNE
                                )
       .unbatch()
-      .filter(_filter_invalid_transition)
+      .filter(filter_invalid_transition)
       .batch(batch_size)
       .prefetch(tf.data.AUTOTUNE)
   )
+
   # Dataset generates trajectories with shape [Bx2x...]
   iterator = iter(dataset)
 
@@ -333,122 +262,188 @@ def train_eval(
     return tf_agent.train(experience)
 
   if use_tf_functions:
-    train_step = common.function(train_step)
+    initial_collect_driver.run = common.function(initial_collect_driver.run)
+    collect_driver.run = common.function(collect_driver.run)
+    tf_agent.train = common.function(tf_agent.train)
 
-  iters_so_far = 0
-  while iters_so_far < num_iterations:
-
-    # create tf summaryh for iters_so_far
-    with train_summary_writer.as_default():
-      tf.summary.scalar('iters_so_far', iters_so_far, step=iters_so_far)
-    start_time = time.time()
-    time_step, policy_state = collect_driver.run(
-        time_step=time_step,
-        policy_state=policy_state,
+  if replay_buffer.num_frames() == 0:
+    # Collect initial replay data.
+    logging.info(
+        'Initializing replay buffer by collecting experience for %d steps '
+        'with a random policy.',
+        initial_collect_steps,
     )
+    initial_collect_driver.run()
 
-    for _ in range(train_steps_per_iteration):
-      train_loss = train_step()
+  train_step = common.function(train_step)
+  time_acc = 0
+  collect_time = 0
+  train_time = 0
+  timed_at_step = global_step.value()
+  iters_so_far = 0
+  start_time = time.time()
 
-    time_acc += time.time() - start_time
+  # Eval once before training.
+  metric_utils.eager_compute(
+      environment=eval_tf_env,
+      policy=eval_policy,
+      num_episodes=num_eval_episodes,
+      train_step=iters_so_far,
+      summary_writer=eval_summary_writer,
+      use_function=True,
+      summary_prefix='Metrics',
+      metrics=eval_metrics,
+  )
 
-    global_step_val = global_step.numpy()
+  # Compute train metrics once at the beginning of training
+  with train_summary_writer.as_default():
+    for train_metric in train_metrics:
+      metric_value = train_metric.result()
+      metric_name = f"Metrics/{train_metric.name}"
+      tf.summary.scalar(metric_name, metric_value, step=global_step)
+    tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
+  train_summary_writer.flush()
 
-    if iters_so_far % log_interval == 0:
-      absl.logging.info('step = %d, loss = %f', global_step_val,
-                        train_loss.loss)
-      print('step = %d, loss = %f', global_step_val, train_loss.loss)
-      steps_per_sec = (global_step_val - timed_at_step) / time_acc
-      absl.logging.info('%.3f steps/sec', steps_per_sec)
-      print('%.3f steps/sec', steps_per_sec)
-      tf.compat.v2.summary.scalar(
-          name='global_steps_per_sec', data=steps_per_sec, step=iters_so_far
-      )
-      timed_at_step = global_step_val
-      time_acc = 0
+  with train_summary_writer.as_default():
+    while iters_so_far < num_iterations:
+      start = time.time()
+      collect_driver.run()
+      collect_time += time.time() - start
 
-    if iters_so_far % summary_interval == 0:
-      with train_summary_writer.as_default():
-        for train_metric in train_metrics:
-          metric_value = train_metric.result()
-          # Prefix the metric's name with 'Metrics/'
-          metric_name = f"Metrics/{train_metric.name}"
-          tf.summary.scalar(metric_name, metric_value, step=global_step)
-      train_summary_writer.flush()
+      start = time.time()
+      train_loss = sum(
+          [train_step().loss for _ in range(train_steps_per_iteration)])
+      train_time += time.time() - start
 
-    if iters_so_far % eval_interval == 0:
-      results = metric_utils.eager_compute(
-          eval_metrics,
-          eval_tf_env,
-          eval_policy,
-          num_episodes=num_eval_episodes,
-          train_step=global_step,
-          summary_writer=eval_summary_writer,
-          summary_prefix='Metrics',
-          use_function=False,
-      )
-      if eval_metrics_callback is not None:
-        eval_metrics_callback(results, global_step)
-      metric_utils.log_metrics(eval_metrics)
+      iters_so_far += 1
+      tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
+      global_step_val = global_step.value()
 
-    if iters_so_far % train_checkpoint_interval == 0:
-      train_checkpointer.save(global_step=global_step)
-      tokens = global_vocab.save()
-      np.save(os.path.join(train_dir, f'vocab_{global_step_val}'), tokens)
+      if iters_so_far % log_interval == 0:
+        metric_utils.log_metrics(train_metrics)
+        time_acc += time.time() - start_time
+        logging.info('step = %d, loss = %f', global_step_val.numpy(),
+                     train_loss)
+        print('step = %d, loss = %f', global_step_val.numpy(), train_loss)
+        steps_per_sec = (
+                            global_step_val.numpy() - timed_at_step.numpy()) / time_acc
+        logging.info('%.3f steps/sec', steps_per_sec)
+        print('%.3f steps/sec', steps_per_sec)
+        # Add number of iters per second to the train summary writer
+        with train_summary_writer.as_default():
+          tf.summary.scalar(name='info/global_steps_per_sec',
+                            data=steps_per_sec,
+                            step=iters_so_far
+                            )
+          tf.summary.scalar(name='info/collect_time', data=collect_time,
+                            step=iters_so_far
+                            )
+          tf.summary.scalar(name='info/train_time', data=train_time,
+                            step=iters_so_far
+                            )
+        print(f'collect_time: {collect_time}')
+        print(f'train_time: {train_time}')
 
-    if iters_so_far % policy_checkpoint_interval == 0:
-      policy_checkpointer.save(global_step=global_step)
+        timed_at_step = global_step_val
+        time_acc = 0
+        collect_time = 0
+        train_time = 0
+        start_time = time.time()
 
-    iters_so_far += 1
+      if iters_so_far % summary_interval == 0:
+        with train_summary_writer.as_default():
+          for train_metric in train_metrics:
+            metric_value = train_metric.result()
+            metric_name = f"Metrics/{train_metric.name}"
+            tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
+        train_summary_writer.flush()
 
-  manager.shutdown()
+      if iters_so_far % eval_interval == 0:
+        eval_start_time = time.time()
+        metric_utils.eager_compute(
+            eval_metrics,
+            eval_tf_env,
+            eval_policy,
+            num_episodes=num_eval_episodes,
+            train_step=iters_so_far,
+            summary_writer=eval_summary_writer,
+            summary_prefix='Metrics',
+            use_function=True,
+        )
+        eval_time = time.time() - eval_start_time
+        print(f'eval_time: {eval_time}')
+        metric_utils.log_metrics(eval_metrics)
+
+      if iters_so_far % train_checkpoint_interval == 0:
+        train_checkpointer.save(global_step=global_step_val)
+        train_vocab_save_path = os.path.join(train_dir,
+                                             f'vocab_{global_step_val.numpy()}.npy')
+        json.dump(dict(global_vocab._local_vocab),
+                  open(train_vocab_save_path, 'w'))
+      if iters_so_far % policy_checkpoint_interval == 0:
+        save_location = os.path.join(saved_model_dir, 'policy_' +
+                                     str(
+                                         environment_steps_metric.result().numpy()))
+        saved_model.save(save_location)
+        policy_vocab_save_path = os.path.join(saved_model_dir,
+                                              f'vocab_{environment_steps_metric.result().numpy()}.npy')
+        json.dump(dict(global_vocab._local_vocab),
+                  open(policy_vocab_save_path, 'w'))
+
   tf_env.close()
   eval_tf_env.close()
-  return train_loss
+
+  # Save the final policy and vocabulary
+  save_location = os.path.join(saved_model_dir, 'policy_' +
+                               str(environment_steps_metric.result().numpy()))
+  saved_model.save(save_location)
+  policy_vocab_save_path = os.path.join(saved_model_dir,
+                                        f'vocab_{environment_steps_metric.result().numpy()}.npy')
+  json.dump(dict(global_vocab._local_vocab),
+            open(policy_vocab_save_path, 'w'))
+  manager.shutdown()
 
 
 def train_mp(_):
   # Extract environment variables
-  seed = int(os.environ.get('SEED', None))
-  root_dir = os.environ.get('ROOT_DIR', None)
-  env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
-  total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
+  batch_size = int(os.environ.get('BATCH_SIZE', None))
   difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
+  env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
   eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
-  train_checkpoint_interval = int(
-      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
+  learning_rate = float(os.environ.get('LEARNING_RATE', None))
+  log_interval = int(os.environ.get('LOG_INTERVAL', None))
   policy_checkpoint_interval = int(
       os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
-  rb_checkpoint_interval = int(os.environ.get('RB_CHECKPOINT_INTERVAL', None))
   rb_capacity = int(os.environ.get('RB_CAPACITY', None))
-  log_interval = int(os.environ.get('LOG_INTERVAL', None))
-  learning_rate = float(os.environ.get('LEARNING_RATE', None))
-  batch_size = int(os.environ.get('BATCH_SIZE', None))
+  rb_checkpoint_interval = int(os.environ.get('RB_CHECKPOINT_INTERVAL', None))
+  root_dir = os.environ.get('ROOT_DIR', None)
+  seed = int(os.environ.get('SEED', None))
   summary_interval = int(os.environ.get('SUMMARY_INTERVAL', None))
+  total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
+  train_checkpoint_interval = int(
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
   timesteps_per_actorbatch_param = int(
-      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
-  )
+      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
   batched_total_env_steps = total_env_steps // env_batch_size
-  timesteps_per_actorbatch = max(
-      1, timesteps_per_actorbatch_param // env_batch_size
-  )
+  timesteps_per_actorbatch = max(1,
+                                 timesteps_per_actorbatch_param // env_batch_size)
   num_iterations = max(1, batched_total_env_steps // timesteps_per_actorbatch)
 
   # Print extracted and computed values
-  print(f'seed: {seed}')
-  print(f'root_dir: {root_dir}')
-  print(f'env_batch_size: {env_batch_size}')
-  print(f'total_env_steps: {total_env_steps}')
-  print(f'num_iterations: {num_iterations}')
   print(f'difficulty_level: {difficulty_level}')
-  print(f'train_steps_per_iteration: {timesteps_per_actorbatch_param}')
+  print(f'env_batch_size: {env_batch_size}')
   print(f'eval_interval: {eval_interval}')
-  print(f'train_checkpoint_interval: {train_checkpoint_interval}')
+  print(f'learning_rate: {learning_rate}')
+  print(f'log_interval: {log_interval}')
+  print(f'num_iterations: {num_iterations}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
   print(f'rb_checkpoint_interval: {rb_checkpoint_interval}')
-  print(f'log_interval: {log_interval}')
+  print(f'root_dir: {root_dir}')
+  print(f'seed: {seed}')
   print(f'summary_interval: {summary_interval}')
-  print(f'learning_rate: {learning_rate}')
+  print(f'total_env_steps: {total_env_steps}')
+  print(f'train_checkpoint_interval: {train_checkpoint_interval}')
+  print(f'train_steps_per_iteration: {timesteps_per_actorbatch_param}')
 
   # Convert all of the intervals to be in terms of iterations instead of environment steps
   eval_interval = max(1, eval_interval // timesteps_per_actorbatch_param)
@@ -463,34 +458,46 @@ def train_mp(_):
   )
   log_interval = max(1, log_interval // timesteps_per_actorbatch_param)
   summary_interval = max(1, summary_interval // timesteps_per_actorbatch_param)
+  rb_capacity = max(1, rb_capacity // env_batch_size)
 
   print(f'eval_interval: {eval_interval}')
-  print(f'train_checkpoint_interval: {train_checkpoint_interval}')
+  print(f'log_interval: {log_interval}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
   print(f'rb_checkpoint_interval: {rb_checkpoint_interval}')
-  print(f'log_interval: {log_interval}')
-  print(
-      f'summary_interval: {summary_interval}'
-  )  # Call train_eval function with required parameters
+  print(f'summary_interval: {summary_interval}')
+  print(f'train_checkpoint_interval: {train_checkpoint_interval}')
+
   train_eval(
-      seed=seed,
-      root_dir=root_dir,
-      difficulty=difficulty_level,
       batch_size=batch_size,
-      environment_batch_size=env_batch_size,
-      train_steps_per_iteration=timesteps_per_actorbatch,
-      replay_buffer_capacity=rb_capacity,
-      num_iterations=num_iterations,
-      learning_rate=learning_rate,
-      eval_interval=eval_interval,
       collect_steps_per_iteration=timesteps_per_actorbatch,
-      train_checkpoint_interval=train_checkpoint_interval,
+      debug_summaries=False,
+      difficulty=difficulty_level,
+      environment_batch_size=env_batch_size,
+      eval_interval=eval_interval,
+      initial_collect_steps=timesteps_per_actorbatch,
+      learning_rate=learning_rate,
+      log_interval=log_interval,
+      num_iterations=num_iterations,
       policy_checkpoint_interval=policy_checkpoint_interval,
       rb_checkpoint_interval=rb_checkpoint_interval,
-      initial_collect_steps=timesteps_per_actorbatch,
-      log_interval=log_interval,
+      replay_buffer_capacity=rb_capacity,
+      root_dir=root_dir,
+      seed=seed,
+      summarize_grads_and_vars=False,
       summary_interval=summary_interval,
-      env_args=dict()
+      train_checkpoint_interval=train_checkpoint_interval,
+      train_steps_per_iteration=timesteps_per_actorbatch,
+      use_tf_functions=False,
+      env_args=dict(
+          kwargs_dict=dict(
+              threading=False,
+              chrome_options={
+                  '--headless',
+                  '--no-sandbox',
+                  '--disable-gpu'
+              }
+          )
+      )
   )
 
 
