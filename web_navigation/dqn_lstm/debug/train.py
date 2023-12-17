@@ -488,11 +488,13 @@ def train_mp(_):
       train_checkpoint_interval=train_checkpoint_interval,
       train_steps_per_iteration=timesteps_per_actorbatch,
       use_tf_functions=False,
-      env_args=dict(designs=[
+      env_args=dict(
+          # designs=[
           # dict(number_of_pages=1, action=[], action_page=[], ),
           # dict(number_of_pages=2, action=[1, 24], action_page=[0, 1], ),
-          dict(number_of_pages=1, action=[1], action_page=[0], ),
-      ],
+          # dict(number_of_pages=1, action=[1], action_page=[0], ),
+          # ],
+          difficulty=1,
           browser_args=dict(
               threading=False,
               chrome_options={
