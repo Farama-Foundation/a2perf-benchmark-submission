@@ -32,7 +32,7 @@ def load_model():
 
     # Load the global vocabulary
     global_vocab_dict = np.load(os.path.join(train_dir, 'global_vocab.npy'), allow_pickle=True).item()
-    global_vocab = vocabulary_node.LockedVocabulary()
+    global_vocab = vocabulary_node.LockedMultiprocessingVocabulary()
     global_vocab.restore(dict(global_vocab=global_vocab_dict))
     tf_env = tf_py_environment.TFPyEnvironment(suite_gym.load(environment_name=env_name,
                                                               spec_dtype_map={gym.spaces.Discrete: np.int32},

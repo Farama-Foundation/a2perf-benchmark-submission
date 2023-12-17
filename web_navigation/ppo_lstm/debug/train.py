@@ -137,7 +137,7 @@ def train_eval(
   ]
   global_step = tf.compat.v1.train.get_or_create_global_step()
   manager = mp.Manager()
-  global_vocab = vocabulary_node.LockedVocabulary(
+  global_vocab = vocabulary_node.LockedMultiprocessingVocabulary(
       max_vocabulary_size=max_vocab_size,
       multiprocessing_manager=manager, )
 
@@ -474,7 +474,7 @@ def train_mp(_):
           # dict(number_of_pages=2, action=[1, 24], action_page=[0, 1], ),
           dict(number_of_pages=1, action=[1], action_page=[0], ),
       ],
-          kwargs_dict=dict(
+          browser_args=dict(
               threading=False,
               chrome_options={
                   '--headless',

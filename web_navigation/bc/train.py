@@ -145,8 +145,8 @@ def train_eval(
   manager = multiprocessing.Manager()
   lock = manager.Lock()
   global_vocab = (
-      vocabulary_node.LockedVocabulary(max_vocabulary_size=max_vocab_size,
-                                       multiprocessing_lock=lock)
+      vocabulary_node.LockedMultiprocessingVocabulary(max_vocabulary_size=max_vocab_size,
+                                                      multiprocessing_lock=lock)
   )
   envs = [lambda: create_env(seed + i, env_name=env_name, difficulty=difficulty,
                              global_vocab=global_vocab,

@@ -104,7 +104,7 @@ def train(_):
   lock = manager.Lock()
 
   # Load the global vocabulary
-  global_vocab = vocabulary_node.LockedVocabulary(
+  global_vocab = vocabulary_node.LockedMultiprocessingVocabulary(
       max_vocabulary_size=max_vocab_size,
       multiprocessing_lock=lock)
   with open(vocab_path, 'rb') as f:
