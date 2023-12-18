@@ -142,7 +142,7 @@ def train_eval(
       multiprocessing_manager=manager, )
 
   # Parallel environment creation
-  envs = [lambda: create_env(seed + i, env_name=env_name, difficulty=difficulty,
+  envs = [lambda: create_env(seed, env_name=env_name, difficulty=difficulty,
                              global_vocab=global_vocab,
                              env_args=env_args) for i
           in range(environment_batch_size)]

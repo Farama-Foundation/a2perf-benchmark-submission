@@ -142,7 +142,7 @@ def train_eval(
       multiprocessing_manager=manager, )
 
   # Parallel environment creation
-  envs = [lambda: create_env(seed + i, env_name=env_name, difficulty=difficulty,
+  envs = [lambda: create_env(seed, env_name=env_name, difficulty=difficulty,
                              global_vocab=global_vocab,
                              env_args=env_args) for i
           in range(environment_batch_size)]
@@ -469,16 +469,7 @@ def train_mp(_):
       total_env_steps=batched_total_env_steps,
       train_checkpoint_interval=train_checkpoint_interval,
       use_tf_functions=False,
-      env_args=dict(
-          browser_args=dict(
-              threading=False,
-              chrome_options={
-                  '--headless',
-                  '--no-sandbox',
-                  '--disable-gpu'
-              }
-          )
-      )
+      env_args=dict()
   )
 
 
