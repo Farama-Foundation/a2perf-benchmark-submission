@@ -68,10 +68,6 @@ def create_env(
   )
 
 
-def load_vocab(vocab_path):
-  return json.load(open(vocab_path, 'r'))
-
-
 @gin.configurable
 def train_eval(
     root_dir,
@@ -268,10 +264,12 @@ def train_eval(
 
   # Restore the vocab from the corresponding global step
   vocab_path = os.path.join(
-      root_dir, f'vocab_{global_step.value().numpy()}.npy'
+      train_dir, f'vocab_{global_step.value().numpy()}.npy'
   )
+
   if os.path.exists(vocab_path):
-    global_vocab._local_vocab = load_vocab(vocab_path)
+    state = json.load(open(vocab_path, 'r'))
+    global_vocab.restore(state)
 
   collect_driver = dynamic_step_driver.DynamicStepDriver(
       env=tf_env,
@@ -313,9 +311,8 @@ def train_eval(
   with train_summary_writer.as_default():
     for train_metric in train_metrics:
       metric_value = train_metric.result()
-      # Prefix the metric's name with 'Metrics/'
       metric_name = f'Metrics/{train_metric.name}'
-      tf.summary.scalar(metric_name, metric_value, step=global_step)
+      tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
     tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
   train_summary_writer.flush()
 
@@ -342,23 +339,22 @@ def train_eval(
         )
         print('step = %d, loss = %f', global_step_val.numpy(), train_loss.loss)
         steps_per_sec = (
-            global_step_val.numpy() - timed_at_step.numpy()
-        ) / time_acc
+                            global_step_val.numpy() - timed_at_step.numpy()
+                        ) / time_acc
         logging.info('%.3f steps/sec', steps_per_sec)
         print('%.3f steps/sec', steps_per_sec)
         # Add number of iters per second to the train summary writer
-        with train_summary_writer.as_default():
-          tf.summary.scalar(
-              name='info/global_steps_per_sec',
-              data=steps_per_sec,
-              step=iters_so_far,
-          )
-          tf.summary.scalar(
-              name='info/collect_time', data=collect_time, step=iters_so_far
-          )
-          tf.summary.scalar(
-              name='info/train_time', data=train_time, step=iters_so_far
-          )
+        tf.summary.scalar(
+            name='info/global_steps_per_sec',
+            data=steps_per_sec,
+            step=iters_so_far,
+        )
+        tf.summary.scalar(
+            name='info/collect_time', data=collect_time, step=iters_so_far
+        )
+        tf.summary.scalar(
+            name='info/train_time', data=train_time, step=iters_so_far
+        )
         print(f'collect_time: {collect_time}')
         print(f'train_time: {train_time}')
 
@@ -369,11 +365,10 @@ def train_eval(
         start_time = time.time()
 
       if iters_so_far % summary_interval == 0:
-        with train_summary_writer.as_default():
-          for train_metric in train_metrics:
-            metric_value = train_metric.result()
-            metric_name = f'Metrics/{train_metric.name}'
-            tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
+        for train_metric in train_metrics:
+          metric_value = train_metric.result()
+          metric_name = f'Metrics/{train_metric.name}'
+          tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
         train_summary_writer.flush()
 
       if iters_so_far % eval_interval == 0:
@@ -393,6 +388,8 @@ def train_eval(
         metric_utils.log_metrics(eval_metrics)
 
       if iters_so_far % train_checkpoint_interval == 0:
+        logging.info('Saving train checkpoint at step %d  (iteration %d)',
+                     global_step_val.numpy(), iters_so_far)
         train_checkpointer.save(global_step=global_step_val)
         train_vocab_save_path = os.path.join(
             train_dir, f'vocab_{global_step_val.numpy()}.npy'
@@ -401,6 +398,8 @@ def train_eval(
             dict(global_vocab._local_vocab), open(train_vocab_save_path, 'w')
         )
       if iters_so_far % policy_checkpoint_interval == 0:
+        logging.info('Saving policy checkpoint at step %d  (iteration %d)',
+                     global_step_val.numpy(), iters_so_far)
         save_location = os.path.join(
             saved_model_dir,
             'policy_' + str(environment_steps_metric.result().numpy()),
@@ -414,10 +413,6 @@ def train_eval(
             dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w')
         )
 
-  manager.shutdown()
-  tf_env.close()
-  eval_tf_env.close()
-
   # Save the final policy and vocabulary
   save_location = os.path.join(
       saved_model_dir,
@@ -429,9 +424,12 @@ def train_eval(
   )
   json.dump(dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w'))
 
+  manager.shutdown()
+  tf_env.close()
+  eval_tf_env.close()
+
 
 def train_mp(_):
-  logging.set_verbosity(logging.INFO)
   seed = int(os.environ.get('SEED', None))
   root_dir = os.environ.get('ROOT_DIR', None)
   env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
@@ -506,12 +504,18 @@ def train_mp(_):
       use_tf_functions=False,
       env_args=dict(
           seed=0,
-          difficulty=difficulty_level,
-          num_websites=num_websites,
+          # difficulty=difficulty_level,
+          # num_websites=num_websites,
+          designs=[
+              # single submit button
+              # {'number_of_pages': 1, 'action': [], 'action_page': [], },
+              # single active primitive (Address box)
+              {'number_of_pages': 1, 'action': [1], 'action_page': [0], }
+          ],
           browser_args=dict(
               threading=False,
               chrome_options=[
-                  '--headless',
+                  # '--headless',
                   '--disable-gpu',
                   '--disable-dev-shm-usage',
                   '--no-sandbox',
@@ -522,7 +526,6 @@ def train_mp(_):
 
 
 def train():
-  logging.set_verbosity(logging.INFO)
   tf_agents.system.multiprocessing.handle_main(train_mp)
 
 
