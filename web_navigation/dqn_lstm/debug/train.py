@@ -1,5 +1,5 @@
 import json
-import multiprocessing
+import multiprocessing as mp
 import os
 import random
 import time
@@ -26,21 +26,14 @@ from a2perf.domains.web_navigation.gwob.CoDE import networks
 from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 
-def load_vocab(vocab_path):
-  return json.load(open(vocab_path, 'r'))
-
-
-def create_env(env_seed: int, env_name='CartPole-v0', difficulty=None,
-    global_vocab=None, env_args=None):
+def create_env(
+    env_name='CartPole-v0',
+    env_args=None,
+):
   return suite_gym.load(
       environment_name=env_name,
       spec_dtype_map={gym.spaces.Discrete: np.int32},
-      gym_kwargs={
-          'difficulty': difficulty,
-          'seed': env_seed,
-          'global_vocabulary': global_vocab,
-          **env_args,  # Add env_args to the gym_kwargs dictionary
-      },
+      gym_kwargs=env_args,
   )
 
 
@@ -121,32 +114,46 @@ def train_eval(
       tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes),
   ]
   global_step = tf.compat.v1.train.get_or_create_global_step()
-  manager = multiprocessing.Manager()
+  manager = mp.Manager()
   global_vocab = vocabulary_node.LockedMultiprocessingVocabulary(
       max_vocabulary_size=max_vocab_size,
-      multiprocessing_manager=manager, )
+      multiprocessing_manager=manager,
+  )
+  env_args.update({'global_vocabulary': global_vocab})
 
   # Parallel environment creation
-  envs = [lambda: create_env(seed, env_name=env_name, difficulty=difficulty,
-                             global_vocab=global_vocab,
-                             env_args=env_args) for _
-          in range(environment_batch_size)]
+  envs = [
+      lambda: create_env(
+          env_name=env_name,
+          env_args=env_args,
+      )
+      for i in range(environment_batch_size)
+  ]
   eval_env_args = env_args.copy()
-  eval_env_args.update(dict(cyclic_action_penalty=0.0, timestep_penalty=0.0, ))
+  eval_env_args.update(
+      dict(
+          seed=seed + environment_batch_size,
+          cyclic_action_penalty=0.0,
+          timestep_penalty=0.0,
+      )
+  )
   eval_env = tf_agents.environments.ParallelPyEnvironment(
-      [lambda: create_env(seed + environment_batch_size, env_name=env_name,
-                          difficulty=difficulty,
-                          global_vocab=global_vocab,
-                          env_args=eval_env_args)])
+      [
+          lambda: create_env(
+              env_name=env_name,
+              env_args=eval_env_args,
+          )
+      ]
+  )
   eval_tf_env = tf_py_environment.TFPyEnvironment(eval_env)
-  parallel_py_env = tf_agents.environments.ParallelPyEnvironment(envs,
-                                                                 blocking=False,
-                                                                 start_serially=True,
-                                                                 flatten=False)
+  parallel_py_env = tf_agents.environments.ParallelPyEnvironment(
+      envs, blocking=False, start_serially=True, flatten=False
+  )
   tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
   time_step_spec = tf_env.time_step_spec()
   observation_spec = time_step_spec.observation
   action_spec = tf_env.action_spec()
+  logging.info('Successfully created environments')
 
   with tf.name_scope('QNetwork'):
     q_net = networks.WebLSTMQNetwork(
@@ -224,10 +231,13 @@ def train_eval(
   train_checkpointer.initialize_or_restore()
 
   # Restore the vocab from the corresponding global step
-  vocab_path = os.path.join(root_dir,
-                            f'vocab_{global_step.value().numpy()}.npy')
+  vocab_path = os.path.join(
+      train_dir, f'vocab_{global_step.value().numpy()}.npy'
+  )
+
   if os.path.exists(vocab_path):
-    global_vocab._local_vocab = load_vocab(vocab_path)
+    state = json.load(open(vocab_path, 'r'))
+    global_vocab.restore(state)
 
   initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
       tf_env,
@@ -302,8 +312,8 @@ def train_eval(
       metric_name = f"Metrics/{train_metric.name}"
       tf.summary.scalar(metric_name, metric_value, step=global_step)
     tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
-  train_summary_writer.flush()
 
+  logging.info('Beginning training at step: %d', global_step.value().numpy())
   with train_summary_writer.as_default():
     while iters_so_far < num_iterations:
       start = time.time()
@@ -329,33 +339,12 @@ def train_eval(
                             global_step_val.numpy() - timed_at_step.numpy()) / time_acc
         logging.info('%.3f steps/sec', steps_per_sec)
         print('%.3f steps/sec', steps_per_sec)
-        # Add number of iters per second to the train summary writer
-        with train_summary_writer.as_default():
-          tf.summary.scalar(name='info/global_steps_per_sec',
-                            data=steps_per_sec,
-                            step=iters_so_far
-                            )
-          tf.summary.scalar(name='info/collect_time', data=collect_time,
-                            step=iters_so_far
-                            )
-          tf.summary.scalar(name='info/train_time', data=train_time,
-                            step=iters_so_far
-                            )
-        print(f'collect_time: {collect_time}')
-        print(f'train_time: {train_time}')
-
-        timed_at_step = global_step_val
-        time_acc = 0
-        collect_time = 0
-        train_time = 0
-        start_time = time.time()
 
       if iters_so_far % summary_interval == 0:
-        with train_summary_writer.as_default():
-          for train_metric in train_metrics:
-            metric_value = train_metric.result()
-            metric_name = f"Metrics/{train_metric.name}"
-            tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
+        for train_metric in train_metrics:
+          metric_value = train_metric.result()
+          metric_name = f'Metrics/{train_metric.name}'
+          tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
         train_summary_writer.flush()
 
       if iters_so_far % eval_interval == 0:
@@ -375,32 +364,44 @@ def train_eval(
         metric_utils.log_metrics(eval_metrics)
 
       if iters_so_far % train_checkpoint_interval == 0:
+        logging.info('Saving train checkpoint at step %d  (iteration %d)',
+                     global_step_val.numpy(), iters_so_far)
         train_checkpointer.save(global_step=global_step_val)
-        train_vocab_save_path = os.path.join(train_dir,
-                                             f'vocab_{global_step_val.numpy()}.npy')
-        json.dump(dict(global_vocab._local_vocab),
-                  open(train_vocab_save_path, 'w'))
+        train_vocab_save_path = os.path.join(
+            train_dir, f'vocab_{global_step_val.numpy()}.npy'
+        )
+        json.dump(
+            dict(global_vocab._local_vocab), open(train_vocab_save_path, 'w')
+        )
       if iters_so_far % policy_checkpoint_interval == 0:
-        save_location = os.path.join(saved_model_dir, 'policy_' +
-                                     str(
-                                         environment_steps_metric.result().numpy()))
+        logging.info('Saving policy checkpoint at step %d  (iteration %d)',
+                     global_step_val.numpy(), iters_so_far)
+        save_location = os.path.join(
+            saved_model_dir,
+            'policy_' + str(environment_steps_metric.result().numpy()),
+        )
         saved_model.save(save_location)
-        policy_vocab_save_path = os.path.join(saved_model_dir,
-                                              f'vocab_{environment_steps_metric.result().numpy()}.npy')
-        json.dump(dict(global_vocab._local_vocab),
-                  open(policy_vocab_save_path, 'w'))
-
-  tf_env.close()
-  eval_tf_env.close()
+        policy_vocab_save_path = os.path.join(
+            saved_model_dir,
+            f'vocab_{environment_steps_metric.result().numpy()}.npy',
+        )
+        json.dump(
+            dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w')
+        )
+      train_summary_writer.flush()
 
   # Save the final policy and vocabulary
-  save_location = os.path.join(saved_model_dir, 'policy_' +
-                               str(environment_steps_metric.result().numpy()))
+  save_location = os.path.join(
+      saved_model_dir,
+      'policy_' + str(environment_steps_metric.result().numpy()),
+  )
   saved_model.save(save_location)
-  policy_vocab_save_path = os.path.join(saved_model_dir,
-                                        f'vocab_{environment_steps_metric.result().numpy()}.npy')
-  json.dump(dict(global_vocab._local_vocab),
-            open(policy_vocab_save_path, 'w'))
+  policy_vocab_save_path = os.path.join(
+      saved_model_dir, f'vocab_{environment_steps_metric.result().numpy()}.npy'
+  )
+  json.dump(dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w'))
+  tf_env.close()
+  eval_tf_env.close()
   manager.shutdown()
 
 

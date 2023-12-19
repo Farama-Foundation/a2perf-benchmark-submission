@@ -37,15 +37,13 @@ import os
 import random
 import time
 
-from a2perf.domains.web_navigation.gwob.CoDE import networks
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
-from absl import app
-from absl import logging
 import gin
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf  # pylint: disable=g-explicit-tensorflow-version-import
 import tf_agents
+from absl import app
+from absl import logging
 from tf_agents.agents.ppo import ppo_clip_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
@@ -55,6 +53,9 @@ from tf_agents.metrics import tf_metrics
 from tf_agents.policies import policy_saver
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
+
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 
 def create_env(
@@ -314,7 +315,6 @@ def train_eval(
       metric_name = f'Metrics/{train_metric.name}'
       tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
     tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
-  train_summary_writer.flush()
 
   logging.info('Beginning training at step: %d', global_step.value().numpy())
   with train_summary_writer.as_default():
@@ -343,6 +343,7 @@ def train_eval(
                         ) / time_acc
         logging.info('%.3f steps/sec', steps_per_sec)
         print('%.3f steps/sec', steps_per_sec)
+
         # Add number of iters per second to the train summary writer
         tf.summary.scalar(
             name='info/global_steps_per_sec',
@@ -412,6 +413,7 @@ def train_eval(
         json.dump(
             dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w')
         )
+      train_summary_writer.flush()
 
   # Save the final policy and vocabulary
   save_location = os.path.join(
@@ -424,9 +426,9 @@ def train_eval(
   )
   json.dump(dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w'))
 
-  manager.shutdown()
   tf_env.close()
   eval_tf_env.close()
+  manager.shutdown()
 
 
 def train_mp(_):

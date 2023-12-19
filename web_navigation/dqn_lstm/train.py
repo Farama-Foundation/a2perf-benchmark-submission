@@ -1,17 +1,15 @@
 import json
-import multiprocessing
+import multiprocessing as mp
 import os
 import random
 import time
 
-from a2perf.domains.web_navigation.gwob.CoDE import networks
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
-from absl import logging
 import gin
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 import tf_agents
+from absl import logging
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
@@ -24,9 +22,8 @@ from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
-
-def load_vocab(vocab_path):
-  return json.load(open(vocab_path, 'r'))
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 
 def create_env(
@@ -49,6 +46,8 @@ def filter_invalid_transition(trajectories, _):
 def train_eval(
     root_dir,
     env_name='WebNavigation-v0',
+    difficulty=None,
+    num_iterations=100000,
     # Params for collect
     initial_collect_steps=5,
     collect_steps_per_iteration=1,
@@ -59,7 +58,6 @@ def train_eval(
     target_update_tau=0.05,
     target_update_period=5000,
     # Params for train
-    total_env_steps=100,
     train_steps_per_iteration=1,
     batch_size=32,
     environment_batch_size=1,
@@ -102,6 +100,7 @@ def train_eval(
       flush_millis=summaries_flush_secs * 1000,
       max_queue=10,
       experimental_trackable=True,
+
   )
   eval_summary_writer = tf.summary.create_file_writer(
       logdir=os.path.join(summary_dir, 'eval'),
@@ -115,11 +114,12 @@ def train_eval(
       tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes),
   ]
   global_step = tf.compat.v1.train.get_or_create_global_step()
-  manager = multiprocessing.Manager()
+  manager = mp.Manager()
   global_vocab = vocabulary_node.LockedMultiprocessingVocabulary(
       max_vocabulary_size=max_vocab_size,
       multiprocessing_manager=manager,
   )
+  env_args.update({'global_vocabulary': global_vocab})
 
   # Parallel environment creation
   envs = [
@@ -145,7 +145,6 @@ def train_eval(
           )
       ]
   )
-
   eval_tf_env = tf_py_environment.TFPyEnvironment(eval_env)
   parallel_py_env = tf_agents.environments.ParallelPyEnvironment(
       envs, blocking=False, start_serially=True, flatten=False
@@ -154,6 +153,7 @@ def train_eval(
   time_step_spec = tf_env.time_step_spec()
   observation_spec = time_step_spec.observation
   action_spec = tf_env.action_spec()
+  logging.info('Successfully created environments')
 
   with tf.name_scope('QNetwork'):
     q_net = networks.WebLSTMQNetwork(
@@ -166,7 +166,7 @@ def train_eval(
         embedding_dim=100,
         name='q_network',
         latent_dim=50,
-        return_state_value=False,
+        return_state_value=False
     )
   with tf.name_scope('DQNAgent'):
     tf_agent = dqn_agent.DqnAgent(
@@ -177,7 +177,9 @@ def train_eval(
         n_step_update=n_step_update,
         target_update_tau=target_update_tau,
         target_update_period=target_update_period,
-        optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate),
+        optimizer=tf.compat.v1.train.AdamOptimizer(
+            learning_rate=learning_rate
+        ),
         td_errors_loss_fn=common.element_wise_huber_loss,
         gamma=gamma,
         reward_scale_factor=reward_scale_factor,
@@ -195,9 +197,8 @@ def train_eval(
       environment_steps_metric,
   ]
   train_metrics = step_metrics + [
-      tf_metrics.AverageReturnMetric(
-          batch_size=environment_batch_size, buffer_size=num_eval_episodes
-      ),
+      tf_metrics.AverageReturnMetric(batch_size=environment_batch_size,
+                                     buffer_size=num_eval_episodes),
       tf_metrics.AverageEpisodeLengthMetric(
           batch_size=environment_batch_size, buffer_size=num_eval_episodes
       ),
@@ -231,10 +232,12 @@ def train_eval(
 
   # Restore the vocab from the corresponding global step
   vocab_path = os.path.join(
-      root_dir, f'vocab_{global_step.value().numpy()}.npy'
+      train_dir, f'vocab_{global_step.value().numpy()}.npy'
   )
+
   if os.path.exists(vocab_path):
-    global_vocab._local_vocab = load_vocab(vocab_path)
+    state = json.load(open(vocab_path, 'r'))
+    global_vocab.restore(state)
 
   initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
       tf_env,
@@ -251,11 +254,10 @@ def train_eval(
   )
 
   dataset = (
-      replay_buffer.as_dataset(
-          sample_batch_size=batch_size,
-          num_steps=2,
-          num_parallel_calls=tf.data.AUTOTUNE,
-      )
+      replay_buffer.as_dataset(sample_batch_size=batch_size,
+                               num_steps=2,
+                               num_parallel_calls=tf.data.AUTOTUNE
+                               )
       .unbatch()
       .filter(filter_invalid_transition)
       .batch(batch_size)
@@ -307,21 +309,20 @@ def train_eval(
   with train_summary_writer.as_default():
     for train_metric in train_metrics:
       metric_value = train_metric.result()
-      metric_name = f'Metrics/{train_metric.name}'
+      metric_name = f"Metrics/{train_metric.name}"
       tf.summary.scalar(metric_name, metric_value, step=global_step)
     tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
-  train_summary_writer.flush()
 
+  logging.info('Beginning training at step: %d', global_step.value().numpy())
   with train_summary_writer.as_default():
-    while environment_steps_metric.result().numpy() < total_env_steps:
+    while iters_so_far < num_iterations:
       start = time.time()
       collect_driver.run()
       collect_time += time.time() - start
 
       start = time.time()
       train_loss = sum(
-          [train_step().loss for _ in range(train_steps_per_iteration)]
-      )
+          [train_step().loss for _ in range(train_steps_per_iteration)])
       train_time += time.time() - start
 
       iters_so_far += 1
@@ -331,43 +332,19 @@ def train_eval(
       if iters_so_far % log_interval == 0:
         metric_utils.log_metrics(train_metrics)
         time_acc += time.time() - start_time
-        logging.info(
-            'step = %d, loss = %f', global_step_val.numpy(), train_loss
-        )
+        logging.info('step = %d, loss = %f', global_step_val.numpy(),
+                     train_loss)
         print('step = %d, loss = %f', global_step_val.numpy(), train_loss)
         steps_per_sec = (
-            global_step_val.numpy() - timed_at_step.numpy()
-        ) / time_acc
+                            global_step_val.numpy() - timed_at_step.numpy()) / time_acc
         logging.info('%.3f steps/sec', steps_per_sec)
         print('%.3f steps/sec', steps_per_sec)
-        # Add number of iters per second to the train summary writer
-        with train_summary_writer.as_default():
-          tf.summary.scalar(
-              name='info/global_steps_per_sec',
-              data=steps_per_sec,
-              step=iters_so_far,
-          )
-          tf.summary.scalar(
-              name='info/collect_time', data=collect_time, step=iters_so_far
-          )
-          tf.summary.scalar(
-              name='info/train_time', data=train_time, step=iters_so_far
-          )
-        print(f'collect_time: {collect_time}')
-        print(f'train_time: {train_time}')
-
-        timed_at_step = global_step_val
-        time_acc = 0
-        collect_time = 0
-        train_time = 0
-        start_time = time.time()
 
       if iters_so_far % summary_interval == 0:
-        with train_summary_writer.as_default():
-          for train_metric in train_metrics:
-            metric_value = train_metric.result()
-            metric_name = f'Metrics/{train_metric.name}'
-            tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
+        for train_metric in train_metrics:
+          metric_value = train_metric.result()
+          metric_name = f'Metrics/{train_metric.name}'
+          tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
         train_summary_writer.flush()
 
       if iters_so_far % eval_interval == 0:
@@ -387,6 +364,8 @@ def train_eval(
         metric_utils.log_metrics(eval_metrics)
 
       if iters_so_far % train_checkpoint_interval == 0:
+        logging.info('Saving train checkpoint at step %d  (iteration %d)',
+                     global_step_val.numpy(), iters_so_far)
         train_checkpointer.save(global_step=global_step_val)
         train_vocab_save_path = os.path.join(
             train_dir, f'vocab_{global_step_val.numpy()}.npy'
@@ -395,6 +374,8 @@ def train_eval(
             dict(global_vocab._local_vocab), open(train_vocab_save_path, 'w')
         )
       if iters_so_far % policy_checkpoint_interval == 0:
+        logging.info('Saving policy checkpoint at step %d  (iteration %d)',
+                     global_step_val.numpy(), iters_so_far)
         save_location = os.path.join(
             saved_model_dir,
             'policy_' + str(environment_steps_metric.result().numpy()),
@@ -407,9 +388,7 @@ def train_eval(
         json.dump(
             dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w')
         )
-
-  tf_env.close()
-  eval_tf_env.close()
+      train_summary_writer.flush()
 
   # Save the final policy and vocabulary
   save_location = os.path.join(
@@ -421,6 +400,8 @@ def train_eval(
       saved_model_dir, f'vocab_{environment_steps_metric.result().numpy()}.npy'
   )
   json.dump(dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w'))
+  tf_env.close()
+  eval_tf_env.close()
   manager.shutdown()
 
 
@@ -433,33 +414,29 @@ def train_mp(_):
   learning_rate = float(os.environ.get('LEARNING_RATE', None))
   log_interval = int(os.environ.get('LOG_INTERVAL', None))
   policy_checkpoint_interval = int(
-      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None)
-  )
+      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
   rb_capacity = int(os.environ.get('RB_CAPACITY', None))
   rb_checkpoint_interval = int(os.environ.get('RB_CHECKPOINT_INTERVAL', None))
-  num_websites = int(os.environ.get('NUM_WEBSITES', None))
   root_dir = os.environ.get('ROOT_DIR', None)
   seed = int(os.environ.get('SEED', None))
   summary_interval = int(os.environ.get('SUMMARY_INTERVAL', None))
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
   train_checkpoint_interval = int(
-      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None)
-  )
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
   timesteps_per_actorbatch_param = int(
-      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
-  )
+      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
   batched_total_env_steps = total_env_steps // env_batch_size
-  timesteps_per_actorbatch = max(
-      1, timesteps_per_actorbatch_param // env_batch_size
-  )
+  timesteps_per_actorbatch = max(1,
+                                 timesteps_per_actorbatch_param // env_batch_size)
+  num_iterations = max(1, batched_total_env_steps // timesteps_per_actorbatch)
 
   # Print extracted and computed values
-  print(f'num_websites: {num_websites}')
   print(f'difficulty_level: {difficulty_level}')
   print(f'env_batch_size: {env_batch_size}')
   print(f'eval_interval: {eval_interval}')
   print(f'learning_rate: {learning_rate}')
   print(f'log_interval: {log_interval}')
+  print(f'num_iterations: {num_iterations}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
   print(f'rb_checkpoint_interval: {rb_checkpoint_interval}')
   print(f'root_dir: {root_dir}')
@@ -501,11 +478,11 @@ def train_mp(_):
       initial_collect_steps=timesteps_per_actorbatch,
       learning_rate=learning_rate,
       log_interval=log_interval,
+      num_iterations=num_iterations,
       policy_checkpoint_interval=policy_checkpoint_interval,
       rb_checkpoint_interval=rb_checkpoint_interval,
       replay_buffer_capacity=rb_capacity,
       root_dir=root_dir,
-      total_env_steps=total_env_steps,
       seed=seed,
       summarize_grads_and_vars=False,
       summary_interval=summary_interval,
@@ -513,12 +490,17 @@ def train_mp(_):
       train_steps_per_iteration=timesteps_per_actorbatch,
       use_tf_functions=False,
       env_args=dict(
-          num_websites=num_websites,
+          difficulty=difficulty_level,
           browser_args=dict(
               threading=False,
-              chrome_options={'--headless', '--no-sandbox', '--disable-gpu'},
-          ),
-      ),
+              chrome_options={
+                  '--headless',
+                  '--disable-gpu',
+                  '--disable-dev-shm-usage',
+                  '--no-sandbox',
+              }
+          )
+      )
   )
 
 
