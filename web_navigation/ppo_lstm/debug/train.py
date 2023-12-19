@@ -172,6 +172,8 @@ def train_eval(
   observation_spec = time_step_spec.observation
   action_spec = tf_env.action_spec()
 
+  logging.info('Successfully created environments')
+
   with tf.name_scope('Actor'):
     actor_net = networks.WebLSTMActorDistributionNetwork(
         input_tensor_spec=observation_spec,
@@ -187,6 +189,7 @@ def train_eval(
         ),
     )
 
+  logging.info('Successfully created actor network')
   # state spec must be defined so that it can be used to reshape our value predictions to [B, T, 1]
   with tf.name_scope('Value'):
     critic_net = networks.WebLSTMValueNetwork(
@@ -201,6 +204,7 @@ def train_eval(
         name='value',
         latent_dim=50,
     )
+  logging.info('Successfully created value network')
 
   with tf.name_scope('PPOAgent'):
     tf_agent = ppo_clip_agent.PPOClipAgent(
@@ -210,7 +214,7 @@ def train_eval(
         actor_net=actor_net,
         value_net=critic_net,
         gradient_clipping=gradient_clipping,
-        # entropy_regularization=0.1,
+        entropy_regularization=0.1,
         greedy_eval=False,
         importance_ratio_clipping=0.2,
         normalize_observations=False,
@@ -220,7 +224,10 @@ def train_eval(
         summarize_grads_and_vars=summarize_grads_and_vars,
         train_step_counter=global_step,
     )
+
+  logging.info('Successfully created PPO agent')
   tf_agent.initialize()
+  logging.info('Successfully initialized PPO agent')
 
   environment_steps_metric = tf_metrics.EnvironmentSteps()
   step_metrics = [
@@ -246,6 +253,7 @@ def train_eval(
       max_length=replay_buffer_capacity,
       device='cpu:*',
   )
+  logging.info('Successfully created replay buffer')
 
   train_checkpointer = common.Checkpointer(
       ckpt_dir=train_dir,
@@ -311,6 +319,7 @@ def train_eval(
     tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
   train_summary_writer.flush()
 
+  logging.info('Beginning training at step: %d', global_step.value().numpy())
   with train_summary_writer.as_default():
     while environment_steps_metric.result().numpy() < total_env_steps:
       start = time.time()
@@ -422,6 +431,7 @@ def train_eval(
 
 
 def train_mp(_):
+  logging.set_verbosity(logging.INFO)
   seed = int(os.environ.get('SEED', None))
   root_dir = os.environ.get('ROOT_DIR', None)
   env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
@@ -495,17 +505,24 @@ def train_mp(_):
       train_checkpoint_interval=train_checkpoint_interval,
       use_tf_functions=False,
       env_args=dict(
+          seed=0,
           difficulty=difficulty_level,
           num_websites=num_websites,
           browser_args=dict(
               threading=False,
-              chrome_options={'--headless', '--no-sandbox', '--disable-gpu'},
+              chrome_options=[
+                  '--headless',
+                  '--disable-gpu',
+                  '--disable-dev-shm-usage',
+                  '--no-sandbox',
+              ],
           ),
       ),
   )
 
 
 def train():
+  logging.set_verbosity(logging.INFO)
   tf_agents.system.multiprocessing.handle_main(train_mp)
 
 
