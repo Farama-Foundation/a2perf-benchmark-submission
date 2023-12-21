@@ -2,15 +2,11 @@ import os
 
 import minari
 import tensorflow as tf
+import tensorflow.compat.v1 as tf1
 from absl import app
 from absl import flags
 from stable_baselines import PPO2
-from tensorflow.python.framework.ops import enable_eager_execution
-import tensorflow.compat.v1 as tf1
 
-from a2perf.domains import quadruped_locomotion
-
-# enable_eager_execution()
 _MINARI_DATASETS_PATH = flags.DEFINE_string('minari_datasets_path', None,
                                             'Path to Minari datasets.')
 
@@ -28,6 +24,10 @@ def train():
   dataset_id = os.environ['DATASET_ID']
   output_dir = root_dir
   batch_size = int(os.environ['BATCH_SIZE'])
+  num_epochs = int(os.environ['NUM_EPOCHS'])
+  learning_rate = float(os.environ['LEARNING_RATE'])
+  skill_level = str(os.environ['SKILL_LEVEL'])
+
 
   if _MINARI_DATASETS_PATH.value is not None:
     os.environ['MINARI_DATASETS_PATH'] = _MINARI_DATASETS_PATH.value
@@ -53,8 +53,10 @@ def train():
   buffer_size = 1000
   model = PPO2('MlpPolicy',
                'QuadrupedLocomotion-v0',
+               learning_rate=learning_rate,
                policy_kwargs=dict(act_fun=tf.nn.relu,
                                   layers=[512, 256]),
+
                verbose=1)
 
   # Access the model's session and its graph
@@ -78,7 +80,10 @@ def train():
     iterator = tf_dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-  model.pretrain(next_element, n_epochs=1000)
+  model.pretrain(next_element, n_epochs=num_epochs)
+
+  # Save the model
+  model.save(os.path.join(output_dir, 'final_bc_policy'))
 
 
 def main(_):
