@@ -4,12 +4,14 @@ import os
 import random
 import time
 
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
+from absl import logging
 import gin
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 import tf_agents
-from absl import logging
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
@@ -21,9 +23,6 @@ from tf_agents.policies import policy_saver
 from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
-
-from a2perf.domains.web_navigation.gwob.CoDE import networks
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 
 def create_env(
@@ -100,7 +99,6 @@ def train_eval(
       flush_millis=summaries_flush_secs * 1000,
       max_queue=10,
       experimental_trackable=True,
-
   )
   eval_summary_writer = tf.summary.create_file_writer(
       logdir=os.path.join(summary_dir, 'eval'),
@@ -166,7 +164,7 @@ def train_eval(
         embedding_dim=100,
         name='q_network',
         latent_dim=50,
-        return_state_value=False
+        return_state_value=False,
     )
   with tf.name_scope('DQNAgent'):
     tf_agent = dqn_agent.DqnAgent(
@@ -177,9 +175,7 @@ def train_eval(
         n_step_update=n_step_update,
         target_update_tau=target_update_tau,
         target_update_period=target_update_period,
-        optimizer=tf.compat.v1.train.AdamOptimizer(
-            learning_rate=learning_rate
-        ),
+        optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate),
         td_errors_loss_fn=common.element_wise_huber_loss,
         gamma=gamma,
         reward_scale_factor=reward_scale_factor,
@@ -197,8 +193,9 @@ def train_eval(
       environment_steps_metric,
   ]
   train_metrics = step_metrics + [
-      tf_metrics.AverageReturnMetric(batch_size=environment_batch_size,
-                                     buffer_size=num_eval_episodes),
+      tf_metrics.AverageReturnMetric(
+          batch_size=environment_batch_size, buffer_size=num_eval_episodes
+      ),
       tf_metrics.AverageEpisodeLengthMetric(
           batch_size=environment_batch_size, buffer_size=num_eval_episodes
       ),
@@ -254,10 +251,11 @@ def train_eval(
   )
 
   dataset = (
-      replay_buffer.as_dataset(sample_batch_size=batch_size,
-                               num_steps=2,
-                               num_parallel_calls=tf.data.AUTOTUNE
-                               )
+      replay_buffer.as_dataset(
+          sample_batch_size=batch_size,
+          num_steps=2,
+          num_parallel_calls=tf.data.AUTOTUNE,
+      )
       .unbatch()
       .filter(filter_invalid_transition)
       .batch(batch_size)
@@ -309,7 +307,7 @@ def train_eval(
   with train_summary_writer.as_default():
     for train_metric in train_metrics:
       metric_value = train_metric.result()
-      metric_name = f"Metrics/{train_metric.name}"
+      metric_name = f'Metrics/{train_metric.name}'
       tf.summary.scalar(metric_name, metric_value, step=global_step)
     tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
 
@@ -322,7 +320,8 @@ def train_eval(
 
       start = time.time()
       train_loss = sum(
-          [train_step().loss for _ in range(train_steps_per_iteration)])
+          [train_step().loss for _ in range(train_steps_per_iteration)]
+      )
       train_time += time.time() - start
 
       iters_so_far += 1
@@ -332,11 +331,13 @@ def train_eval(
       if iters_so_far % log_interval == 0:
         metric_utils.log_metrics(train_metrics)
         time_acc += time.time() - start_time
-        logging.info('step = %d, loss = %f', global_step_val.numpy(),
-                     train_loss)
+        logging.info(
+            'step = %d, loss = %f', global_step_val.numpy(), train_loss
+        )
         print('step = %d, loss = %f', global_step_val.numpy(), train_loss)
         steps_per_sec = (
-                            global_step_val.numpy() - timed_at_step.numpy()) / time_acc
+            global_step_val.numpy() - timed_at_step.numpy()
+        ) / time_acc
         logging.info('%.3f steps/sec', steps_per_sec)
         print('%.3f steps/sec', steps_per_sec)
 
@@ -364,8 +365,11 @@ def train_eval(
         metric_utils.log_metrics(eval_metrics)
 
       if iters_so_far % train_checkpoint_interval == 0:
-        logging.info('Saving train checkpoint at step %d  (iteration %d)',
-                     global_step_val.numpy(), iters_so_far)
+        logging.info(
+            'Saving train checkpoint at step %d  (iteration %d)',
+            global_step_val.numpy(),
+            iters_so_far,
+        )
         train_checkpointer.save(global_step=global_step_val)
         train_vocab_save_path = os.path.join(
             train_dir, f'vocab_{global_step_val.numpy()}.npy'
@@ -374,8 +378,11 @@ def train_eval(
             dict(global_vocab._local_vocab), open(train_vocab_save_path, 'w')
         )
       if iters_so_far % policy_checkpoint_interval == 0:
-        logging.info('Saving policy checkpoint at step %d  (iteration %d)',
-                     global_step_val.numpy(), iters_so_far)
+        logging.info(
+            'Saving policy checkpoint at step %d  (iteration %d)',
+            global_step_val.numpy(),
+            iters_so_far,
+        )
         save_location = os.path.join(
             saved_model_dir,
             'policy_' + str(environment_steps_metric.result().numpy()),
@@ -414,20 +421,25 @@ def train_mp(_):
   learning_rate = float(os.environ.get('LEARNING_RATE', None))
   log_interval = int(os.environ.get('LOG_INTERVAL', None))
   policy_checkpoint_interval = int(
-      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
+      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None)
+  )
   rb_capacity = int(os.environ.get('RB_CAPACITY', None))
   rb_checkpoint_interval = int(os.environ.get('RB_CHECKPOINT_INTERVAL', None))
   root_dir = os.environ.get('ROOT_DIR', None)
   seed = int(os.environ.get('SEED', None))
   summary_interval = int(os.environ.get('SUMMARY_INTERVAL', None))
+  num_websites = int(os.environ.get('NUM_WEBSITES', None))
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
   train_checkpoint_interval = int(
-      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None)
+  )
   timesteps_per_actorbatch_param = int(
-      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
+      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
+  )
   batched_total_env_steps = total_env_steps // env_batch_size
-  timesteps_per_actorbatch = max(1,
-                                 timesteps_per_actorbatch_param // env_batch_size)
+  timesteps_per_actorbatch = max(
+      1, timesteps_per_actorbatch_param // env_batch_size
+  )
   num_iterations = max(1, batched_total_env_steps // timesteps_per_actorbatch)
 
   # Print extracted and computed values
@@ -441,6 +453,7 @@ def train_mp(_):
   print(f'rb_checkpoint_interval: {rb_checkpoint_interval}')
   print(f'root_dir: {root_dir}')
   print(f'seed: {seed}')
+  print(f'num_websites: {num_websites}')
   print(f'summary_interval: {summary_interval}')
   print(f'total_env_steps: {total_env_steps}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
@@ -490,21 +503,25 @@ def train_mp(_):
       train_steps_per_iteration=timesteps_per_actorbatch,
       use_tf_functions=False,
       env_args=dict(
+          seed=seed,
+          difficulty=difficulty_level,
+          num_websites=num_websites,
           # designs=[
-          # dict(number_of_pages=1, action=[], action_page=[], ),
-          # dict(number_of_pages=2, action=[1, 24], action_page=[0, 1], ),
-          # dict(number_of_pages=1, action=[1], action_page=[0], ),
+          # single submit button
+          # {'number_of_pages': 1, 'action': [], 'action_page': [], },
+          # single active primitive (Address box)
+          # {'number_of_pages': 1, 'action': [1], 'action_page': [0], }
           # ],
-          difficulty=1,
           browser_args=dict(
               threading=False,
-              chrome_options={
-                  # '--headless',
+              chrome_options=[
+                  '--headless',
+                  '--disable-gpu',
+                  '--disable-dev-shm-usage',
                   '--no-sandbox',
-                  # '--disable-gpu'
-              }
-          )
-      )
+              ],
+          ),
+      ),
   )
 
 

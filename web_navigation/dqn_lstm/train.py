@@ -46,7 +46,6 @@ def filter_invalid_transition(trajectories, _):
 def train_eval(
     root_dir,
     env_name='WebNavigation-v0',
-    difficulty=None,
     num_iterations=100000,
     # Params for collect
     initial_collect_steps=5,
@@ -80,7 +79,6 @@ def train_eval(
     summaries_flush_secs=10,
     debug_summaries=False,
     summarize_grads_and_vars=False,
-    eval_metrics_callback=None,
     env_args=None,
     seed=0,
 ):
@@ -423,6 +421,7 @@ def train_mp(_):
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
   train_checkpoint_interval = int(
       os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
+  epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', None))
   timesteps_per_actorbatch_param = int(
       os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
   batched_total_env_steps = total_env_steps // env_batch_size
@@ -434,6 +433,7 @@ def train_mp(_):
   print(f'difficulty_level: {difficulty_level}')
   print(f'env_batch_size: {env_batch_size}')
   print(f'eval_interval: {eval_interval}')
+  print(f'epsilon_greedy: {epsilon_greedy}')
   print(f'learning_rate: {learning_rate}')
   print(f'log_interval: {log_interval}')
   print(f'num_iterations: {num_iterations}')
@@ -484,6 +484,7 @@ def train_mp(_):
       replay_buffer_capacity=rb_capacity,
       root_dir=root_dir,
       seed=seed,
+      epsilon_greedy=epsilon_greedy,
       summarize_grads_and_vars=False,
       summary_interval=summary_interval,
       train_checkpoint_interval=train_checkpoint_interval,
