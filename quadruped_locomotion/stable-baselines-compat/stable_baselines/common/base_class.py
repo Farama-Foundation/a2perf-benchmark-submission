@@ -309,6 +309,7 @@ class BaseRLModel(ABC):
     pass
 
   def pretrain(self, dataset_iter, n_epochs=10, learning_rate=1e-4,
+      summary_dir=None,
       adam_epsilon=1e-8, val_interval=None):
     """
     Pretrain a model using behavior cloning:
@@ -328,7 +329,8 @@ class BaseRLModel(ABC):
     discrete_actions = isinstance(self.action_space, gym.spaces.Discrete)
 
     assert discrete_actions or continuous_actions, 'Only Discrete and Box action spaces are supported'
-
+    summary_writer = tf.compat.v2.summary.create_file_writer(
+        summary_dir)
     # Validate the model every 10% of the total number of iteration
     if val_interval is None:
       # Prevent modulo by zero
@@ -396,13 +398,8 @@ class BaseRLModel(ABC):
       if self.verbose > 0:
         print(
             f"Epoch {epoch_idx + 1}/{n_epochs} - Training loss: {train_loss:.6f}")
-        # TensorFlow logging
-        with tf1.summary.FileWriter('logs/train',
-                                    graph=self.sess.graph) as writer:
-          summary = tf1.Summary(value=[
-              tf1.Summary.Value(tag="train_loss", simple_value=train_loss)])
-          writer.add_summary(summary, epoch_idx)
-
+        with summary_writer.as_default():
+          tf.summary.scalar('train_loss', train_loss, step=epoch_idx)
     # At the end of training
     if self.verbose > 0:
       print("Pretraining done.")

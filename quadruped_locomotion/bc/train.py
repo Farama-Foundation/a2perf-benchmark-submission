@@ -17,13 +17,14 @@ def train():
   mode = os.environ['MODE']
   visualize = bool(os.environ['VISUALIZE'])
   int_save_freq = int(os.environ['INT_SAVE_FREQ'])
-  motion_file_path = os.environ['MOTION_FILE_PATH']
+  # motion_file_path = os.environ['MOTION_FILE_PATH']
   dataset_id = os.environ['DATASET_ID']
   output_dir = root_dir
+  summary_dir = os.path.join(output_dir, 'summaries')
   batch_size = int(os.environ['BATCH_SIZE'])
   num_epochs = int(os.environ['NUM_EPOCHS'])
   learning_rate = float(os.environ['LEARNING_RATE'])
-  skill_level = str(os.environ['SKILL_LEVEL'])
+  # skill_level = str(os.environ['SKILL_LEVEL'])
 
   print('root_dir:', root_dir)
   print('seed:', seed)
@@ -43,7 +44,7 @@ def train():
       for state, action in combined_step_data:
         yield state, action
 
-  buffer_size = 1000
+  buffer_size = 10000
   model = PPO2(
       'MlpPolicy',
       'QuadrupedLocomotion-v0',
@@ -76,7 +77,13 @@ def train():
     iterator = tf_dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-  model.pretrain(next_element, n_epochs=num_epochs)
+  model.pretrain(next_element,
+                 n_epochs=num_epochs,
+                 learning_rate=learning_rate,
+                 adam_epsilon=1e-8,
+                 val_interval=1,
+                 summary_dir=summary_dir,
+                 )
 
   # Save the model
   model.save(os.path.join(output_dir, 'final_bc_policy'))
