@@ -1,15 +1,12 @@
 import minari
 import os
 import tensorflow as tf
-import tensorflow.compat.v1 as tf1
 from absl import app
 
 from stable_baselines import PPO2
 
 
 def train():
-  # tf1.enable_v2_behavior()
-
   root_dir = os.environ['ROOT_DIR']
   seed = int(os.environ['SEED'])
   total_timesteps = int(os.environ['TOTAL_ENV_STEPS'])
@@ -75,7 +72,7 @@ def train():
     tf_dataset = (
         tf_dataset.shuffle(buffer_size)
         .batch(batch_size)
-        .prefetch(tf1.data.experimental.AUTOTUNE)
+        .prefetch(tf.data.experimental.AUTOTUNE)
     )
 
     model.pretrain(tf_dataset,
