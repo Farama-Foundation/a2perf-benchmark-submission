@@ -308,7 +308,7 @@ class BaseRLModel(ABC):
     """
     pass
 
-  def pretrain(self, dataset_iter, n_epochs=10, learning_rate=1e-4,
+  def pretrain(self, tf_dataset, n_epochs=10, learning_rate=1e-4,
       summary_dir=None,
       adam_epsilon=1e-8, val_interval=None):
     """
@@ -317,7 +317,7 @@ class BaseRLModel(ABC):
 
     NOTE: only Box and Discrete spaces are supported for now.
 
-    :param dataset_iter: (ExpertDataset) Dataset manager
+    :param tf_dataset: (ExpertDataset) Dataset manager
     :param n_epochs: (int) Number of iterations on the training set
     :param learning_rate: (float) Learning rate
     :param adam_epsilon: (float) the epsilon value for the adam optimizer
@@ -331,13 +331,6 @@ class BaseRLModel(ABC):
     assert discrete_actions or continuous_actions, 'Only Discrete and Box action spaces are supported'
     summary_writer = tf.compat.v2.summary.create_file_writer(
         summary_dir)
-    # Validate the model every 10% of the total number of iteration
-    if val_interval is None:
-      # Prevent modulo by zero
-      if n_epochs < 10:
-        val_interval = 1
-      else:
-        val_interval = int(n_epochs / 10)
 
     with self.graph.as_default():
       with tf.compat.v1.variable_scope('pretrain',
@@ -372,9 +365,12 @@ class BaseRLModel(ABC):
       train_loss = 0.0
       num_batches = 0
 
+      iterator = tf.compat.v1.data.make_one_shot_iterator(tf_dataset)
+      next_element = iterator.get_next()
+
       try:
         while True:
-          expert_obs, expert_actions = self.sess.run(dataset_iter)
+          expert_obs, expert_actions = self.sess.run(next_element)
           feed_dict = {
               obs_ph: expert_obs,
               actions_ph: expert_actions,

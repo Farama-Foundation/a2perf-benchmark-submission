@@ -8,7 +8,7 @@ from stable_baselines import PPO2
 
 
 def train():
-  tf1.enable_v2_behavior()
+  # tf1.enable_v2_behavior()
 
   root_dir = os.environ['ROOT_DIR']
   seed = int(os.environ['SEED'])
@@ -32,7 +32,14 @@ def train():
   print('output_dir:', output_dir)
   print('batch_size:', batch_size)
 
+  # print cuda visible devices env var before and after loading dataset
+
+  print('before loading dataset')
+  print(os.environ['CUDA_VISIBLE_DEVICES'])
   dataset = minari.load_dataset(dataset_id=dataset_id, download=False)
+  print('after loading dataset')
+  print(os.environ['CUDA_VISIBLE_DEVICES'])
+  os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
   def episode_generator():
     for episode in dataset:
@@ -56,7 +63,7 @@ def train():
 
   with graph.as_default():
     # Define the dataset within the graph
-    tf_dataset = tf1.data.Dataset.from_generator(
+    tf_dataset = tf.data.Dataset.from_generator(
         episode_generator,
         output_types=(tf.float32, tf.float32),
         output_shapes=(
@@ -71,16 +78,13 @@ def train():
         .prefetch(tf1.data.experimental.AUTOTUNE)
     )
 
-    iterator = tf_dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
-
-  model.pretrain(next_element,
-                 n_epochs=num_epochs,
-                 learning_rate=learning_rate,
-                 adam_epsilon=1e-8,
-                 val_interval=1,
-                 summary_dir=summary_dir,
-                 )
+    model.pretrain(tf_dataset,
+                   n_epochs=num_epochs,
+                   learning_rate=learning_rate,
+                   adam_epsilon=1e-8,
+                   val_interval=1,
+                   summary_dir=summary_dir,
+                   )
 
   # Save the model
   model.save(os.path.join(output_dir, 'final_bc_policy'))
