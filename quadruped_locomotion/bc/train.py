@@ -1,30 +1,22 @@
-import os
-
-from absl import app
-from absl import flags
 import minari
-from stable_baselines import PPO2
+import os
 import tensorflow as tf
-import tensorflow.compat.v1 as tf1
+from absl import app
 
 
 def train():
-  # turn on eager mode for debugging
-
   root_dir = os.environ['ROOT_DIR']
   seed = int(os.environ['SEED'])
   total_timesteps = int(os.environ['TOTAL_ENV_STEPS'])
   mode = os.environ['MODE']
   visualize = bool(os.environ['VISUALIZE'])
   int_save_freq = int(os.environ['INT_SAVE_FREQ'])
-  # motion_file_path = os.environ['MOTION_FILE_PATH']
   dataset_id = os.environ['DATASET_ID']
   output_dir = root_dir
   summary_dir = os.path.join(output_dir, 'summaries')
   batch_size = int(os.environ['BATCH_SIZE'])
   num_epochs = int(os.environ['NUM_EPOCHS'])
   learning_rate = float(os.environ['LEARNING_RATE'])
-  # skill_level = str(os.environ['SKILL_LEVEL'])
 
   print('root_dir:', root_dir)
   print('seed:', seed)
@@ -35,7 +27,13 @@ def train():
   print('output_dir:', output_dir)
   print('batch_size:', batch_size)
 
+  tf.random.set_seed(seed)
+
+  # print cuda visible devices env var before and after loading dataset
+
   dataset = minari.load_dataset(dataset_id=dataset_id, download=False)
+  print(os.environ['CUDA_VISIBLE_DEVICES'])
+  os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
   def episode_generator():
     for episode in dataset:
@@ -45,45 +43,49 @@ def train():
         yield state, action
 
   buffer_size = 10000
-  model = PPO2(
-      'MlpPolicy',
-      'QuadrupedLocomotion-v0',
-      learning_rate=learning_rate,
-      policy_kwargs=dict(act_fun=tf.nn.relu, layers=[512, 256]),
-      verbose=1,
-  )
 
-  # Access the model's session and its graph
-  sess = model.sess
-  graph = sess.graph
+  with tf.device('/gpu:0'):
+    from stable_baselines import PPO2
 
-  with graph.as_default():
-    # Define the dataset within the graph
-    tf_dataset = tf1.data.Dataset.from_generator(
-        episode_generator,
-        output_types=(tf.float32, tf.float32),
-        output_shapes=(
-            dataset.spec.observation_space.shape,
-            dataset.spec.action_space.shape,
-        ),
+    model = PPO2(
+        'MlpPolicy',
+        'QuadrupedLocomotion-v0',
+        learning_rate=learning_rate,
+        policy_kwargs=dict(act_fun=tf.nn.relu, layers=[512, 256]),
+        verbose=1,
     )
 
-    tf_dataset = (
-        tf_dataset.shuffle(buffer_size)
-        .batch(batch_size)
-        .prefetch(tf1.data.experimental.AUTOTUNE)
-    )
+    # Access the model's session and its graph
+    sess = model.sess
+    graph = sess.graph
 
-    iterator = tf_dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
+    with graph.as_default():
+      # Define the dataset within the graph
+      tf_dataset = tf.data.Dataset.from_generator(
+          episode_generator,
+          output_types=(tf.float32, tf.float32),
+          output_shapes=(
+              dataset.spec.observation_space.shape,
+              dataset.spec.action_space.shape,
+          ),
+      )
 
-  model.pretrain(next_element,
-                 n_epochs=num_epochs,
-                 learning_rate=learning_rate,
-                 adam_epsilon=1e-8,
-                 val_interval=1,
-                 summary_dir=summary_dir,
-                 )
+      tf_dataset = (
+          tf_dataset.shuffle(buffer_size)
+          .batch(batch_size)
+          .prefetch(tf.data.experimental.AUTOTUNE)
+      )
+
+      # Initialize the variables
+      sess.run(tf.compat.v1.global_variables_initializer())
+
+      model.pretrain(tf_dataset,
+                     n_epochs=num_epochs,
+                     learning_rate=learning_rate,
+                     adam_epsilon=1e-8,
+                     val_interval=1,
+                     summary_dir=summary_dir,
+                     )
 
   # Save the model
   model.save(os.path.join(output_dir, 'final_bc_policy'))

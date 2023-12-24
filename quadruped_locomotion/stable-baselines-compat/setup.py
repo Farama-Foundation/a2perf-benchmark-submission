@@ -5,44 +5,46 @@ from setuptools import setup, find_packages
 from distutils.version import LooseVersion
 
 if sys.version_info.major != 3:
-    print('This Python is only compatible with Python 3, but you are running '
-          'Python {}. The installation will likely fail.'.format(sys.version_info.major))
+  print('This Python is only compatible with Python 3, but you are running '
+        'Python {}. The installation will likely fail.'.format(
+    sys.version_info.major))
 
 # Read version from file
 with open(os.path.join('stable_baselines', 'version.txt'), 'r') as file_handler:
-    __version__ = file_handler.read().strip()
+  __version__ = file_handler.read().strip()
 
 
 # Check tensorflow installation to avoid
 # breaking pre-installed tf gpu
 def find_tf_dependency():
-    install_tf, tf_gpu = False, False
-    try:
-        import tensorflow as tf
-        if tf.__version__ < LooseVersion('1.8.0'):
-            install_tf = True
-            # check if a gpu version is needed
-            tf_gpu = tf.test.is_gpu_available()
-    except ImportError:
-        install_tf = True
-        # Check if a nvidia gpu is present
-        for command in ['nvidia-smi', '/usr/bin/nvidia-smi', 'nvidia-smi.exe']:
-            try:
-                if subprocess.call([command]) == 0:
-                    tf_gpu = True
-                    break
-            except IOError:  # command does not exist / is not executable
-                pass
-        if os.environ.get('USE_GPU') == 'True':  # force GPU even if not auto-detected
-            tf_gpu = True
+  install_tf, tf_gpu = False, False
+  try:
+    import tensorflow as tf
+    if tf.__version__ < LooseVersion('1.8.0'):
+      install_tf = True
+      # check if a gpu version is needed
+      tf_gpu = tf.test.is_gpu_available()
+  except ImportError:
+    install_tf = True
+    # Check if a nvidia gpu is present
+    for command in ['nvidia-smi', '/usr/bin/nvidia-smi', 'nvidia-smi.exe']:
+      try:
+        if subprocess.call([command]) == 0:
+          tf_gpu = True
+          break
+      except IOError:  # command does not exist / is not executable
+        pass
+    if os.environ.get(
+        'USE_GPU') == 'True':  # force GPU even if not auto-detected
+      tf_gpu = True
 
-    tf_dependency = []
-    if install_tf:
-        tf_dependency = ['tensorflow-gpu>=1.8.0,<2.0.0'] if tf_gpu else ['tensorflow>=1.8.0,<2.0.0']
-        if tf_gpu:
-            print("A GPU was detected, tensorflow-gpu will be installed")
+  tf_dependency = []
+  if install_tf:
+    tf_dependency = ['tensorflow>=2.0.0']
+    if tf_gpu:
+      print("A GPU was detected, tensorflow-gpu will be installed")
 
-    return tf_dependency
+  return tf_dependency
 
 
 long_description = """

@@ -3,8 +3,6 @@ import os
 import tensorflow as tf
 from absl import app
 
-from stable_baselines import PPO2
-
 
 def train():
   root_dir = os.environ['ROOT_DIR']
@@ -29,12 +27,11 @@ def train():
   print('output_dir:', output_dir)
   print('batch_size:', batch_size)
 
+  tf.random.set_seed(seed)
+
   # print cuda visible devices env var before and after loading dataset
 
-  print('before loading dataset')
-  print(os.environ['CUDA_VISIBLE_DEVICES'])
   dataset = minari.load_dataset(dataset_id=dataset_id, download=False)
-  print('after loading dataset')
   print(os.environ['CUDA_VISIBLE_DEVICES'])
   os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -46,42 +43,49 @@ def train():
         yield state, action
 
   buffer_size = 10000
-  model = PPO2(
-      'MlpPolicy',
-      'QuadrupedLocomotion-v0',
-      learning_rate=learning_rate,
-      policy_kwargs=dict(act_fun=tf.nn.relu, layers=[512, 256]),
-      verbose=1,
-  )
 
-  # Access the model's session and its graph
-  sess = model.sess
-  graph = sess.graph
+  with tf.device('/gpu:0'):
+    from stable_baselines import PPO2
 
-  with graph.as_default():
-    # Define the dataset within the graph
-    tf_dataset = tf.data.Dataset.from_generator(
-        episode_generator,
-        output_types=(tf.float32, tf.float32),
-        output_shapes=(
-            dataset.spec.observation_space.shape,
-            dataset.spec.action_space.shape,
-        ),
+    model = PPO2(
+        'MlpPolicy',
+        'QuadrupedLocomotion-v0',
+        learning_rate=learning_rate,
+        policy_kwargs=dict(act_fun=tf.nn.relu, layers=[512, 256]),
+        verbose=1,
     )
 
-    tf_dataset = (
-        tf_dataset.shuffle(buffer_size)
-        .batch(batch_size)
-        .prefetch(tf.data.experimental.AUTOTUNE)
-    )
+    # Access the model's session and its graph
+    sess = model.sess
+    graph = sess.graph
 
-    model.pretrain(tf_dataset,
-                   n_epochs=num_epochs,
-                   learning_rate=learning_rate,
-                   adam_epsilon=1e-8,
-                   val_interval=1,
-                   summary_dir=summary_dir,
-                   )
+    with graph.as_default():
+      # Define the dataset within the graph
+      tf_dataset = tf.data.Dataset.from_generator(
+          episode_generator,
+          output_types=(tf.float32, tf.float32),
+          output_shapes=(
+              dataset.spec.observation_space.shape,
+              dataset.spec.action_space.shape,
+          ),
+      )
+
+      tf_dataset = (
+          tf_dataset.shuffle(buffer_size)
+          .batch(batch_size)
+          .prefetch(tf.data.experimental.AUTOTUNE)
+      )
+
+      # Initialize the variables
+      sess.run(tf.compat.v1.global_variables_initializer())
+
+      model.pretrain(tf_dataset,
+                     n_epochs=num_epochs,
+                     learning_rate=learning_rate,
+                     adam_epsilon=1e-8,
+                     val_interval=1,
+                     summary_dir=summary_dir,
+                     )
 
   # Save the model
   model.save(os.path.join(output_dir, 'final_bc_policy'))
