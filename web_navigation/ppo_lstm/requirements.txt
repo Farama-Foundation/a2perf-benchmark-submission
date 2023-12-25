@@ -1,4 +1,4 @@
-./a2perf/a2perf_benchmark_submission/web_navigation/sonnet
-tensorflow
+-e a2perf/a2perf_benchmark_submission/web_navigation/sonnet
+tensorflow<2.15.0
 tf-agents[reverb]
 gymnasium
