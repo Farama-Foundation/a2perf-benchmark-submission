@@ -1,99 +1,87 @@
 import minari
 import os
 import tensorflow as tf
-from absl import app
+from stable_baselines.ppo2 import PPO2
+
+
+def load_environment_variables():
+  """
+  Load environment variables and convert them to the correct data type.
+  """
+  env_vars = {
+      'ROOT_DIR': str,
+      'SEED': int,
+      'TOTAL_ENV_STEPS': int,
+      'MODE': str,
+      'VISUALIZE': lambda x: x.lower() in ['true', '1', 'yes'],
+      'INT_SAVE_FREQ': int,
+      'DATASET_ID': str,
+      'BATCH_SIZE': int,
+      'NUM_EPOCHS': int,
+      'LEARNING_RATE': float
+  }
+
+  return {var: env_vars[var](os.environ[var]) for var in env_vars}
+
+
+def episode_generator(dataset):
+  """
+  Generator for episodes from the dataset.
+  """
+  for episode in dataset:
+    step_data = (episode.observations, episode.actions)
+    for state, action in zip(*step_data):
+      yield state, action
+
+
+def prepare_dataset(dataset, buffer_size, batch_size):
+  """
+  Prepare the dataset for training, ensuring data loading happens on the CPU.
+  """
+  tf_dataset = tf.data.Dataset.from_generator(
+      lambda: episode_generator(dataset),
+      output_types=(tf.float32, tf.float32),
+      output_shapes=(
+          dataset.spec.observation_space.shape,
+          dataset.spec.action_space.shape,
+      ),
+  )
+  return tf_dataset.shuffle(buffer_size).batch(batch_size).prefetch(
+      tf.data.experimental.AUTOTUNE)
 
 
 def train():
-  root_dir = os.environ['ROOT_DIR']
-  seed = int(os.environ['SEED'])
-  total_timesteps = int(os.environ['TOTAL_ENV_STEPS'])
-  mode = os.environ['MODE']
-  visualize = bool(os.environ['VISUALIZE'])
-  int_save_freq = int(os.environ['INT_SAVE_FREQ'])
-  dataset_id = os.environ['DATASET_ID']
-  output_dir = root_dir
-  summary_dir = os.path.join(output_dir, 'summaries')
-  batch_size = int(os.environ['BATCH_SIZE'])
-  num_epochs = int(os.environ['NUM_EPOCHS'])
-  learning_rate = float(os.environ['LEARNING_RATE'])
+  env_vars = load_environment_variables()
 
-  print('root_dir:', root_dir)
-  print('seed:', seed)
-  print('total_timesteps:', total_timesteps)
-  print('mode:', mode)
-  print('visualize:', visualize)
-  print('int_save_freq:', int_save_freq)
-  print('output_dir:', output_dir)
-  print('batch_size:', batch_size)
+  print('Environment Variables:', env_vars)
 
-  tf.random.set_seed(seed)
+  tf.random.set_seed(env_vars['SEED'])
 
-  # print cuda visible devices env var before and after loading dataset
+  # Loading dataset
+  dataset = minari.load_dataset(dataset_id=env_vars['DATASET_ID'],
+                                download=False)
+  buffer_size = 1000
 
-  dataset = minari.load_dataset(dataset_id=dataset_id, download=False)
-  print(os.environ['CUDA_VISIBLE_DEVICES'])
-  os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+  model = PPO2(
+      'MlpPolicy',
+      'QuadrupedLocomotion-v0',
+      learning_rate=env_vars['LEARNING_RATE'],
+      policy_kwargs=dict(act_fun=tf.nn.relu, layers=[512, 256]),
+      verbose=1,
+  )
+  with model.sess.graph.as_default():
+    tf_dataset = prepare_dataset(dataset, buffer_size, env_vars['BATCH_SIZE'])
+    model.sess.run(tf.compat.v1.global_variables_initializer())
+    model.pretrain(tf_dataset,
+                   n_epochs=env_vars['NUM_EPOCHS'],
+                   learning_rate=env_vars['LEARNING_RATE'],
+                   adam_epsilon=1e-8,
+                   val_interval=1,
+                   summary_dir=os.path.join(env_vars['ROOT_DIR'],
+                                            'summaries'))
 
-  def episode_generator():
-    for episode in dataset:
-      step_data = (episode.observations, episode.actions)
-      combined_step_data = zip(*step_data)
-      for state, action in combined_step_data:
-        yield state, action
-
-  buffer_size = 10000
-
-  with tf.device('/gpu:0'):
-    from stable_baselines import PPO2
-
-    model = PPO2(
-        'MlpPolicy',
-        'QuadrupedLocomotion-v0',
-        learning_rate=learning_rate,
-        policy_kwargs=dict(act_fun=tf.nn.relu, layers=[512, 256]),
-        verbose=1,
-    )
-
-    # Access the model's session and its graph
-    sess = model.sess
-    graph = sess.graph
-
-    with graph.as_default():
-      # Define the dataset within the graph
-      tf_dataset = tf.data.Dataset.from_generator(
-          episode_generator,
-          output_types=(tf.float32, tf.float32),
-          output_shapes=(
-              dataset.spec.observation_space.shape,
-              dataset.spec.action_space.shape,
-          ),
-      )
-
-      tf_dataset = (
-          tf_dataset.shuffle(buffer_size)
-          .batch(batch_size)
-          .prefetch(tf.data.experimental.AUTOTUNE)
-      )
-
-      # Initialize the variables
-      sess.run(tf.compat.v1.global_variables_initializer())
-
-      model.pretrain(tf_dataset,
-                     n_epochs=num_epochs,
-                     learning_rate=learning_rate,
-                     adam_epsilon=1e-8,
-                     val_interval=1,
-                     summary_dir=summary_dir,
-                     )
-
-  # Save the model
-  model.save(os.path.join(output_dir, 'final_bc_policy'))
+  model.save(os.path.join(env_vars['ROOT_DIR'], 'final_bc_policy'))
 
 
-def main(_):
+if __name__ == "__main__":
   train()
-
-
-if __name__ == '__main__':
-  app.run(main)

@@ -844,7 +844,6 @@ class DDPG(OffPolicyRLModel):
                 obs, info = self.env.reset()
                 print(f'obs shape: {obs.shape}')
                 print(f'info: {info}')
-                assert 0 == 1
                 # Retrieve unnormalized observation for saving into the buffer
                 if self._vec_normalize_env is not None:
                     obs_ = self._vec_normalize_env.get_original_obs().squeeze()
