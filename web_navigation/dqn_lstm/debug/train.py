@@ -1,7 +1,8 @@
+import os
+
+os.environ['WRAPT_DISABLE_EXTENSIONS'] = '1'
 import json
 import multiprocessing as mp
-import os
-import random
 import time
 
 from a2perf.domains.web_navigation.gwob.CoDE import networks
@@ -45,8 +46,6 @@ def filter_invalid_transition(trajectories, _):
 def train_eval(
     root_dir,
     env_name='WebNavigation-v0',
-    difficulty=None,
-    num_iterations=100000,
     # Params for collect
     initial_collect_steps=5,
     collect_steps_per_iteration=1,
@@ -57,6 +56,7 @@ def train_eval(
     target_update_tau=0.05,
     target_update_period=5000,
     # Params for train
+    num_iterations=100000,
     train_steps_per_iteration=1,
     batch_size=32,
     environment_batch_size=1,
@@ -72,23 +72,15 @@ def train_eval(
     # Params for checkpoints
     train_checkpoint_interval=10000,
     policy_checkpoint_interval=5000,
-    rb_checkpoint_interval=20000,
     # Params for summaries and logging
     log_interval=1000,
-    summary_interval=1000,
     summaries_flush_secs=10,
     debug_summaries=False,
     summarize_grads_and_vars=False,
-    eval_metrics_callback=None,
     env_args=None,
     seed=0,
 ):
   """A simple train and eval for DQN."""
-
-  tf.random.set_seed(seed)
-  np.random.seed(seed)
-  random.seed(seed)
-
   root_dir = os.path.expanduser(root_dir)
   train_dir = os.path.join(root_dir, 'train')
   summary_dir = os.path.join(root_dir, 'summaries')
@@ -123,7 +115,7 @@ def train_eval(
   envs = [
       lambda: create_env(
           env_name=env_name,
-          env_args=env_args,
+          env_args={**env_args, 'seed': seed + i},
       )
       for i in range(environment_batch_size)
   ]
@@ -135,13 +127,10 @@ def train_eval(
           timestep_penalty=0.0,
       )
   )
-  eval_env = tf_agents.environments.ParallelPyEnvironment(
-      [
-          lambda: create_env(
-              env_name=env_name,
-              env_args=eval_env_args,
-          )
-      ]
+
+  eval_env = create_env(
+      env_name=env_name,
+      env_args=eval_env_args,
   )
   eval_tf_env = tf_py_environment.TFPyEnvironment(eval_env)
   parallel_py_env = tf_agents.environments.ParallelPyEnvironment(
@@ -149,7 +138,6 @@ def train_eval(
   )
   tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
   time_step_spec = tf_env.time_step_spec()
-  observation_spec = time_step_spec.observation
   action_spec = tf_env.action_spec()
   logging.info('Successfully created environments')
 
@@ -336,17 +324,46 @@ def train_eval(
         )
         print('step = %d, loss = %f', global_step_val.numpy(), train_loss)
         steps_per_sec = (
-            global_step_val.numpy() - timed_at_step.numpy()
-        ) / time_acc
+                            global_step_val.numpy() - timed_at_step.numpy()
+                        ) / time_acc
         logging.info('%.3f steps/sec', steps_per_sec)
         print('%.3f steps/sec', steps_per_sec)
 
-      if iters_so_far % summary_interval == 0:
+        # Info metrics indexed by the current global step (training step)
+        tf.summary.scalar(
+            'info/steps_per_sec', steps_per_sec, step=global_step_val
+        )
+        tf.summary.scalar(
+            'info/collect_time', collect_time, step=global_step_val
+        )
+        tf.summary.scalar('info/train_time', train_time, step=global_step_val)
+        tf.summary.scalar(
+            'info/total_time', collect_time + train_time, step=global_step_val
+        )
+        tf.summary.scalar(
+            'info/avg_train_return',
+            train_metrics[2].result(),
+            step=global_step_val,
+        )
+        tf.summary.scalar(
+            'info/avg_train_episode_length',
+            train_metrics[3].result(),
+            step=global_step_val,
+        )
+
+        # Train metrics indexed by iters_so_far
         for train_metric in train_metrics:
           metric_value = train_metric.result()
           metric_name = f'Metrics/{train_metric.name}'
           tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
+
         train_summary_writer.flush()
+
+        time_acc = 0
+        timed_at_step = global_step_val
+        start_time = time.time()
+        collect_time = 0
+        train_time = 0
 
       if iters_so_far % eval_interval == 0:
         eval_start_time = time.time()
@@ -415,6 +432,7 @@ def train_eval(
 def train_mp(_):
   # Extract environment variables
   batch_size = int(os.environ.get('BATCH_SIZE', None))
+  epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', None))
   difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
   env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
   eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
@@ -424,10 +442,8 @@ def train_mp(_):
       os.environ.get('POLICY_CHECKPOINT_INTERVAL', None)
   )
   rb_capacity = int(os.environ.get('RB_CAPACITY', None))
-  rb_checkpoint_interval = int(os.environ.get('RB_CHECKPOINT_INTERVAL', None))
   root_dir = os.environ.get('ROOT_DIR', None)
   seed = int(os.environ.get('SEED', None))
-  summary_interval = int(os.environ.get('SUMMARY_INTERVAL', None))
   num_websites = int(os.environ.get('NUM_WEBSITES', None))
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
   train_checkpoint_interval = int(
@@ -446,15 +462,14 @@ def train_mp(_):
   print(f'difficulty_level: {difficulty_level}')
   print(f'env_batch_size: {env_batch_size}')
   print(f'eval_interval: {eval_interval}')
+  print(f'epsilon_greedy: {epsilon_greedy}')
   print(f'learning_rate: {learning_rate}')
   print(f'log_interval: {log_interval}')
   print(f'num_iterations: {num_iterations}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
-  print(f'rb_checkpoint_interval: {rb_checkpoint_interval}')
   print(f'root_dir: {root_dir}')
   print(f'seed: {seed}')
   print(f'num_websites: {num_websites}')
-  print(f'summary_interval: {summary_interval}')
   print(f'total_env_steps: {total_env_steps}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
   print(f'train_steps_per_iteration: {timesteps_per_actorbatch_param}')
@@ -467,59 +482,42 @@ def train_mp(_):
   policy_checkpoint_interval = max(
       1, policy_checkpoint_interval // timesteps_per_actorbatch_param
   )
-  rb_checkpoint_interval = max(
-      1, rb_checkpoint_interval // timesteps_per_actorbatch_param
-  )
   log_interval = max(1, log_interval // timesteps_per_actorbatch_param)
-  summary_interval = max(1, summary_interval // timesteps_per_actorbatch_param)
   rb_capacity = max(1, rb_capacity // env_batch_size)
 
   print(f'eval_interval: {eval_interval}')
   print(f'log_interval: {log_interval}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
-  print(f'rb_checkpoint_interval: {rb_checkpoint_interval}')
-  print(f'summary_interval: {summary_interval}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
 
   train_eval(
       batch_size=batch_size,
       collect_steps_per_iteration=timesteps_per_actorbatch,
       debug_summaries=False,
-      difficulty=difficulty_level,
       environment_batch_size=env_batch_size,
       eval_interval=eval_interval,
-      initial_collect_steps=timesteps_per_actorbatch,
+      initial_collect_steps=timesteps_per_actorbatch * env_batch_size,
       learning_rate=learning_rate,
       log_interval=log_interval,
       num_iterations=num_iterations,
       policy_checkpoint_interval=policy_checkpoint_interval,
-      rb_checkpoint_interval=rb_checkpoint_interval,
       replay_buffer_capacity=rb_capacity,
       root_dir=root_dir,
       seed=seed,
+      epsilon_greedy=epsilon_greedy,
       summarize_grads_and_vars=False,
-      summary_interval=summary_interval,
       train_checkpoint_interval=train_checkpoint_interval,
       train_steps_per_iteration=timesteps_per_actorbatch,
       use_tf_functions=False,
       env_args=dict(
-          seed=seed,
           difficulty=difficulty_level,
+          use_legacy_reset=True,
+          use_legacy_step=True,
           num_websites=num_websites,
-          # designs=[
-          # single submit button
-          # {'number_of_pages': 1, 'action': [], 'action_page': [], },
-          # single active primitive (Address box)
-          # {'number_of_pages': 1, 'action': [1], 'action_page': [0], }
-          # ],
           browser_args=dict(
               threading=False,
-              chrome_options=[
-                  '--headless',
-                  '--disable-gpu',
-                  '--disable-dev-shm-usage',
-                  '--no-sandbox',
-              ],
+              chrome_options=['--no-sandbox', '--disable-dev-shm-usage'],
+
           ),
       ),
   )
