@@ -396,6 +396,8 @@ class BaseRLModel(ABC):
             f"Epoch {epoch_idx + 1}/{n_epochs} - Training loss: {train_loss:.6f}")
         with summary_writer.as_default():
           tf.summary.scalar('train_loss', train_loss, step=epoch_idx)
+        summary_writer.flush()
+
     # At the end of training
     if self.verbose > 0:
       print("Pretraining done.")
