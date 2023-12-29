@@ -78,6 +78,7 @@ def train_eval(
     max_vocab_size=500,
     # Params for train
     optimizer=None,
+    entropy_regularization=0.0,
     eval_interval=1,
     total_env_steps=100000,
     replay_buffer_capacity=1001,
@@ -211,7 +212,7 @@ def train_eval(
         actor_net=actor_net,
         value_net=critic_net,
         gradient_clipping=gradient_clipping,
-        entropy_regularization=0.1,
+        entropy_regularization=entropy_regularization,
         greedy_eval=False,
         importance_ratio_clipping=0.2,
         normalize_observations=False,
@@ -438,6 +439,7 @@ def train_mp(_):
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
   difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
   eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
+  entropy_regularization = float(os.environ.get('ENTROPY_REGULARIZATION', None))
   train_checkpoint_interval = int(
       os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None)
   )
@@ -504,10 +506,17 @@ def train_mp(_):
       total_env_steps=batched_total_env_steps,
       train_checkpoint_interval=train_checkpoint_interval,
       use_tf_functions=False,
+      entropy_regularization=entropy_regularization,
       env_args=dict(
           seed=seed,
           difficulty=difficulty_level,
           num_websites=num_websites,
+          # designs=[
+              # single submit button
+              # {'number_of_pages': 1, 'action': [], 'action_page': [], },
+              # single active primitive (Address box)
+              # {'number_of_pages': 1, 'action': [1], 'action_page': [0], }
+          # ],
           browser_args=dict(
               threading=False,
               chrome_options=[
