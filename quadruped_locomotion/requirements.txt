@@ -1,0 +1,3 @@
+minari
+tensorflow<2.15.0
+tf-agents[reverb]
