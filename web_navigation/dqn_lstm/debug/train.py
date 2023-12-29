@@ -200,7 +200,7 @@ def train_eval(
       data_spec=tf_agent.collect_data_spec,
       batch_size=tf_env.batch_size,
       max_length=replay_buffer_capacity,
-      device='/cpu:*',
+      device='/cpu:0',
   )
   replay_observer = [replay_buffer.add_batch]
 
