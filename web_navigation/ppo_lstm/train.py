@@ -57,6 +57,9 @@ from tf_agents.utils import common
 from a2perf.domains.web_navigation.gwob.CoDE import networks
 from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
+EMBEDDING_DIM = 100
+LATENT_DIM = 50
+
 
 def create_env(
     env_name='CartPole-v0',
@@ -138,28 +141,26 @@ def train_eval(
   env_args.update({'global_vocabulary': global_vocab})
 
   # Parallel environment creation
+  # All envs get the same seed so that they see the same websites
   envs = [
       lambda: create_env(
           env_name=env_name,
-          env_args=env_args,
+          env_args={**env_args, 'seed': seed},
       )
-      for i in range(environment_batch_size)
+      for _ in range(environment_batch_size)
   ]
   eval_env_args = env_args.copy()
   eval_env_args.update(
       dict(
-          seed=seed + environment_batch_size,
+          seed=seed,
           cyclic_action_penalty=0.0,
           timestep_penalty=0.0,
       )
   )
-  eval_env = tf_agents.environments.ParallelPyEnvironment(
-      [
-          lambda: create_env(
-              env_name=env_name,
-              env_args=eval_env_args,
-          )
-      ]
+
+  eval_env = create_env(
+      env_name=env_name,
+      env_args=eval_env_args,
   )
   eval_tf_env = tf_py_environment.TFPyEnvironment(eval_env)
   parallel_py_env = tf_agents.environments.ParallelPyEnvironment(
@@ -181,14 +182,13 @@ def train_eval(
             vocab_size=max_vocab_size
             if max_vocab_size is not None
             else tf_env.pyenv.envs[0].env.local_vocab.max_vocabulary_size,
-            latent_dim=50,
+            latent_dim=LATENT_DIM,
             profile_value_dropout=0.0,
-            embedding_dim=100,
+            embedding_dim=EMBEDDING_DIM
         ),
     )
-
   logging.info('Successfully created actor network')
-  # state spec must be defined so that it can be used to reshape our value predictions to [B, T, 1]
+
   with tf.name_scope('Value'):
     critic_net = networks.WebLSTMValueNetwork(
         input_tensor_spec=observation_spec,
@@ -198,9 +198,9 @@ def train_eval(
         if max_vocab_size is not None
         else tf_env.pyenv.envs[0].env.local_vocab.max_vocabulary_size,
         profile_value_dropout=0.0,
-        embedding_dim=100,
+        embedding_dim=EMBEDDING_DIM,
         name='value',
-        latent_dim=50,
+        latent_dim=LATENT_DIM
     )
   logging.info('Successfully created value network')
 
@@ -222,8 +222,8 @@ def train_eval(
         summarize_grads_and_vars=summarize_grads_and_vars,
         train_step_counter=global_step,
     )
-
   logging.info('Successfully created PPO agent')
+
   tf_agent.initialize()
   logging.info('Successfully initialized PPO agent')
 
@@ -336,42 +336,50 @@ def train_eval(
         metric_utils.log_metrics(train_metrics)
         time_acc += time.time() - start_time
         logging.info(
-            'step = %d, loss = %f', global_step_val.numpy(), train_loss.loss
+            'step = %d, loss = %f', global_step_val.numpy(), train_loss
         )
-        print('step = %d, loss = %f', global_step_val.numpy(), train_loss.loss)
+        print('step = %d, loss = %f', global_step_val.numpy(), train_loss)
         steps_per_sec = (
                             global_step_val.numpy() - timed_at_step.numpy()
                         ) / time_acc
         logging.info('%.3f steps/sec', steps_per_sec)
         print('%.3f steps/sec', steps_per_sec)
 
-        # Add number of iters per second to the train summary writer
+        # Info metrics indexed by the current global step (training step)
         tf.summary.scalar(
-            name='info/global_steps_per_sec',
-            data=steps_per_sec,
-            step=iters_so_far,
+            'info/steps_per_sec', steps_per_sec, step=global_step_val
         )
         tf.summary.scalar(
-            name='info/collect_time', data=collect_time, step=iters_so_far
+            'info/collect_time', collect_time, step=global_step_val
+        )
+        tf.summary.scalar('info/train_time', train_time, step=global_step_val)
+        tf.summary.scalar(
+            'info/total_time', collect_time + train_time, step=global_step_val
         )
         tf.summary.scalar(
-            name='info/train_time', data=train_time, step=iters_so_far
+            'info/avg_train_return',
+            train_metrics[2].result(),
+            step=global_step_val,
         )
-        print(f'collect_time: {collect_time}')
-        print(f'train_time: {train_time}')
+        tf.summary.scalar(
+            'info/avg_train_episode_length',
+            train_metrics[3].result(),
+            step=global_step_val,
+        )
 
-        timed_at_step = global_step_val
-        time_acc = 0
-        collect_time = 0
-        train_time = 0
-        start_time = time.time()
-
-      if iters_so_far % summary_interval == 0:
+        # Train metrics indexed by iters_so_far
         for train_metric in train_metrics:
           metric_value = train_metric.result()
           metric_name = f'Metrics/{train_metric.name}'
           tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
+
         train_summary_writer.flush()
+
+        time_acc = 0
+        timed_at_step = global_step_val
+        start_time = time.time()
+        collect_time = 0
+        train_time = 0
 
       if iters_so_far % eval_interval == 0:
         eval_start_time = time.time()
@@ -390,8 +398,11 @@ def train_eval(
         metric_utils.log_metrics(eval_metrics)
 
       if iters_so_far % train_checkpoint_interval == 0:
-        logging.info('Saving train checkpoint at step %d  (iteration %d)',
-                     global_step_val.numpy(), iters_so_far)
+        logging.info(
+            'Saving train checkpoint at step %d  (iteration %d)',
+            global_step_val.numpy(),
+            iters_so_far,
+        )
         train_checkpointer.save(global_step=global_step_val)
         train_vocab_save_path = os.path.join(
             train_dir, f'vocab_{global_step_val.numpy()}.npy'
@@ -400,8 +411,11 @@ def train_eval(
             dict(global_vocab._local_vocab), open(train_vocab_save_path, 'w')
         )
       if iters_so_far % policy_checkpoint_interval == 0:
-        logging.info('Saving policy checkpoint at step %d  (iteration %d)',
-                     global_step_val.numpy(), iters_so_far)
+        logging.info(
+            'Saving policy checkpoint at step %d  (iteration %d)',
+            global_step_val.numpy(),
+            iters_so_far,
+        )
         save_location = os.path.join(
             saved_model_dir,
             'policy_' + str(environment_steps_metric.result().numpy()),
@@ -508,23 +522,14 @@ def train_mp(_):
       use_tf_functions=False,
       entropy_regularization=entropy_regularization,
       env_args=dict(
-          seed=seed,
           difficulty=difficulty_level,
+          use_legacy_reset=True,
+          use_legacy_step=True,
           num_websites=num_websites,
-          # designs=[
-              # single submit button
-              # {'number_of_pages': 1, 'action': [], 'action_page': [], },
-              # single active primitive (Address box)
-              # {'number_of_pages': 1, 'action': [1], 'action_page': [0], }
-          # ],
           browser_args=dict(
               threading=False,
-              chrome_options=[
-                  '--headless',
-                  '--disable-gpu',
-                  '--disable-dev-shm-usage',
-                  '--no-sandbox',
-              ],
+              chrome_options=['--headless', '--disable-dev-shm-usage',
+                              '--no-sandbox'],
           ),
       ),
   )

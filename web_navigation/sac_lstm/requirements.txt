@@ -1,0 +1,4 @@
+-e a2perf/a2perf_benchmark_submission/web_navigation/sonnet
+tensorflow[and-cuda]<2.15.0
+tf-agents==0.18.0
+gymnasium

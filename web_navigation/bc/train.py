@@ -23,6 +23,9 @@ from tf_agents.utils import common
 from a2perf.domains.web_navigation.gwob.CoDE import networks
 from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
+EMBEDDING_DIM = 100
+LATENT_DIM = 50
+
 
 def episode_generator(dataset):
   for episode in dataset:
@@ -136,9 +139,9 @@ def train(_):
             vocab_size=max_vocab_size
             if max_vocab_size is not None
             else eval_tf_env.pyenv.envs[0].env.local_vocab.max_vocabulary_size,
-            latent_dim=50,
+            latent_dim=LATENT_DIM,
             profile_value_dropout=0.0,
-            embedding_dim=100, )
+            embedding_dim=EMBEDDING_DIM, )
     )
 
   # Create the behavioral cloning agent
@@ -156,7 +159,11 @@ def train(_):
         summarize_grads_and_vars=False,
         train_step_counter=global_step,
     )
+
+  logging.info('Successfully created agent')
+
   tf_agent.initialize()
+  logging.info('Successfully initialized agent')
 
   eval_policy = actor_policy.ActorPolicy(tf_agent.policy, clip=False)
   train_checkpointer = common.Checkpointer(

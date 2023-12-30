@@ -10,7 +10,7 @@ import numpy as np
 import tensorflow as tf
 import tf_agents
 from absl import logging
-from tf_agents.agents.dqn import dqn_agent
+from tf_agents.agents.sac import sac_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
@@ -21,6 +21,8 @@ from tf_agents.policies import policy_saver
 from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
+from tf_agents.train.utils import train_utils
+from tf_agents.train.utils import spec_utils
 
 from a2perf.domains.web_navigation.gwob.CoDE import networks
 from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
@@ -83,7 +85,7 @@ def train_eval(
     env_args=None,
     seed=0,
 ):
-  """A simple train and eval for DQN."""
+  """A simple train and eval for SAC"""
 
   tf.random.set_seed(seed)
   np.random.seed(seed)
@@ -114,7 +116,7 @@ def train_eval(
       tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
       tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes),
   ]
-  global_step = tf.compat.v1.train.get_or_create_global_step()
+  global_step = train_utils.create_train_step()
   manager = mp.Manager()
   global_vocab = vocabulary_node.LockedMultiprocessingVocabulary(
       max_vocabulary_size=max_vocab_size,
@@ -149,49 +151,71 @@ def train_eval(
       envs, blocking=False, start_serially=True, flatten=False
   )
   tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
-  time_step_spec = tf_env.time_step_spec()
-  action_spec = tf_env.action_spec()
   logging.info('Successfully created environments')
 
-  with tf.name_scope('QNetwork'):
-    q_net = networks.WebLSTMQNetwork(
+  observation_spec, action_spec, time_step_spec = (
+      spec_utils.get_tensor_specs(tf_env))
+
+  with tf.name_scope('ActorNetwork'):
+    actor_net = networks.WebLSTMActorDistributionNetwork(
+        input_tensor_spec=observation_spec,
+        output_tensor_spec=action_spec,
+        name='actor',
+        lstm_kwargs=dict(
+            vocab_size=max_vocab_size
+            if max_vocab_size is not None
+            else tf_env.pyenv.envs[0].env.local_vocab.max_vocabulary_size,
+            latent_dim=LATENT_DIM,
+            profile_value_dropout=0.0,
+            embedding_dim=EMBEDDING_DIM
+        ),
+    )
+  logging.info('Successfully created actor network')
+
+  with tf.name_scope('CriticNetwork'):
+    critic_net = networks.WebLSTMValueNetwork(
+        input_tensor_spec=observation_spec,
+        batch_squash=True,
+        state_spec=tf.TensorSpec([1]),
         vocab_size=max_vocab_size
         if max_vocab_size is not None
         else tf_env.pyenv.envs[0].env.local_vocab.max_vocabulary_size,
         profile_value_dropout=0.0,
-        q_min=None,
-        q_max=None,
         embedding_dim=EMBEDDING_DIM,
-        name='q_network',
-        latent_dim=LATENT_DIM,
-        return_state_value=False,
+        name='value',
+        latent_dim=LATENT_DIM
     )
-  with tf.name_scope('DQNAgent'):
-    tf_agent = dqn_agent.DqnAgent(
+  logging.info('Successfully created value network')
+  with tf.name_scope('SACAgent'):
+    tf_agent = sac_agent.SacAgent(
         time_step_spec=time_step_spec,
         action_spec=action_spec,
-        q_network=q_net,
-        epsilon_greedy=epsilon_greedy,
-        n_step_update=n_step_update,
+        actor_network=actor_net,
+        critic_network=critic_net,
+        actor_optimizer=tf.keras.optimizers.Adam(
+            learning_rate=learning_rate),
+        critic_optimizer=tf.keras.optimizers.Adam(
+            learning_rate=learning_rate),
+        alpha_optimizer=tf.keras.optimizers.Adam(
+            learning_rate=learning_rate),
         target_update_tau=target_update_tau,
         target_update_period=target_update_period,
-        optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate),
-        td_errors_loss_fn=common.element_wise_huber_loss,
+        td_errors_loss_fn=tf.math.squared_difference,
         gamma=gamma,
-        reward_scale_factor=reward_scale_factor,
-        gradient_clipping=gradient_clipping,
         debug_summaries=debug_summaries,
         summarize_grads_and_vars=summarize_grads_and_vars,
-        train_step_counter=global_step,
-        name='dqn_agent',
-    )
-    tf_agent.initialize()
+        reward_scale_factor=reward_scale_factor,
+        train_step_counter=global_step)
+  logging.info('Successfully created SAC agent')
+  tf_agent.initialize()
+  logging.info('Successfully initialized SAC agent')
 
   environment_steps_metric = tf_metrics.EnvironmentSteps()
   step_metrics = [
       tf_metrics.NumberOfEpisodes(),
       environment_steps_metric,
   ]
+
   train_metrics = step_metrics + [
       tf_metrics.AverageReturnMetric(
           batch_size=environment_batch_size, buffer_size=num_eval_episodes
