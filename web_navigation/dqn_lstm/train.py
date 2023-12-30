@@ -1,18 +1,14 @@
-import os
-
-os.environ['WRAPT_DISABLE_EXTENSIONS'] = '1'
 import json
 import multiprocessing as mp
+import os
 import time
 
-from a2perf.domains.web_navigation.gwob.CoDE import networks
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
-from absl import logging
 import gin
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 import tf_agents
+from absl import logging
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
@@ -24,6 +20,9 @@ from tf_agents.policies import policy_saver
 from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
+
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 
 def create_env(
@@ -205,7 +204,7 @@ def train_eval(
   replay_observer = [replay_buffer.add_batch]
 
   train_checkpointer = common.Checkpointer(
-      ckpt_dir=os.path.join(train_dir, 'train'),
+      ckpt_dir=train_dir,
       agent=tf_agent,
       global_step=global_step,
       metrics=metric_utils.MetricsGroup(train_metrics, 'train_metrics'),
@@ -516,7 +515,8 @@ def train_mp(_):
           num_websites=num_websites,
           browser_args=dict(
               threading=False,
-              chrome_options=['--headless'],
+              chrome_options=['--headless', '--disable-dev-shm-usage',
+                              '--no-sandbox'],
           ),
       ),
   )
