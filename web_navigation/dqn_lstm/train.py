@@ -61,7 +61,7 @@ def train_eval(
     target_update_tau=0.05,
     target_update_period=5000,
     # Params for train
-    num_iterations=100000,
+    total_env_steps=0,
     train_steps_per_iteration=1,
     batch_size=32,
     environment_batch_size=1,
@@ -138,6 +138,7 @@ def train_eval(
   eval_env_args.update(
       dict(
           render_mode='image',
+          screenshot_save_dir=screenshot_dir,
           generate_screenshots=True,
           cyclic_action_penalty=0.0,
           timestep_penalty=0.0,
@@ -321,7 +322,7 @@ def train_eval(
 
   logging.info('Beginning training at step: %d', global_step.value().numpy())
   with train_summary_writer.as_default():
-    while iters_so_far < num_iterations:
+    while environment_steps_metric.result().numpy() < total_env_steps:
       start = time.time()
       collect_driver.run()
       collect_time += time.time() - start
@@ -384,7 +385,6 @@ def train_eval(
         start_time = time.time()
         collect_time = 0
         train_time = 0
-
       if iters_so_far % eval_interval == 0:
         eval_start_time = time.time()
         metric_utils.eager_compute(
@@ -405,7 +405,6 @@ def train_eval(
         # Eval environment generates screenshots
         eval_tf_env.pyenv.envs[0].write_screenshots(
             screenshot_save_dir=screenshot_dir)
-        
       if iters_so_far % train_checkpoint_interval == 0:
         logging.info(
             'Saving train checkpoint at step %d  (iteration %d)',
@@ -455,7 +454,6 @@ def train_eval(
 
 
 def train_mp(_):
-  # Extract environment variables
   batch_size = int(os.environ.get('BATCH_SIZE', None))
   epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', None))
   difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
@@ -464,24 +462,25 @@ def train_mp(_):
   learning_rate = float(os.environ.get('LEARNING_RATE', None))
   log_interval = int(os.environ.get('LOG_INTERVAL', None))
   policy_checkpoint_interval = int(
-      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None)
-  )
+      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
   rb_capacity = int(os.environ.get('RB_CAPACITY', None))
   root_dir = os.environ.get('ROOT_DIR', None)
   seed = int(os.environ.get('SEED', None))
   num_websites = int(os.environ.get('NUM_WEBSITES', None))
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
   train_checkpoint_interval = int(
-      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None)
-  )
-  timesteps_per_actorbatch_param = int(
-      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
-  )
-  batched_total_env_steps = total_env_steps // env_batch_size
-  timesteps_per_actorbatch = max(
-      1, timesteps_per_actorbatch_param // env_batch_size
-  )
-  num_iterations = max(1, batched_total_env_steps // timesteps_per_actorbatch)
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
+  timesteps_per_actorbatch = int(
+      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
+
+  # Convert all of the intervals to be in terms of iterations instead of environment steps
+  eval_interval = max(1, round(eval_interval / timesteps_per_actorbatch))
+  train_checkpoint_interval = max(1, round(
+      train_checkpoint_interval / timesteps_per_actorbatch))
+  policy_checkpoint_interval = max(1, round(
+      policy_checkpoint_interval / timesteps_per_actorbatch))
+  log_interval = max(1, round(log_interval / timesteps_per_actorbatch))
+  rb_capacity = max(1, round(rb_capacity / env_batch_size))
 
   # Print extracted and computed values
   print(f'difficulty_level: {difficulty_level}')
@@ -490,30 +489,13 @@ def train_mp(_):
   print(f'epsilon_greedy: {epsilon_greedy}')
   print(f'learning_rate: {learning_rate}')
   print(f'log_interval: {log_interval}')
-  print(f'num_iterations: {num_iterations}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
   print(f'root_dir: {root_dir}')
   print(f'seed: {seed}')
   print(f'num_websites: {num_websites}')
   print(f'total_env_steps: {total_env_steps}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
-  print(f'train_steps_per_iteration: {timesteps_per_actorbatch_param}')
-
-  # Convert all of the intervals to be in terms of iterations instead of environment steps
-  eval_interval = max(1, eval_interval // timesteps_per_actorbatch_param)
-  train_checkpoint_interval = max(
-      1, train_checkpoint_interval // timesteps_per_actorbatch_param
-  )
-  policy_checkpoint_interval = max(
-      1, policy_checkpoint_interval // timesteps_per_actorbatch_param
-  )
-  log_interval = max(1, log_interval // timesteps_per_actorbatch_param)
-  rb_capacity = max(1, rb_capacity // env_batch_size)
-
-  print(f'eval_interval: {eval_interval}')
-  print(f'log_interval: {log_interval}')
-  print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
-  print(f'train_checkpoint_interval: {train_checkpoint_interval}')
+  print(f'train_steps_per_iteration: {timesteps_per_actorbatch}')
 
   train_eval(
       batch_size=batch_size,
@@ -521,10 +503,10 @@ def train_mp(_):
       debug_summaries=False,
       environment_batch_size=env_batch_size,
       eval_interval=eval_interval,
-      initial_collect_steps=timesteps_per_actorbatch * env_batch_size,
+      initial_collect_steps=timesteps_per_actorbatch,
       learning_rate=learning_rate,
       log_interval=log_interval,
-      num_iterations=num_iterations,
+      total_env_steps=total_env_steps,
       policy_checkpoint_interval=policy_checkpoint_interval,
       replay_buffer_capacity=rb_capacity,
       root_dir=root_dir,

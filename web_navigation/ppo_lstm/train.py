@@ -49,6 +49,7 @@ from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
+from tf_agents.metrics import batched_py_metric
 from tf_agents.metrics import tf_metrics
 from tf_agents.policies import policy_saver
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
@@ -230,7 +231,10 @@ def train_eval(
   tf_agent.initialize()
   logging.info('Successfully initialized PPO agent')
 
-  environment_steps_metric = tf_metrics.EnvironmentSteps()
+  environment_steps_metric = batched_py_metric.BatchedPyMetric(
+      metric_class=tf_metrics.EnvironmentSteps,
+      batch_size=environment_batch_size,
+  )
   step_metrics = [
       tf_metrics.NumberOfEpisodes(),
       environment_steps_metric,
@@ -307,7 +311,7 @@ def train_eval(
       num_episodes=num_eval_episodes,
       train_step=iters_so_far,
       summary_writer=eval_summary_writer,
-      use_function=False,
+      use_function=True,
       summary_prefix='Metrics',
       metrics=eval_metrics,
 
@@ -386,7 +390,6 @@ def train_eval(
         start_time = time.time()
         collect_time = 0
         train_time = 0
-
       if iters_so_far % eval_interval == 0:
         eval_start_time = time.time()
         metric_utils.eager_compute(
@@ -407,12 +410,12 @@ def train_eval(
         # Eval environment generates screenshots
         eval_tf_env.pyenv.envs[0].write_screenshots(
             screenshot_save_dir=screenshot_dir)
-        if iters_so_far % train_checkpoint_interval == 0:
-          logging.info(
-              'Saving train checkpoint at step %d  (iteration %d)',
-              global_step_val.numpy(),
-              iters_so_far,
-          )
+      if iters_so_far % train_checkpoint_interval == 0:
+        logging.info(
+            'Saving train checkpoint at step %d  (iteration %d)',
+            global_step_val.numpy(),
+            iters_so_far,
+        )
         train_checkpointer.save(global_step=global_step_val)
         train_vocab_save_path = os.path.join(
             train_dir, f'vocab_{global_step_val.numpy()}.npy'
@@ -420,12 +423,12 @@ def train_eval(
         json.dump(
             dict(global_vocab._local_vocab), open(train_vocab_save_path, 'w')
         )
-        if iters_so_far % policy_checkpoint_interval == 0:
-          logging.info(
-              'Saving policy checkpoint at step %d  (iteration %d)',
-              global_step_val.numpy(),
-              iters_so_far,
-          )
+      if iters_so_far % policy_checkpoint_interval == 0:
+        logging.info(
+            'Saving policy checkpoint at step %d  (iteration %d)',
+            global_step_val.numpy(),
+            iters_so_far,
+        )
         save_location = os.path.join(
             saved_model_dir,
             'policy_' + str(environment_steps_metric.result().numpy()),
@@ -438,24 +441,24 @@ def train_eval(
         json.dump(
             dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w')
         )
-        train_summary_writer.flush()
+      train_summary_writer.flush()
 
-        # Save the final policy and vocabulary
-        save_location = os.path.join(
-            saved_model_dir,
-            'policy_' + str(environment_steps_metric.result().numpy()),
-        )
-        saved_model.save(save_location)
-        policy_vocab_save_path = os.path.join(
-            saved_model_dir,
-            f'vocab_{environment_steps_metric.result().numpy()}.npy'
-        )
-        json.dump(dict(global_vocab._local_vocab),
-                  open(policy_vocab_save_path, 'w'))
+  # Save the final policy and vocabulary
+  save_location = os.path.join(
+      saved_model_dir,
+      'policy_' + str(environment_steps_metric.result().numpy()),
+  )
+  saved_model.save(save_location)
+  policy_vocab_save_path = os.path.join(
+      saved_model_dir,
+      f'vocab_{environment_steps_metric.result().numpy()}.npy'
+  )
+  json.dump(dict(global_vocab._local_vocab),
+            open(policy_vocab_save_path, 'w'))
 
-        tf_env.close()
-        eval_tf_env.close()
-        manager.shutdown()
+  tf_env.close()
+  eval_tf_env.close()
+  manager.shutdown()
 
 
 def train_mp(_):
@@ -467,21 +470,14 @@ def train_mp(_):
   eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
   entropy_regularization = float(os.environ.get('ENTROPY_REGULARIZATION', None))
   train_checkpoint_interval = int(
-      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None)
-  )
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
   policy_checkpoint_interval = int(
-      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None)
-  )
+      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
   log_interval = int(os.environ.get('LOG_INTERVAL', None))
   learning_rate = float(os.environ.get('LEARNING_RATE', None))
   num_websites = int(os.environ.get('NUM_WEBSITES', None))
-  timesteps_per_actorbatch_param = int(
-      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
-  )
-  batched_total_env_steps = total_env_steps // env_batch_size
-  timesteps_per_actorbatch = max(
-      1, timesteps_per_actorbatch_param // env_batch_size
-  )
+  timesteps_per_actorbatch = int(
+      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
 
   # Print extracted and computed values
   print(f'seed: {seed}')
@@ -497,19 +493,18 @@ def train_mp(_):
   print(f'learning_rate: {learning_rate}')
 
   # Convert all of the intervals to be in terms of iterations instead of environment steps
-  eval_interval = max(1, eval_interval // timesteps_per_actorbatch_param)
-  train_checkpoint_interval = max(
-      1, train_checkpoint_interval // timesteps_per_actorbatch_param
-  )
-  policy_checkpoint_interval = max(
-      1, policy_checkpoint_interval // timesteps_per_actorbatch_param
-  )
-  log_interval = max(1, log_interval // timesteps_per_actorbatch_param)
+  eval_interval = max(1, round(eval_interval / timesteps_per_actorbatch))
+  train_checkpoint_interval = max(1, round(
+      train_checkpoint_interval / timesteps_per_actorbatch))
+  policy_checkpoint_interval = max(1, round(
+      policy_checkpoint_interval / timesteps_per_actorbatch))
+  log_interval = max(1, round(log_interval / timesteps_per_actorbatch))
 
   print(f'eval_interval: {eval_interval}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
   print(f'log_interval: {log_interval}')
+
   train_eval(
       collect_steps_per_iteration=timesteps_per_actorbatch,
       debug_summaries=False,
@@ -522,7 +517,7 @@ def train_mp(_):
       root_dir=root_dir,
       seed=seed,
       summarize_grads_and_vars=False,
-      total_env_steps=batched_total_env_steps,
+      total_env_steps=total_env_steps,
       train_checkpoint_interval=train_checkpoint_interval,
       use_tf_functions=False,
       entropy_regularization=entropy_regularization,
