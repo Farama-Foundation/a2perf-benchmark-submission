@@ -40,7 +40,7 @@ import time
 import gin
 import gymnasium as gym
 import numpy as np
-import tensorflow as tf  # pylint: disable=g-explicit-tensorflow-version-import
+import tensorflow as tf
 import tf_agents
 from absl import app
 from absl import logging
@@ -52,6 +52,8 @@ from tf_agents.eval import metric_utils
 from tf_agents.metrics import tf_metrics
 from tf_agents.policies import policy_saver
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
+from tf_agents.train.utils import spec_utils
+from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
 from a2perf.domains.web_navigation.gwob.CoDE import networks
@@ -94,7 +96,6 @@ def train_eval(
     # Params for summaries and logging
     num_eval_episodes=1,
     log_interval=1000,
-    summary_interval=1000,
     summaries_flush_secs=10,
     debug_summaries=False,
     summarize_grads_and_vars=False,
@@ -112,6 +113,7 @@ def train_eval(
   root_dir = os.path.expanduser(root_dir)
   train_dir = os.path.join(root_dir, 'train')
   summary_dir = os.path.join(root_dir, 'summaries')
+  screenshot_dir = os.path.join(root_dir, 'screenshots')
 
   train_summary_writer = tf.summary.create_file_writer(
       logdir=os.path.join(summary_dir, 'train'),
@@ -132,7 +134,7 @@ def train_eval(
       tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
       tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes),
   ]
-  global_step = tf.compat.v1.train.get_or_create_global_step()
+  global_step = train_utils.create_train_step()
   manager = mp.Manager()
   global_vocab = vocabulary_node.LockedMultiprocessingVocabulary(
       max_vocabulary_size=max_vocab_size,
@@ -145,14 +147,16 @@ def train_eval(
   envs = [
       lambda: create_env(
           env_name=env_name,
-          env_args={**env_args, 'seed': seed},
+          env_args=env_args,
       )
       for _ in range(environment_batch_size)
   ]
   eval_env_args = env_args.copy()
   eval_env_args.update(
       dict(
-          seed=seed,
+          render_mode='image',
+          generate_screenshots=True,
+          screenshot_save_dir=screenshot_dir,
           cyclic_action_penalty=0.0,
           timestep_penalty=0.0,
       )
@@ -167,9 +171,8 @@ def train_eval(
       envs, blocking=False, start_serially=True, flatten=False
   )
   tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
-  time_step_spec = tf_env.time_step_spec()
-  observation_spec = time_step_spec.observation
-  action_spec = tf_env.action_spec()
+  observation_spec, action_spec, time_step_spec = (
+      spec_utils.get_tensor_specs(tf_env))
 
   logging.info('Successfully created environments')
 
@@ -249,7 +252,7 @@ def train_eval(
       tf_agent.collect_data_spec,
       batch_size=environment_batch_size,
       max_length=replay_buffer_capacity,
-      device='cpu:*',
+      device='cpu:0',
   )
   logging.info('Successfully created replay buffer')
 
@@ -304,10 +307,13 @@ def train_eval(
       num_episodes=num_eval_episodes,
       train_step=iters_so_far,
       summary_writer=eval_summary_writer,
-      use_function=True,
+      use_function=False,
       summary_prefix='Metrics',
       metrics=eval_metrics,
+
   )
+  eval_tf_env.pyenv.envs[0].write_screenshots(
+      screenshot_save_dir=screenshot_dir)
 
   # Compute train metrics once at the beginning of training
   with train_summary_writer.as_default():
@@ -396,13 +402,17 @@ def train_eval(
         eval_time = time.time() - eval_start_time
         print(f'eval_time: {eval_time}')
         metric_utils.log_metrics(eval_metrics)
+        eval_summary_writer.flush()
 
-      if iters_so_far % train_checkpoint_interval == 0:
-        logging.info(
-            'Saving train checkpoint at step %d  (iteration %d)',
-            global_step_val.numpy(),
-            iters_so_far,
-        )
+        # Eval environment generates screenshots
+        eval_tf_env.pyenv.envs[0].write_screenshots(
+            screenshot_save_dir=screenshot_dir)
+        if iters_so_far % train_checkpoint_interval == 0:
+          logging.info(
+              'Saving train checkpoint at step %d  (iteration %d)',
+              global_step_val.numpy(),
+              iters_so_far,
+          )
         train_checkpointer.save(global_step=global_step_val)
         train_vocab_save_path = os.path.join(
             train_dir, f'vocab_{global_step_val.numpy()}.npy'
@@ -410,12 +420,12 @@ def train_eval(
         json.dump(
             dict(global_vocab._local_vocab), open(train_vocab_save_path, 'w')
         )
-      if iters_so_far % policy_checkpoint_interval == 0:
-        logging.info(
-            'Saving policy checkpoint at step %d  (iteration %d)',
-            global_step_val.numpy(),
-            iters_so_far,
-        )
+        if iters_so_far % policy_checkpoint_interval == 0:
+          logging.info(
+              'Saving policy checkpoint at step %d  (iteration %d)',
+              global_step_val.numpy(),
+              iters_so_far,
+          )
         save_location = os.path.join(
             saved_model_dir,
             'policy_' + str(environment_steps_metric.result().numpy()),
@@ -428,22 +438,24 @@ def train_eval(
         json.dump(
             dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w')
         )
-      train_summary_writer.flush()
+        train_summary_writer.flush()
 
-  # Save the final policy and vocabulary
-  save_location = os.path.join(
-      saved_model_dir,
-      'policy_' + str(environment_steps_metric.result().numpy()),
-  )
-  saved_model.save(save_location)
-  policy_vocab_save_path = os.path.join(
-      saved_model_dir, f'vocab_{environment_steps_metric.result().numpy()}.npy'
-  )
-  json.dump(dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w'))
+        # Save the final policy and vocabulary
+        save_location = os.path.join(
+            saved_model_dir,
+            'policy_' + str(environment_steps_metric.result().numpy()),
+        )
+        saved_model.save(save_location)
+        policy_vocab_save_path = os.path.join(
+            saved_model_dir,
+            f'vocab_{environment_steps_metric.result().numpy()}.npy'
+        )
+        json.dump(dict(global_vocab._local_vocab),
+                  open(policy_vocab_save_path, 'w'))
 
-  tf_env.close()
-  eval_tf_env.close()
-  manager.shutdown()
+        tf_env.close()
+        eval_tf_env.close()
+        manager.shutdown()
 
 
 def train_mp(_):
@@ -462,7 +474,6 @@ def train_mp(_):
   )
   log_interval = int(os.environ.get('LOG_INTERVAL', None))
   learning_rate = float(os.environ.get('LEARNING_RATE', None))
-  summary_interval = int(os.environ.get('SUMMARY_INTERVAL', None))
   num_websites = int(os.environ.get('NUM_WEBSITES', None))
   timesteps_per_actorbatch_param = int(
       os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
@@ -483,7 +494,6 @@ def train_mp(_):
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
   print(f'log_interval: {log_interval}')
-  print(f'summary_interval: {summary_interval}')
   print(f'learning_rate: {learning_rate}')
 
   # Convert all of the intervals to be in terms of iterations instead of environment steps
@@ -495,15 +505,11 @@ def train_mp(_):
       1, policy_checkpoint_interval // timesteps_per_actorbatch_param
   )
   log_interval = max(1, log_interval // timesteps_per_actorbatch_param)
-  summary_interval = max(1, summary_interval // timesteps_per_actorbatch_param)
 
   print(f'eval_interval: {eval_interval}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
   print(f'log_interval: {log_interval}')
-  print(
-      f'summary_interval: {summary_interval}'
-  )  # Call train_eval function with required parameters
   train_eval(
       collect_steps_per_iteration=timesteps_per_actorbatch,
       debug_summaries=False,
@@ -516,7 +522,6 @@ def train_mp(_):
       root_dir=root_dir,
       seed=seed,
       summarize_grads_and_vars=False,
-      summary_interval=summary_interval,
       total_env_steps=batched_total_env_steps,
       train_checkpoint_interval=train_checkpoint_interval,
       use_tf_functions=False,

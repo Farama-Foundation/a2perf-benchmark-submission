@@ -20,6 +20,8 @@ from tf_agents.policies import greedy_policy
 from tf_agents.policies import policy_saver
 from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
+from tf_agents.train.utils import spec_utils
+from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
 from a2perf.domains.web_navigation.gwob.CoDE import networks
@@ -95,6 +97,7 @@ def train_eval(
   root_dir = os.path.expanduser(root_dir)
   train_dir = os.path.join(root_dir, 'train')
   summary_dir = os.path.join(root_dir, 'summaries')
+  screenshot_dir = os.path.join(root_dir, 'screenshots')
 
   train_summary_writer = tf.summary.create_file_writer(
       logdir=os.path.join(summary_dir, 'train'),
@@ -114,7 +117,7 @@ def train_eval(
       tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
       tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes),
   ]
-  global_step = tf.compat.v1.train.get_or_create_global_step()
+  global_step = train_utils.create_train_step()
   manager = mp.Manager()
   global_vocab = vocabulary_node.LockedMultiprocessingVocabulary(
       max_vocabulary_size=max_vocab_size,
@@ -127,14 +130,15 @@ def train_eval(
   envs = [
       lambda: create_env(
           env_name=env_name,
-          env_args={**env_args, 'seed': seed},
+          env_args=env_args,
       )
       for _ in range(environment_batch_size)
   ]
   eval_env_args = env_args.copy()
   eval_env_args.update(
       dict(
-          seed=seed,
+          render_mode='image',
+          generate_screenshots=True,
           cyclic_action_penalty=0.0,
           timestep_penalty=0.0,
       )
@@ -149,8 +153,9 @@ def train_eval(
       envs, blocking=False, start_serially=True, flatten=False
   )
   tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
-  time_step_spec = tf_env.time_step_spec()
-  action_spec = tf_env.action_spec()
+  observation_spec, action_spec, time_step_spec = (
+      spec_utils.get_tensor_specs(tf_env))
+
   logging.info('Successfully created environments')
 
   with tf.name_scope('QNetwork'):
@@ -303,6 +308,9 @@ def train_eval(
       metrics=eval_metrics,
   )
 
+  eval_tf_env.pyenv.envs[0].write_screenshots(
+      screenshot_save_dir=screenshot_dir)
+
   # Compute train metrics once at the beginning of training
   with train_summary_writer.as_default():
     for train_metric in train_metrics:
@@ -392,7 +400,12 @@ def train_eval(
         eval_time = time.time() - eval_start_time
         print(f'eval_time: {eval_time}')
         metric_utils.log_metrics(eval_metrics)
+        eval_summary_writer.flush()
 
+        # Eval environment generates screenshots
+        eval_tf_env.pyenv.envs[0].write_screenshots(
+            screenshot_save_dir=screenshot_dir)
+        
       if iters_so_far % train_checkpoint_interval == 0:
         logging.info(
             'Saving train checkpoint at step %d  (iteration %d)',
