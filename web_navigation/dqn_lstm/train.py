@@ -1,18 +1,15 @@
-import os
-
-os.environ['WRAPT_DISABLE_EXTENSIONS'] = '1'
 import json
 import multiprocessing as mp
+import os
+import random
 import time
 
-from a2perf.domains.web_navigation.gwob.CoDE import networks
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
-from absl import logging
 import gin
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 import tf_agents
+from absl import logging
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
@@ -23,7 +20,15 @@ from tf_agents.policies import greedy_policy
 from tf_agents.policies import policy_saver
 from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
+from tf_agents.train.utils import spec_utils
+from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
+
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
+
+EMBEDDING_DIM = 100
+LATENT_DIM = 50
 
 
 def create_env(
@@ -56,7 +61,7 @@ def train_eval(
     target_update_tau=0.05,
     target_update_period=5000,
     # Params for train
-    num_iterations=100000,
+    total_env_steps=0,
     train_steps_per_iteration=1,
     batch_size=32,
     environment_batch_size=1,
@@ -81,9 +86,18 @@ def train_eval(
     seed=0,
 ):
   """A simple train and eval for DQN."""
+
+  tf.random.set_seed(seed)
+  np.random.seed(seed)
+  random.seed(seed)
+
+  if env_args:
+    env_args.update({'seed': seed})
+
   root_dir = os.path.expanduser(root_dir)
   train_dir = os.path.join(root_dir, 'train')
   summary_dir = os.path.join(root_dir, 'summaries')
+  screenshot_dir = os.path.join(root_dir, 'screenshots')
 
   train_summary_writer = tf.summary.create_file_writer(
       logdir=os.path.join(summary_dir, 'train'),
@@ -103,7 +117,7 @@ def train_eval(
       tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
       tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes),
   ]
-  global_step = tf.compat.v1.train.get_or_create_global_step()
+  global_step = train_utils.create_train_step()
   manager = mp.Manager()
   global_vocab = vocabulary_node.LockedMultiprocessingVocabulary(
       max_vocabulary_size=max_vocab_size,
@@ -112,17 +126,20 @@ def train_eval(
   env_args.update({'global_vocabulary': global_vocab})
 
   # Parallel environment creation
+  # All envs get the same seed so that they see the same websites
   envs = [
       lambda: create_env(
           env_name=env_name,
-          env_args={**env_args, 'seed': seed + i},
+          env_args=env_args,
       )
-      for i in range(environment_batch_size)
+      for _ in range(environment_batch_size)
   ]
   eval_env_args = env_args.copy()
   eval_env_args.update(
       dict(
-          seed=seed + environment_batch_size,
+          render_mode='image',
+          screenshot_save_dir=screenshot_dir,
+          generate_screenshots=True,
           cyclic_action_penalty=0.0,
           timestep_penalty=0.0,
       )
@@ -137,8 +154,9 @@ def train_eval(
       envs, blocking=False, start_serially=True, flatten=False
   )
   tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
-  time_step_spec = tf_env.time_step_spec()
-  action_spec = tf_env.action_spec()
+  observation_spec, action_spec, time_step_spec = (
+      spec_utils.get_tensor_specs(tf_env))
+
   logging.info('Successfully created environments')
 
   with tf.name_scope('QNetwork'):
@@ -149,9 +167,9 @@ def train_eval(
         profile_value_dropout=0.0,
         q_min=None,
         q_max=None,
-        embedding_dim=100,
+        embedding_dim=EMBEDDING_DIM,
         name='q_network',
-        latent_dim=50,
+        latent_dim=LATENT_DIM,
         return_state_value=False,
     )
   with tf.name_scope('DQNAgent'):
@@ -200,12 +218,12 @@ def train_eval(
       data_spec=tf_agent.collect_data_spec,
       batch_size=tf_env.batch_size,
       max_length=replay_buffer_capacity,
-      device='/cpu:*',
+      device='/cpu:0',
   )
   replay_observer = [replay_buffer.add_batch]
 
   train_checkpointer = common.Checkpointer(
-      ckpt_dir=os.path.join(train_dir, 'train'),
+      ckpt_dir=train_dir,
       agent=tf_agent,
       global_step=global_step,
       metrics=metric_utils.MetricsGroup(train_metrics, 'train_metrics'),
@@ -291,6 +309,9 @@ def train_eval(
       metrics=eval_metrics,
   )
 
+  eval_tf_env.pyenv.envs[0].write_screenshots(
+      screenshot_save_dir=screenshot_dir)
+
   # Compute train metrics once at the beginning of training
   with train_summary_writer.as_default():
     for train_metric in train_metrics:
@@ -301,7 +322,7 @@ def train_eval(
 
   logging.info('Beginning training at step: %d', global_step.value().numpy())
   with train_summary_writer.as_default():
-    while iters_so_far < num_iterations:
+    while environment_steps_metric.result().numpy() < total_env_steps:
       start = time.time()
       collect_driver.run()
       collect_time += time.time() - start
@@ -364,7 +385,6 @@ def train_eval(
         start_time = time.time()
         collect_time = 0
         train_time = 0
-
       if iters_so_far % eval_interval == 0:
         eval_start_time = time.time()
         metric_utils.eager_compute(
@@ -380,7 +400,11 @@ def train_eval(
         eval_time = time.time() - eval_start_time
         print(f'eval_time: {eval_time}')
         metric_utils.log_metrics(eval_metrics)
+        eval_summary_writer.flush()
 
+        # Eval environment generates screenshots
+        eval_tf_env.pyenv.envs[0].write_screenshots(
+            screenshot_save_dir=screenshot_dir)
       if iters_so_far % train_checkpoint_interval == 0:
         logging.info(
             'Saving train checkpoint at step %d  (iteration %d)',
@@ -430,7 +454,6 @@ def train_eval(
 
 
 def train_mp(_):
-  # Extract environment variables
   batch_size = int(os.environ.get('BATCH_SIZE', None))
   epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', None))
   difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
@@ -439,24 +462,25 @@ def train_mp(_):
   learning_rate = float(os.environ.get('LEARNING_RATE', None))
   log_interval = int(os.environ.get('LOG_INTERVAL', None))
   policy_checkpoint_interval = int(
-      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None)
-  )
+      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
   rb_capacity = int(os.environ.get('RB_CAPACITY', None))
   root_dir = os.environ.get('ROOT_DIR', None)
   seed = int(os.environ.get('SEED', None))
   num_websites = int(os.environ.get('NUM_WEBSITES', None))
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
   train_checkpoint_interval = int(
-      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None)
-  )
-  timesteps_per_actorbatch_param = int(
-      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
-  )
-  batched_total_env_steps = total_env_steps // env_batch_size
-  timesteps_per_actorbatch = max(
-      1, timesteps_per_actorbatch_param // env_batch_size
-  )
-  num_iterations = max(1, batched_total_env_steps // timesteps_per_actorbatch)
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
+  timesteps_per_actorbatch = int(
+      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
+
+  # Convert all of the intervals to be in terms of iterations instead of environment steps
+  eval_interval = max(1, round(eval_interval / timesteps_per_actorbatch))
+  train_checkpoint_interval = max(1, round(
+      train_checkpoint_interval / timesteps_per_actorbatch))
+  policy_checkpoint_interval = max(1, round(
+      policy_checkpoint_interval / timesteps_per_actorbatch))
+  log_interval = max(1, round(log_interval / timesteps_per_actorbatch))
+  rb_capacity = max(1, round(rb_capacity / env_batch_size))
 
   # Print extracted and computed values
   print(f'difficulty_level: {difficulty_level}')
@@ -465,30 +489,13 @@ def train_mp(_):
   print(f'epsilon_greedy: {epsilon_greedy}')
   print(f'learning_rate: {learning_rate}')
   print(f'log_interval: {log_interval}')
-  print(f'num_iterations: {num_iterations}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
   print(f'root_dir: {root_dir}')
   print(f'seed: {seed}')
   print(f'num_websites: {num_websites}')
   print(f'total_env_steps: {total_env_steps}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
-  print(f'train_steps_per_iteration: {timesteps_per_actorbatch_param}')
-
-  # Convert all of the intervals to be in terms of iterations instead of environment steps
-  eval_interval = max(1, eval_interval // timesteps_per_actorbatch_param)
-  train_checkpoint_interval = max(
-      1, train_checkpoint_interval // timesteps_per_actorbatch_param
-  )
-  policy_checkpoint_interval = max(
-      1, policy_checkpoint_interval // timesteps_per_actorbatch_param
-  )
-  log_interval = max(1, log_interval // timesteps_per_actorbatch_param)
-  rb_capacity = max(1, rb_capacity // env_batch_size)
-
-  print(f'eval_interval: {eval_interval}')
-  print(f'log_interval: {log_interval}')
-  print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
-  print(f'train_checkpoint_interval: {train_checkpoint_interval}')
+  print(f'train_steps_per_iteration: {timesteps_per_actorbatch}')
 
   train_eval(
       batch_size=batch_size,
@@ -496,10 +503,10 @@ def train_mp(_):
       debug_summaries=False,
       environment_batch_size=env_batch_size,
       eval_interval=eval_interval,
-      initial_collect_steps=timesteps_per_actorbatch * env_batch_size,
+      initial_collect_steps=timesteps_per_actorbatch,
       learning_rate=learning_rate,
       log_interval=log_interval,
-      num_iterations=num_iterations,
+      total_env_steps=total_env_steps,
       policy_checkpoint_interval=policy_checkpoint_interval,
       replay_buffer_capacity=rb_capacity,
       root_dir=root_dir,
@@ -516,8 +523,8 @@ def train_mp(_):
           num_websites=num_websites,
           browser_args=dict(
               threading=False,
-              chrome_options=['--no-sandbox', '--disable-dev-shm-usage'],
-
+              chrome_options=['--headless', '--disable-dev-shm-usage',
+                              '--no-sandbox'],
           ),
       ),
   )
