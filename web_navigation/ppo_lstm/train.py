@@ -231,10 +231,7 @@ def train_eval(
   tf_agent.initialize()
   logging.info('Successfully initialized PPO agent')
 
-  environment_steps_metric = batched_py_metric.BatchedPyMetric(
-      metric_class=tf_metrics.EnvironmentSteps,
-      batch_size=environment_batch_size,
-  )
+  environment_steps_metric = tf_metrics.EnvironmentSteps()
   step_metrics = [
       tf_metrics.NumberOfEpisodes(),
       environment_steps_metric,
