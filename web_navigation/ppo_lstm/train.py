@@ -342,12 +342,9 @@ def train_eval(
       if iters_so_far % log_interval == 0:
         metric_utils.log_metrics(train_metrics)
         time_acc += time.time() - start_time
-        logging.info(
-            'step = %d, loss = %f', global_step_val.numpy(), train_loss
-        )
-        print('step = %d, loss = %f', global_step_val.numpy(), train_loss)
-        steps_per_sec = (
-                            global_step_val.numpy() - timed_at_step.numpy()
+        print(f'step = {global_step_val.numpy()}')
+        print(f'  loss = {train_loss}')
+        steps_per_sec = (global_step_val.numpy() - timed_at_step.numpy()
                         ) / time_acc
         logging.info('%.3f steps/sec', steps_per_sec)
         print('%.3f steps/sec', steps_per_sec)
