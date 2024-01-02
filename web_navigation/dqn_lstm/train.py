@@ -4,12 +4,14 @@ import os
 import random
 import time
 
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
+from absl import logging
 import gin
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 import tf_agents
-from absl import logging
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
@@ -23,9 +25,6 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
-
-from a2perf.domains.web_navigation.gwob.CoDE import networks
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 EMBEDDING_DIM = 100
 LATENT_DIM = 50
@@ -91,9 +90,6 @@ def train_eval(
   np.random.seed(seed)
   random.seed(seed)
 
-  if env_args:
-    env_args.update({'seed': seed})
-
   root_dir = os.path.expanduser(root_dir)
   train_dir = os.path.join(root_dir, 'train')
   summary_dir = os.path.join(root_dir, 'summaries')
@@ -154,8 +150,9 @@ def train_eval(
       envs, blocking=False, start_serially=True, flatten=False
   )
   tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
-  observation_spec, action_spec, time_step_spec = (
-      spec_utils.get_tensor_specs(tf_env))
+  observation_spec, action_spec, time_step_spec = spec_utils.get_tensor_specs(
+      tf_env
+  )
 
   logging.info('Successfully created environments')
 
@@ -310,7 +307,8 @@ def train_eval(
   )
 
   eval_tf_env.pyenv.envs[0].write_screenshots(
-      screenshot_save_dir=screenshot_dir)
+      screenshot_save_dir=screenshot_dir
+  )
 
   # Compute train metrics once at the beginning of training
   with train_summary_writer.as_default():
@@ -337,12 +335,19 @@ def train_eval(
       tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
       global_step_val = global_step.value()
 
+      global_step_val_filled = str(global_step_val.numpy()).zfill(8)
+      environment_steps_filled = str(
+          environment_steps_metric.result().numpy()
+      ).zfill(8)
+
       if iters_so_far % log_interval == 0:
         metric_utils.log_metrics(train_metrics)
         time_acc += time.time() - start_time
         print(f'step = {global_step_val.numpy()}')
         print(f'  loss = {train_loss}')
-        steps_per_sec = (global_step_val.numpy() - timed_at_step.numpy()) / time_acc
+        steps_per_sec = (
+            global_step_val.numpy() - timed_at_step.numpy()
+        ) / time_acc
         logging.info('%.3f steps/sec', steps_per_sec)
         print('%.3f steps/sec', steps_per_sec)
 
@@ -400,7 +405,8 @@ def train_eval(
 
         # Eval environment generates screenshots
         eval_tf_env.pyenv.envs[0].write_screenshots(
-            screenshot_save_dir=screenshot_dir)
+            screenshot_save_dir=screenshot_dir
+        )
       if iters_so_far % train_checkpoint_interval == 0:
         logging.info(
             'Saving train checkpoint at step %d  (iteration %d)',
@@ -409,7 +415,7 @@ def train_eval(
         )
         train_checkpointer.save(global_step=global_step_val)
         train_vocab_save_path = os.path.join(
-            train_dir, f'vocab_{global_step_val.numpy()}.npy'
+            train_dir, f'vocab_{global_step_val_filled}.npy'
         )
         json.dump(
             dict(global_vocab._local_vocab), open(train_vocab_save_path, 'w')
@@ -422,12 +428,12 @@ def train_eval(
         )
         save_location = os.path.join(
             saved_model_dir,
-            'policy_' + str(environment_steps_metric.result().numpy()),
+            'policy_' + str(environment_steps_filled),
         )
         saved_model.save(save_location)
         policy_vocab_save_path = os.path.join(
             saved_model_dir,
-            f'vocab_{environment_steps_metric.result().numpy()}.npy',
+            f'vocab_{environment_steps_filled}.npy',
         )
         json.dump(
             dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w')
@@ -435,15 +441,19 @@ def train_eval(
       train_summary_writer.flush()
 
   # Save the final policy and vocabulary
+  environment_steps_filled = str(
+      environment_steps_metric.result().numpy()
+  ).zfill(8)
   save_location = os.path.join(
       saved_model_dir,
-      'policy_' + str(environment_steps_metric.result().numpy()),
+      'policy_' + environment_steps_filled,
   )
   saved_model.save(save_location)
   policy_vocab_save_path = os.path.join(
-      saved_model_dir, f'vocab_{environment_steps_metric.result().numpy()}.npy'
+      saved_model_dir, f'vocab_{environment_steps_filled}.npy'
   )
   json.dump(dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w'))
+
   tf_env.close()
   eval_tf_env.close()
   manager.shutdown()
@@ -458,23 +468,28 @@ def train_mp(_):
   learning_rate = float(os.environ.get('LEARNING_RATE', None))
   log_interval = int(os.environ.get('LOG_INTERVAL', None))
   policy_checkpoint_interval = int(
-      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
+      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None)
+  )
   rb_capacity = int(os.environ.get('RB_CAPACITY', None))
   root_dir = os.environ.get('ROOT_DIR', None)
   seed = int(os.environ.get('SEED', None))
   num_websites = int(os.environ.get('NUM_WEBSITES', None))
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
   train_checkpoint_interval = int(
-      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None)
+  )
   timesteps_per_actorbatch = int(
-      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
+      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
+  )
 
   # Convert all of the intervals to be in terms of iterations instead of environment steps
   eval_interval = max(1, round(eval_interval / timesteps_per_actorbatch))
-  train_checkpoint_interval = max(1, round(
-      train_checkpoint_interval / timesteps_per_actorbatch))
-  policy_checkpoint_interval = max(1, round(
-      policy_checkpoint_interval / timesteps_per_actorbatch))
+  train_checkpoint_interval = max(
+      1, round(train_checkpoint_interval / timesteps_per_actorbatch)
+  )
+  policy_checkpoint_interval = max(
+      1, round(policy_checkpoint_interval / timesteps_per_actorbatch)
+  )
   log_interval = max(1, round(log_interval / timesteps_per_actorbatch))
   rb_capacity = max(1, round(rb_capacity / env_batch_size))
 
@@ -513,14 +528,18 @@ def train_mp(_):
       train_steps_per_iteration=timesteps_per_actorbatch,
       use_tf_functions=False,
       env_args=dict(
+          seed=0,  # need different seed for websites
           difficulty=difficulty_level,
           use_legacy_reset=True,
           use_legacy_step=True,
           num_websites=num_websites,
           browser_args=dict(
               threading=False,
-              chrome_options=['--headless', '--disable-dev-shm-usage',
-                              '--no-sandbox'],
+              chrome_options=[
+                  '--headless',
+                  '--disable-dev-shm-usage',
+                  '--no-sandbox',
+              ],
           ),
       ),
   )
