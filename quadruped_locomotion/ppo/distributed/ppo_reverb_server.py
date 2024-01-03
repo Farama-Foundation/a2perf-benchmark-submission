@@ -113,7 +113,7 @@ def main(_):
       tables=[
           reverb.Table(  # Replay buffer storing experience.
               name=reverb_replay_buffer.DEFAULT_TABLE,
-              sampler=reverb.selectors.Uniform(),
+              sampler=reverb.selectors.Fifo(),
               remover=reverb.selectors.Fifo(),
               rate_limiter=experience_rate_limiter,
               max_size=_REPLAY_BUFFER_CAPACITY.value,

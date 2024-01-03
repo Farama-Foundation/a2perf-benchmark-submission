@@ -61,6 +61,9 @@ _REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
 _POLICY_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
     'policy_checkpoint_interval', 1000, 'Policy checkpoint interval.'
 )
+_TIMESTEPS_PER_ACTORBATCH = flags.DEFINE_integer(
+    'timesteps_per_actorbatch', 2048, 'Number of timesteps per actorbatch.')
+
 _ENV_BATCH_SIZE = flags.DEFINE_integer(
     'env_batch_size', 1, 'Number of environments to run in parallel.'
 )
@@ -94,7 +97,6 @@ _SUMMARIZE_GRADS_AND_VARS = flags.DEFINE_bool('summarize_grads_and_vars', False,
                                               'Whether to summarize grads and vars.')
 _LEARNING_RATE = flags.DEFINE_float('learning_rate', 3e-4, 'Learning rate.')
 _USE_GAE = flags.DEFINE_bool('use_gae', True, 'Whether to use GAE or not.')
-_BATCH_SIZE = flags.DEFINE_integer('batch_size', 256, 'Batch size.')
 FLAGS = flags.FLAGS
 
 
@@ -153,15 +155,17 @@ def train(
     ] = suite_mujoco.load,
     # Training params
     learning_rate: float = 3e-4,
-    batch_size: int = 256,
     num_iterations: int = 2000000,
     learner_iterations_per_call: int = 1,
     use_gae: bool = True,
     gradient_clipping: Optional[float] = None,
     debug_summaries: bool = False,
     train_checkpoint_interval: int = 1000,
+    timesteps_per_actorbatch: int = 0,
     policy_checkpoint_interval: int = 1000,
+    env_batch_size: int = 0,
     summarize_grads_and_vars: bool = False,
+    summary_dir: Optional[Text] = None,
     log_interval: int = 1000,
     entropy_regularization: float = 0.0,
 ) -> None:
@@ -208,20 +212,42 @@ def train(
   )
   variable_container.push(variables)
 
-  # Create the replay buffer.
+  # Create the replay buffer with a fixed maximum size.
+  sequence_length = timesteps_per_actorbatch
   reverb_replay = reverb_replay_buffer.ReverbReplayBuffer(
-      agent.collect_data_spec,
-      sequence_length=2,
+      data_spec=agent.collect_data_spec,
       table_name=reverb_replay_buffer.DEFAULT_TABLE,
+      sequence_length=sequence_length,
       server_address=replay_buffer_server_address,
+      dataset_buffer_size=None,  # Modify if slow
+      max_cycle_length=env_batch_size,
+      num_workers_per_iterator=tf.data.experimental.AUTOTUNE,
   )
+
+  # Close and delete the environment if it's no longer needed.
+  env.close()
+  del env
 
   # Initialize the dataset.
   def experience_dataset_fn():
     with strategy.scope():
-      return reverb_replay.as_dataset(
-          sample_batch_size=batch_size, num_steps=2
-      ).prefetch(tf.data.experimental.AUTOTUNE)
+      # Gathering all data from the replay buffer.
+      dataset = reverb_replay.as_dataset(
+          sample_batch_size=None,  # Set to None to gather all data
+          num_parallel_calls=tf.data.experimental.AUTOTUNE,
+          sequence_preprocess_fn=None,
+          single_deterministic_pass=False,
+      )
+
+      # Rebatch the dataset.
+      # rebatched_dataset = dataset.batch(env_batch_size)
+
+      # Prefetch data for efficiency.
+      # return rebatched_dataset.prefetch(tf.data.experimental.AUTOTUNE)
+      return dataset.prefetch(tf.data.experimental.AUTOTUNE)
+
+  # Use the experience_dataset_fn to get your dataset
+  dataset = experience_dataset_fn()
 
   # Create the learner.
   learning_triggers = [
@@ -229,17 +255,23 @@ def train(
       triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
   ]
   ppo_learner = learner.Learner(
-      root_dir,
-      train_step,
-      agent,
-      experience_dataset_fn,
+      root_dir=root_dir,
+      train_step=train_step,
+      agent=agent,
+      experience_dataset_fn=experience_dataset_fn,
+      after_train_strategy_step_fn=None,
       triggers=learning_triggers,
-      strategy=strategy,
       checkpoint_interval=train_checkpoint_interval,
       summary_interval=log_interval,
       max_checkpoints_to_keep=1,
       use_kwargs_in_agent_train=False,
-      summary_root_dir=None,
+      strategy=strategy,
+      run_optimizer_variable_init=True,
+      use_reverb_v2=False,
+      direct_sampling=False,
+      experience_dataset_options=None,
+      strategy_run_options=None,
+      summary_root_dir=summary_dir
   )
 
   # Run the training loop.
@@ -247,6 +279,7 @@ def train(
     # Since this is PPO, each learner iteration is a single epoch.
     ppo_learner.run(iterations=learner_iterations_per_call)
     variable_container.push(variables)
+  logging.info('Training finished.')
 
 
 def main(_):
@@ -258,7 +291,6 @@ def main(_):
   strategy = strategy_utils.get_strategy(tpu=_USE_TPU.value,
                                          use_gpu=FLAGS.use_gpu
                                          # Defined in tensorflow strategies
-
                                          )
   # Define the default dictionary for gym_kwargs
   default_gym_kwargs = dict(motion_files=[_MOTION_FILE_PATH.value],
@@ -276,16 +308,18 @@ def main(_):
       environment_name=_ENV_NAME.value,
       gradient_clipping=_GRADIENT_CLIPPING.value,
       learner_iterations_per_call=1,
-      batch_size=_BATCH_SIZE.value,
       learning_rate=_LEARNING_RATE.value,
       log_interval=_LOG_INTERVAL.value,
       num_iterations=_NUM_ITERATIONS.value,
       replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
       root_dir=_ROOT_DIR.value,
+      timesteps_per_actorbatch=_TIMESTEPS_PER_ACTORBATCH.value,
+      env_batch_size=_ENV_BATCH_SIZE.value,
       strategy=strategy,
       train_checkpoint_interval=_TRAIN_CHECKPOINT_INTERVAL.value,
       policy_checkpoint_interval=_POLICY_CHECKPOINT_INTERVAL.value,
       suite_load_fn=suite_load_function,
+      summary_dir=os.path.join(_ROOT_DIR.value, 'summaries'),
       summarize_grads_and_vars=_SUMMARIZE_GRADS_AND_VARS.value,
       use_gae=_USE_GAE.value,
       variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,

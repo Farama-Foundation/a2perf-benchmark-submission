@@ -58,7 +58,9 @@ _MAX_TRAIN_STEPS = flags.DEFINE_integer(
 _MAX_ENV_STEPS = flags.DEFINE_integer(
     'max_env_steps', 1000, 'Max number of steps per environment.'
 )
-
+_STEPS_PER_RUN = flags.DEFINE_integer(
+    'steps_per_run', 1, 'Number of environment steps to take per run.'
+)
 _MOTION_FILE_PATH = flags.DEFINE_string(
     'motion_file_path', None, 'Path to the motion file.'
 )
@@ -94,7 +96,8 @@ def collect(
     suite_load_fn: Callable[
       [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
-    max_train_steps: int = 2000000,
+    max_train_steps: int = 0,
+    steps_per_run: int = 0,
 ) -> None:
   """Collects experience using a policy updated after every episode."""
   # Create the environment. For now support only single environment collection.
@@ -112,12 +115,12 @@ def collect(
   )
   variable_container.update(variables)
 
-  # Create the replay buffer observer.
+  # Create replay buffer observer that uses steps
   rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
-      reverb.Client(replay_buffer_server_address),
+      py_client=reverb.Client(replay_buffer_server_address),
       table_name=reverb_replay_buffer.DEFAULT_TABLE,
-      sequence_length=2,
-      stride_length=1,
+      sequence_length=steps_per_run,
+      stride_length=steps_per_run,
   )
 
   env_step_metric = py_metrics.EnvironmentSteps()
@@ -125,7 +128,7 @@ def collect(
       collect_env,
       collect_policy,
       train_step,
-      steps_per_run=1,
+      steps_per_run=steps_per_run,
       episodes_per_run=None,
       observers=[rb_observer, env_step_metric],
       transition_observers=None,
@@ -185,6 +188,7 @@ def main(_):
       suite_load_fn=suite_load_function,
       environment_name=_ENV_NAME.value,
       collect_policy=collect_policy,
+      steps_per_run=_STEPS_PER_RUN.value,
       max_train_steps=_MAX_TRAIN_STEPS.value,
       replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
       variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,

@@ -48,7 +48,11 @@ def main(_):
   print(f'timesteps_per_actorbatch: {timesteps_per_actorbatch}')
   print(f'motion_file_path: {motion_file_path}')
   print(f'num_epochs: {num_epochs}')
+
   num_iterations = int(total_env_steps / timesteps_per_actorbatch)
+
+  # Get the current environment variables
+  env = os.environ.copy()
 
   # Launch reverb server
   reverb_command = [
@@ -58,12 +62,14 @@ def main(_):
       f'--replay_buffer_capacity={timesteps_per_actorbatch}',
       f'--port={port}',
       f'--root_dir={root_dir}',
-      '--alsologtostderr'
+      '--verbosity=2',
+      # '--alsologtostderr'
   ]
 
-  # Launch the subprocess with output redirection
+  # Launch the subprocess with the same environment and output redirection
   reverb_process = subprocess.Popen(reverb_command, stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT)
+                                    stderr=subprocess.STDOUT, env=env)
+
   # Used for breakpoint debugging
   # reverb_output = reverb_process.communicate()[0]
   logging.info('Successfully launched reverb server.')
@@ -74,18 +80,21 @@ def main(_):
       ['python',
        'ppo_collect.py',
        f'--root_dir={root_dir}',
+       f'--steps_per_run={adjusted_timesteps_per_actorbatch}',
        f'--env_name=QuadrupedLocomotion-v0',
        f'--motion_file_path={motion_file_path}',
        f'--summary_interval={log_interval}',
        f'--replay_buffer_server_address={replay_buffer_server_address}',
        f'--variable_container_server_address={variable_container_server_address}',
        f'--task={i}',
-       '--alsologtostderr',
+       '--verbosity=2',
+       # '--alsologtostderr',
        ] for i in range(env_batch_size)
   ]
 
   collect_jobs = [subprocess.Popen(command, stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT) for command in
+                                   stderr=subprocess.STDOUT, env=env) for
+                  command in
                   collect_job_commands]
   # Used for breakpoint debugging
   # collect_output = collect_jobs[0].communicate()[0]
@@ -98,14 +107,15 @@ def main(_):
       f'--entropy_regularization={entropy_regularization}',
       f'--env_name=QuadrupedLocomotion-v0',
       f'--num_epochs={num_epochs}',
-      f'--batch_size={timesteps_per_actorbatch}',
       # sample entire replay buffer since on-policy
+      f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
       f'--policy_checkpoint_interval={policy_checkpoint_interval}',
       f'--replay_buffer_server_address={replay_buffer_server_address}',
       f'--root_dir={root_dir}',
       f'--train_checkpoint_interval={train_checkpoint_interval}',
       f'--use_gpu=True',
       f'--use_tpu=False',
+      f'--num_iterations={num_iterations}',
       f'--env_batch_size={env_batch_size}',
       f'--learning_rate={learning_rate}',
       f'--motion_file_path={motion_file_path}',
@@ -113,7 +123,7 @@ def main(_):
       f'--variable_container_server_address={variable_container_server_address}',
   ]
   train_job = subprocess.Popen(train_job_command, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT)
+                               stderr=subprocess.STDOUT, env=env)
   # Used for breakpoint debugging
   # train_output = train_job.communicate()[0]
   logging.info('Successfully launched train job.')
