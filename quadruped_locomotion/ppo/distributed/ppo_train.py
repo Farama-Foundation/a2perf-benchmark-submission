@@ -24,9 +24,11 @@ from typing import Optional
 from typing import Text
 
 import gin
+import numpy as np
 import tensorflow as tf
 from absl import app
 from absl import flags
+import reverb
 from absl import logging
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ppo import ppo_clip_agent
@@ -38,7 +40,7 @@ from tf_agents.networks import actor_distribution_network
 from tf_agents.networks import value_network
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.system import system_multiprocessing as multiprocessing
-from tf_agents.train import learner
+from tf_agents.train import ppo_learner as ppo_learner_lib
 from tf_agents.train import triggers
 from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import strategy_utils
@@ -48,6 +50,11 @@ from tf_agents.typing import types
 
 from a2perf.domains import quadruped_locomotion
 
+_SEQUENCE_LENGTH = flags.DEFINE_integer(
+    'sequence_length', 0,
+    'Length of sequences to sample from the replay buffer.'
+)
+_SEED = flags.DEFINE_integer('seed', 0, 'Random seed.')
 _ROOT_DIR = flags.DEFINE_string(
     'root_dir',
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
@@ -80,6 +87,7 @@ _VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
     None,
     'Variable container server address.'
 )
+_BATCH_SIZE = flags.DEFINE_integer('batch_size', 32, 'Batch size.')
 _NUM_EPOCHS = flags.DEFINE_integer('num_epochs', 1, 'Number of epochs.')
 _GIN_FILE = flags.DEFINE_multi_string('gin_file', None,
                                       'Paths to the gin-config files.')
@@ -87,7 +95,7 @@ _ENTROPY_REGULARIZATION = flags.DEFINE_float('entropy_regularization', 0.0,
                                              'Entropy regularization.')
 _GIN_BINDINGS = flags.DEFINE_multi_string('gin_bindings', None,
                                           'Gin binding parameters.')
-_NUM_ITERATIONS = flags.DEFINE_integer('num_iterations', 2000000,
+_MAX_TRAIN_STEP = flags.DEFINE_integer('max_train_steps', 2000000,
                                        'Number of iterations.')
 _GRADIENT_CLIPPING = flags.DEFINE_float('gradient_clipping', None,
                                         'Gradient clipping.')
@@ -98,6 +106,12 @@ _SUMMARIZE_GRADS_AND_VARS = flags.DEFINE_bool('summarize_grads_and_vars', False,
 _LEARNING_RATE = flags.DEFINE_float('learning_rate', 3e-4, 'Learning rate.')
 _USE_GAE = flags.DEFINE_bool('use_gae', True, 'Whether to use GAE or not.')
 FLAGS = flags.FLAGS
+
+
+class PrefixedLogFormatter(logging.PythonFormatter):
+  def format(self, record):
+    original = super(PrefixedLogFormatter, self).format(record)
+    return f'Train: {original}'
 
 
 def _create_agent(
@@ -111,13 +125,14 @@ def _create_agent(
     use_gae: bool,
     debug_summaries: bool,
     summarize_grads_and_vars: bool,
-    num_epochs: int = 25,
+    seed: Optional[int] = None,
 ) -> tf_agent.TFAgent:
   """Creates a PPO agent."""
   actor_net = actor_distribution_network.ActorDistributionNetwork(
       observation_tensor_spec,
       action_tensor_spec,
       fc_layer_params=(512, 256),
+      seed=seed
   )
 
   value_net = value_network.ValueNetwork(
@@ -125,21 +140,29 @@ def _create_agent(
       fc_layer_params=(512, 256),
   )
 
-  optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+  optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate,
+                                       epsilon=1e-5)
 
   return ppo_clip_agent.PPOClipAgent(
-      num_epochs=num_epochs,
       time_step_spec=time_step_tensor_spec,
       action_spec=action_tensor_spec,
       optimizer=optimizer,
       actor_net=actor_net,
+      greedy_eval=False,
       value_net=value_net,
       entropy_regularization=entropy_regularization,
       gradient_clipping=gradient_clipping,
       use_gae=use_gae,
       debug_summaries=debug_summaries,
       summarize_grads_and_vars=summarize_grads_and_vars,
+      normalize_observations=True,
+      normalize_rewards=True,
+      importance_ratio_clipping=0.2,
+      use_td_lambda_return=True,
+      num_epochs=1,  # this is a legacy argument and should always be 1
       train_step_counter=train_step,
+      compute_value_and_advantage_in_train=False,
+      update_normalizers_in_train=False,
   )
 
 
@@ -150,28 +173,30 @@ def train(
     strategy: tf.distribute.Strategy,
     replay_buffer_server_address: Text,
     variable_container_server_address: Text,
-    suite_load_fn: Callable[
-      [Text], py_environment.PyEnvironment
-    ] = suite_mujoco.load,
-    # Training params
-    learning_rate: float = 3e-4,
-    num_iterations: int = 2000000,
-    learner_iterations_per_call: int = 1,
-    use_gae: bool = True,
-    gradient_clipping: Optional[float] = None,
     debug_summaries: bool = False,
-    train_checkpoint_interval: int = 1000,
-    timesteps_per_actorbatch: int = 0,
-    policy_checkpoint_interval: int = 1000,
-    env_batch_size: int = 0,
-    summarize_grads_and_vars: bool = False,
-    summary_dir: Optional[Text] = None,
-    log_interval: int = 1000,
     entropy_regularization: float = 0.0,
+    gradient_clipping: Optional[float] = None,
+    learner_iterations_per_call: int = 1,
+    learning_rate: float = 3e-4,
+    log_interval: int = 1000,
+    max_train_step: Optional[int] = None,
+    num_epochs: int = 0,
+    batch_size: int = 0,
+    policy_checkpoint_interval: int = 1000,
+    sequence_length: int = 0,
+    timesteps_per_actorbatch: int = 0,
+    suite_load_fn: Callable[
+      [Text], py_environment.PyEnvironment] = suite_mujoco.load,
+    summarize_grads_and_vars: bool = False,
+    train_checkpoint_interval: int = 1000,
+    use_gae: bool = True,
+    env_batch_size: int = 1,
+    seed: Optional[int] = None,
 ) -> None:
   """Trains a PPO agent."""
-  # Get the specs from the environment.
-  logging.info('Training PPO with learning rate: %f', learning_rate)
+  logging.info('Sequence length train: %s', sequence_length)
+  logging.info('Timesteps per actorbatch: %s', timesteps_per_actorbatch)
+
   env = suite_load_fn(environment_name)
   observation_tensor_spec, action_tensor_spec, time_step_tensor_spec = (
       spec_utils.get_tensor_specs(env)
@@ -191,99 +216,129 @@ def train(
         summarize_grads_and_vars=summarize_grads_and_vars,
         use_gae=use_gae,
         gradient_clipping=gradient_clipping,
+        seed=seed,
     )
 
-  # Create the policy saver which saves the initial model now, then it
-  # periodically checkpoints the policy weigths.
-  saved_model_dir = os.path.join(root_dir, learner.POLICY_SAVED_MODEL_DIR)
-  save_model_trigger = triggers.PolicySavedModelTrigger(
-      saved_model_dir, agent, train_step,
-      interval=policy_checkpoint_interval
-  )
+    # Create the policy saver which saves the initial model now, then it
+    # periodically checkpoints the policy weights.
+    saved_model_dir = os.path.join(root_dir, 'policies')
+    save_model_trigger = triggers.PolicySavedModelTrigger(
+        saved_model_dir, agent, train_step, interval=policy_checkpoint_interval,
+        save_greedy_policy=True,
+        save_collect_policy=True,
+    )
 
-  # Create the variable container.
-  variables = {
-      reverb_variable_container.POLICY_KEY: agent.collect_policy.variables(),
-      reverb_variable_container.TRAIN_STEP_KEY: train_step,
-  }
-  variable_container = reverb_variable_container.ReverbVariableContainer(
-      variable_container_server_address,
-      table_names=[reverb_variable_container.DEFAULT_TABLE],
-  )
-  variable_container.push(variables)
+    # Create the variable container.
+    variables = {
+        reverb_variable_container.POLICY_KEY: agent.collect_policy.variables(),
+        reverb_variable_container.TRAIN_STEP_KEY: train_step,
+    }
+    variable_container = reverb_variable_container.ReverbVariableContainer(
+        variable_container_server_address,
+        table_names=[reverb_variable_container.DEFAULT_TABLE],
+    )
+    variable_container.push(values=variables,
+                            table=reverb_variable_container.DEFAULT_TABLE)
 
-  # Create the replay buffer with a fixed maximum size.
-  sequence_length = timesteps_per_actorbatch
-  reverb_replay = reverb_replay_buffer.ReverbReplayBuffer(
-      data_spec=agent.collect_data_spec,
-      table_name=reverb_replay_buffer.DEFAULT_TABLE,
-      sequence_length=sequence_length,
-      server_address=replay_buffer_server_address,
-      dataset_buffer_size=None,  # Modify if slow
-      max_cycle_length=env_batch_size,
-      num_workers_per_iterator=tf.data.experimental.AUTOTUNE,
-  )
+    # Create the replay buffer.
+    reverb_client = reverb.Client(replay_buffer_server_address)
+    # Create the replay buffer.
+    reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
+        agent.collect_data_spec,
+        sequence_length=sequence_length,
+        table_name='training_table',
+        server_address=replay_buffer_server_address,
+    )
+    reverb_replay_normalization = reverb_replay_buffer.ReverbReplayBuffer(
+        agent.collect_data_spec,
+        sequence_length=sequence_length,
+        table_name='normalization_table',
+        server_address=replay_buffer_server_address,
+    )
 
-  # Close and delete the environment if it's no longer needed.
-  env.close()
-  del env
+    # Close and delete the environment if it's no longer needed.
+    env.close()
+    del env
 
-  # Initialize the dataset.
-  def experience_dataset_fn():
-    with strategy.scope():
-      # Gathering all data from the replay buffer.
-      dataset = reverb_replay.as_dataset(
-          sample_batch_size=None,  # Set to None to gather all data
-          num_parallel_calls=tf.data.experimental.AUTOTUNE,
-          sequence_preprocess_fn=None,
-          single_deterministic_pass=False,
+    # Initialize the datasets. The normalization and training dataset are kept in
+    # sync (contain the same data). We leverage two tables to perform
+    # deterministic sampling, so that normalization and training use the same
+    # collected data.
+    def experience_dataset_fn():
+      return reverb_replay_train.as_dataset(
+          sample_batch_size=env_batch_size,  # sample ALL on-policy data
+          sequence_preprocess_fn=agent.preprocess_sequence
       )
 
-      # Rebatch the dataset.
-      # rebatched_dataset = dataset.batch(env_batch_size)
+    def normalization_dataset_fn():
+      return reverb_replay_normalization.as_dataset(
+          sample_batch_size=env_batch_size,  # sample ALL on-policy data
+          sequence_preprocess_fn=agent.preprocess_sequence
+      )
 
-      # Prefetch data for efficiency.
-      # return rebatched_dataset.prefetch(tf.data.experimental.AUTOTUNE)
-      return dataset.prefetch(tf.data.experimental.AUTOTUNE)
+    # Create the learner.
+    learning_triggers = [
+        save_model_trigger,
+        triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
+    ]
 
-  # Use the experience_dataset_fn to get your dataset
-  dataset = experience_dataset_fn()
+    # Add an `after_train_step_fn` with metrics on how on-policy the data is.
+    train_steps_per_policy_update = int(
+        learner_iterations_per_call * sequence_length * num_epochs / batch_size
+    )
+    after_train_strategy_step_fn = (
+        train_utils.create_staleness_metrics_after_train_step_fn(
+            train_step=train_step,
+            train_steps_per_policy_update=train_steps_per_policy_update,
+        )
+    )
 
-  # Create the learner.
-  learning_triggers = [
-      save_model_trigger,
-      triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
-  ]
-  ppo_learner = learner.Learner(
-      root_dir=root_dir,
-      train_step=train_step,
-      agent=agent,
-      experience_dataset_fn=experience_dataset_fn,
-      after_train_strategy_step_fn=None,
-      triggers=learning_triggers,
-      checkpoint_interval=train_checkpoint_interval,
-      summary_interval=log_interval,
-      max_checkpoints_to_keep=1,
-      use_kwargs_in_agent_train=False,
-      strategy=strategy,
-      run_optimizer_variable_init=True,
-      use_reverb_v2=False,
-      direct_sampling=False,
-      experience_dataset_options=None,
-      strategy_run_options=None,
-      summary_root_dir=summary_dir
-  )
+    ppo_learner = ppo_learner_lib.PPOLearner(
+        root_dir,
+        train_step,
+        agent,
+        experience_dataset_fn=experience_dataset_fn,
+        normalization_dataset_fn=normalization_dataset_fn,
+        num_samples=learner_iterations_per_call,
+        num_epochs=num_epochs,
+        minibatch_size=batch_size,
+        checkpoint_interval=train_checkpoint_interval,
+        shuffle_buffer_size=(
+            # Shuffle buffer size should be as much on-policy data we have
+            learner_iterations_per_call * sequence_length * num_epochs * env_batch_size
+        ),
+        triggers=learning_triggers,
+        strategy=strategy,
+        after_train_strategy_step_fn=after_train_strategy_step_fn,
+    )
+    logging.info('Maximum train step: %d', max_train_step)
 
-  # Run the training loop.
-  while train_step.numpy() < num_iterations:
-    # Since this is PPO, each learner iteration is a single epoch.
-    ppo_learner.run(iterations=learner_iterations_per_call)
-    variable_container.push(variables)
+    # Run the training loop.
+    while train_step < max_train_step:
+      logging.info('Training. Train step: %d', train_step.numpy())
+
+      ppo_learner.run()
+      logging.info('\tFinished training step.')
+
+      variable_container.push(variables)
+      logging.info('\tPushed variables to variable container.')
+
+      reverb_replay_train.clear()
+      logging.info('\tCleared training replay buffer.')
+
+      reverb_replay_normalization.clear()
+      logging.info('\tCleared normalization replay buffer.')
   logging.info('Training finished.')
 
 
 def main(_):
+  # Add a prefix to our absl logger so we know which collect job this is
+  absl_handler = logging.get_absl_handler()
+  absl_handler.setFormatter(PrefixedLogFormatter())
+
+  import tensorflow as tf
   tf.config.run_functions_eagerly(True)
+  # tf.data.experimental.enable_debug_mode()
   gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
                                       finalize_config=False
                                       # a2perf environments have more configs to add
@@ -303,26 +358,29 @@ def main(_):
   )
 
   train(
+      root_dir=_ROOT_DIR.value,
+      environment_name=_ENV_NAME.value,
+      strategy=strategy,
+      replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
+      variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
       debug_summaries=_DEBUG_SUMMARIES.value,
       entropy_regularization=_ENTROPY_REGULARIZATION.value,
-      environment_name=_ENV_NAME.value,
       gradient_clipping=_GRADIENT_CLIPPING.value,
       learner_iterations_per_call=1,
       learning_rate=_LEARNING_RATE.value,
       log_interval=_LOG_INTERVAL.value,
-      num_iterations=_NUM_ITERATIONS.value,
-      replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
-      root_dir=_ROOT_DIR.value,
-      timesteps_per_actorbatch=_TIMESTEPS_PER_ACTORBATCH.value,
-      env_batch_size=_ENV_BATCH_SIZE.value,
-      strategy=strategy,
-      train_checkpoint_interval=_TRAIN_CHECKPOINT_INTERVAL.value,
+      max_train_step=_MAX_TRAIN_STEP.value,
+      num_epochs=_NUM_EPOCHS.value,
       policy_checkpoint_interval=_POLICY_CHECKPOINT_INTERVAL.value,
+      sequence_length=_SEQUENCE_LENGTH.value,
       suite_load_fn=suite_load_function,
-      summary_dir=os.path.join(_ROOT_DIR.value, 'summaries'),
       summarize_grads_and_vars=_SUMMARIZE_GRADS_AND_VARS.value,
+      timesteps_per_actorbatch=_TIMESTEPS_PER_ACTORBATCH.value,
+      train_checkpoint_interval=_TRAIN_CHECKPOINT_INTERVAL.value,
       use_gae=_USE_GAE.value,
-      variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
+      batch_size=_BATCH_SIZE.value,
+      env_batch_size=_ENV_BATCH_SIZE.value,
+      seed=_SEED.value,
   )
 
 
@@ -332,5 +390,8 @@ if __name__ == '__main__':
       'env_name',
       'replay_buffer_server_address',
       'variable_container_server_address',
+      'env_batch_size',
+      'sequence_length',
+      'motion_file_path',
   ])
   multiprocessing.handle_main(lambda _: app.run(main))
