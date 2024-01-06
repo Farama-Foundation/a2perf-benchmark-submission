@@ -60,6 +60,7 @@ _ROOT_DIR = flags.DEFINE_string(
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
     'Root directory for writing logs/summaries/checkpoints.'
 )
+_DEBUG = flags.DEFINE_bool('debug', False, 'Debug mode')
 _ENV_NAME = flags.DEFINE_string('env_name', None, 'Name of the environment')
 _LOG_INTERVAL = flags.DEFINE_integer('log_interval', 1000, 'Log interval.')
 _REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
@@ -72,7 +73,7 @@ _TIMESTEPS_PER_ACTORBATCH = flags.DEFINE_integer(
     'timesteps_per_actorbatch', 2048, 'Number of timesteps per actorbatch.')
 
 _ENV_BATCH_SIZE = flags.DEFINE_integer(
-    'env_batch_size', 1, 'Number of environments to run in parallel.'
+    'env_batch_size', None, 'Number of environments to run in parallel.'
 )
 _MOTION_FILE_PATH = flags.DEFINE_string(
     'motion_file_path', None, 'Path to the motion file.'
@@ -305,7 +306,7 @@ def train(
         checkpoint_interval=train_checkpoint_interval,
         shuffle_buffer_size=(
             # Shuffle buffer size should be as much on-policy data we have
-            learner_iterations_per_call * sequence_length * num_epochs * env_batch_size
+            learner_iterations_per_call * sequence_length * num_epochs
         ),
         triggers=learning_triggers,
         strategy=strategy,
@@ -332,13 +333,16 @@ def train(
 
 
 def main(_):
+  if _DEBUG.value:
+    logging.set_verbosity(logging.DEBUG)
+    import tensorflow as tf
+    tf.config.run_functions_eagerly(True)
+    tf.data.experimental.enable_debug_mode()
+
   # Add a prefix to our absl logger so we know which collect job this is
   absl_handler = logging.get_absl_handler()
   absl_handler.setFormatter(PrefixedLogFormatter())
 
-  import tensorflow as tf
-  tf.config.run_functions_eagerly(True)
-  # tf.data.experimental.enable_debug_mode()
   gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
                                       finalize_config=False
                                       # a2perf environments have more configs to add

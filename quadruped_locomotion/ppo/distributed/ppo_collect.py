@@ -78,7 +78,6 @@ def collect(
     variable_container_server_address: Text,
     sequence_length: int = 0,
     summary_interval: int = 0,
-    env_batch_size: int = 0,
     gym_kwargs=None,
 ) -> None:
   """Collects experience using a policy updated after every episode."""
@@ -124,7 +123,7 @@ def collect(
       steps_per_run=sequence_length,
       metrics=actor.collect_metrics(1),
       summary_interval=summary_interval,
-      summary_dir=os.path.join(_ROOT_DIR.value, learner.TRAIN_DIR,
+      summary_dir=os.path.join(_ROOT_DIR.value, 'summaries',
                                str(_TASK.value)) if _TASK.value == 0 else None,
       observers=[experience_observer, env_step_metric],
   )
@@ -136,10 +135,11 @@ def collect(
     variable_container.update(variables)
     logging.info('Collecting with policy at step: %d', train_step.numpy())
 
-    num_steps_collected = env_step_metric.result().numpy()
+    num_steps_collected = env_step_metric.result()
     logging.info('Collected %d steps', num_steps_collected)
     logging.info('Collected %d steps this iteration',
                  num_steps_collected - prev_num_steps_collected)
+    prev_num_steps_collected = num_steps_collected
 
 
 def run_collect(
@@ -167,7 +167,6 @@ def run_collect(
       replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
       variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
       sequence_length=sequence_length,
-      env_batch_size=_ENV_BATCH_SIZE.value,
       gym_kwargs=gym_kwargs,
   )
 
@@ -199,6 +198,6 @@ if __name__ == '__main__':
       'replay_buffer_server_address',
       'variable_container_server_address',
       'sequence_length',
-      'env_batch_size'
+      'env_batch_size',
   ])
   multiprocessing.handle_main(functools.partial(app.run, main))

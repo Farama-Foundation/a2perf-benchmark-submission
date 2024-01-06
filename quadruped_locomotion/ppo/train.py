@@ -21,7 +21,6 @@ def train():
   env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
   batch_size = int(os.environ.get('BATCH_SIZE', None))
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
-  difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
   eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
   entropy_regularization = float(os.environ.get('ENTROPY_REGULARIZATION', None))
   train_checkpoint_interval = int(
@@ -32,11 +31,7 @@ def train():
   learning_rate = float(os.environ.get('LEARNING_RATE', None))
   timesteps_per_actorbatch = int(
       os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
-  # motion_file_path = os.environ.get('MOTION_FILE_PATH', None)
-  # the motion file dog_pace is in the a2perf package
-  motion_file_path = os.path.join(
-      os.path.dirname(quadruped_locomotion.__file__), 'motion_imitation',
-      'data', 'motions', 'dog_pace.txt')
+  motion_file_path = os.environ.get('MOTION_FILE_PATH', None)
   port = int(os.environ.get('PORT', '8008'))
   host = os.environ.get('HOST', 'localhost')
   replay_buffer_server_address = f'{host}:{port}'
@@ -47,7 +42,7 @@ def train():
   print(f'root_dir: {root_dir}')
   print(f'env_batch_size: {env_batch_size}')
   print(f'total_env_steps: {total_env_steps}')
-  print(f'difficulty_level: {difficulty_level}')
+  # print(f'difficulty_level: {difficulty_level}')
   print(f'eval_interval: {eval_interval}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
@@ -137,6 +132,7 @@ def train():
       f'--env_name=QuadrupedLocomotion-v0',
       f'--num_epochs={num_epochs}',
       f'--batch_size={batch_size}',
+      f'--debug=False',
       f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
       f'--sequence_length={adjusted_timesteps_per_actorbatch}',
       f'--policy_checkpoint_interval={policy_checkpoint_interval}',
