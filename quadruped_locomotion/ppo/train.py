@@ -58,9 +58,6 @@ def train():
   num_iterations = total_env_steps // timesteps_per_actorbatch
   max_train_steps = train_steps_per_iteration * num_iterations
   adjusted_timesteps_per_actorbatch = timesteps_per_actorbatch // env_batch_size
-  logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
-  logging.info(f'num_iterations: {num_iterations}')
-  logging.info(f'max_train_steps: {max_train_steps}')
 
   # All intervals start out in terms of environment steps, so we convert
   # to train steps here.
@@ -74,15 +71,19 @@ def train():
       eval_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
       int)
   log_interval = np.round(
-      log_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
+      log_interval / env_batch_size / timesteps_per_actorbatch * train_steps_per_iteration).astype(
       int)
 
+  logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
+  logging.info(f'num_iterations: {num_iterations}')
+  logging.info(f'max_train_steps: {max_train_steps}')
   logging.info(
       f'converted policy_checkpoint_interval: {policy_checkpoint_interval}')
   logging.info(
       f'converted train_checkpoint_interval: {train_checkpoint_interval}')
   logging.info(f'converted eval_interval: {eval_interval}')
   logging.info(f'converted log_interval: {log_interval}')
+  logging.info(f'random seed: {seed}')
 
   # Launch reverb server
   reverb_command = [
@@ -148,6 +149,7 @@ def train():
       f'--log_interval={log_interval}',
       f'--seed={seed}',
       f'--variable_container_server_address={variable_container_server_address}',
+      f'--use_gpu'
   ]
   train_job = subprocess.Popen(train_job_command, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, env=os.environ.copy())

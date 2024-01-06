@@ -124,7 +124,7 @@ def collect(
       metrics=actor.collect_metrics(1),
       summary_interval=summary_interval,
       summary_dir=os.path.join(_ROOT_DIR.value, 'summaries',
-                               str(_TASK.value)) if _TASK.value == 0 else None,
+                               str(_TASK.value)),
       observers=[experience_observer, env_step_metric],
   )
 
@@ -136,8 +136,8 @@ def collect(
     logging.info('Collecting with policy at step: %d', train_step.numpy())
 
     num_steps_collected = env_step_metric.result()
-    logging.info('Collected %d steps', num_steps_collected)
-    logging.info('Collected %d steps this iteration',
+    logging.info('\tCollected %d steps', num_steps_collected)
+    logging.info('\tCollected %d steps this iteration',
                  num_steps_collected - prev_num_steps_collected)
     prev_num_steps_collected = num_steps_collected
 

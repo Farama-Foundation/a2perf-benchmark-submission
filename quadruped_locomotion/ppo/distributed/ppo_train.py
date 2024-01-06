@@ -224,7 +224,9 @@ def train(
     # periodically checkpoints the policy weights.
     saved_model_dir = os.path.join(root_dir, 'policies')
     save_model_trigger = triggers.PolicySavedModelTrigger(
-        saved_model_dir, agent, train_step, interval=policy_checkpoint_interval,
+        saved_model_dir, agent, train_step,
+        interval=policy_checkpoint_interval,
+        async_saving=False,
         save_greedy_policy=True,
         save_collect_policy=True,
     )
@@ -305,8 +307,7 @@ def train(
         minibatch_size=batch_size,
         checkpoint_interval=train_checkpoint_interval,
         shuffle_buffer_size=(
-            # Shuffle buffer size should be as much on-policy data we have
-            learner_iterations_per_call * sequence_length * num_epochs
+            learner_iterations_per_call * timesteps_per_actorbatch
         ),
         triggers=learning_triggers,
         strategy=strategy,
