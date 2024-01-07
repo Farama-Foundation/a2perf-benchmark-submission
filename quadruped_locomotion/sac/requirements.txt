@@ -1,0 +1,4 @@
+minari
+tensorflow[and-cuda]<2.15.0
+tf-agents[reverb]
+dm-reverb
