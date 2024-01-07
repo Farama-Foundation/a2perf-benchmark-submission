@@ -115,13 +115,15 @@ def train():
        f'--replay_buffer_server_address={replay_buffer_server_address}',
        f'--variable_container_server_address={variable_container_server_address}',
        f'--task={i}',
-       '--verbosity=2' if i == 0 else '--verbosity=-2',
+       '--verbosity=-2',
        ] for i in range(env_batch_size)
   ]
 
+  collect_jobs = []
   for command in collect_job_commands:
     process = subprocess.Popen(command, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, env=os.environ.copy())
+    collect_jobs.append(process)
     threading.Thread(target=print_subprocess_output, args=(process,)).start()
   logging.info('Successfully launched collect jobs.')
 
@@ -167,6 +169,15 @@ def train():
       logging.info('Train job still running.')
       continue
   logging.info('Train job finished.')
+
+  # Terminate the reverb server
+  reverb_process.terminate()
+  logging.info('Successfully terminated reverb server.')
+
+  # Terminate the collect jobs
+  for process in collect_jobs:
+    process.terminate()
+  logging.info('Successfully terminated collect jobs.')
 
 
 def main(_):

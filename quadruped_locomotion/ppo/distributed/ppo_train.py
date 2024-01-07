@@ -289,6 +289,8 @@ def train(
     train_steps_per_policy_update = int(
         learner_iterations_per_call * sequence_length * num_epochs / batch_size
     )
+    logging.info('Train steps per policy update: %d',
+                 train_steps_per_policy_update)
     after_train_strategy_step_fn = (
         train_utils.create_staleness_metrics_after_train_step_fn(
             train_step=train_step,
@@ -296,6 +298,9 @@ def train(
         )
     )
 
+    shuffle_buffer_size = (
+        learner_iterations_per_call * timesteps_per_actorbatch
+    )
     ppo_learner = ppo_learner_lib.PPOLearner(
         root_dir,
         train_step,
@@ -306,9 +311,7 @@ def train(
         num_epochs=num_epochs,
         minibatch_size=batch_size,
         checkpoint_interval=train_checkpoint_interval,
-        shuffle_buffer_size=(
-            learner_iterations_per_call * timesteps_per_actorbatch
-        ),
+        shuffle_buffer_size=shuffle_buffer_size,
         triggers=learning_triggers,
         strategy=strategy,
         after_train_strategy_step_fn=after_train_strategy_step_fn,
