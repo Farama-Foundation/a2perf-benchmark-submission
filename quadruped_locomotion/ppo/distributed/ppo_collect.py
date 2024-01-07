@@ -5,8 +5,8 @@ import os
 from typing import Text
 
 import gin
-import numpy as np
 import reverb
+import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
@@ -175,6 +175,8 @@ def main(_):
   # Add a prefix to our absl logger so we know which collect job this is
   absl_handler = logging.get_absl_handler()
   absl_handler.setFormatter(PrefixedLogFormatter())
+
+  tf.compat.v1.enable_v2_behavior()
 
   gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
                                       finalize_config=False)

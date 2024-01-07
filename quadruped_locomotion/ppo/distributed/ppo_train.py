@@ -24,11 +24,10 @@ from typing import Optional
 from typing import Text
 
 import gin
-import numpy as np
+import reverb
 import tensorflow as tf
 from absl import app
 from absl import flags
-import reverb
 from absl import logging
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ppo import ppo_clip_agent
@@ -156,8 +155,8 @@ def _create_agent(
       use_gae=use_gae,
       debug_summaries=debug_summaries,
       summarize_grads_and_vars=summarize_grads_and_vars,
-      normalize_observations=True,
-      normalize_rewards=True,
+      normalize_observations=False,
+      normalize_rewards=False,
       importance_ratio_clipping=0.2,
       use_td_lambda_return=True,
       num_epochs=1,  # this is a legacy argument and should always be 1
@@ -298,9 +297,6 @@ def train(
         )
     )
 
-    shuffle_buffer_size = (
-        learner_iterations_per_call * timesteps_per_actorbatch
-    )
     ppo_learner = ppo_learner_lib.PPOLearner(
         root_dir,
         train_step,
@@ -311,17 +307,17 @@ def train(
         num_epochs=num_epochs,
         minibatch_size=batch_size,
         checkpoint_interval=train_checkpoint_interval,
-        shuffle_buffer_size=shuffle_buffer_size,
+        shuffle_buffer_size=100,
+        # This is around 3x the trajectory length in locomotion
         triggers=learning_triggers,
         strategy=strategy,
         after_train_strategy_step_fn=after_train_strategy_step_fn,
     )
-    logging.info('Maximum train step: %d', max_train_step)
 
     # Run the training loop.
     while train_step < max_train_step:
       logging.info('Training. Train step: %d', train_step.numpy())
-
+      logging.info('\tThe max train step is: %d', max_train_step)
       ppo_learner.run()
       logging.info('\tFinished training step.')
 
@@ -337,11 +333,7 @@ def train(
 
 
 def main(_):
-  if _DEBUG.value:
-    logging.set_verbosity(logging.DEBUG)
-    import tensorflow as tf
-    tf.config.run_functions_eagerly(True)
-    tf.data.experimental.enable_debug_mode()
+  tf.compat.v1.enable_v2_behavior()
 
   # Add a prefix to our absl logger so we know which collect job this is
   absl_handler = logging.get_absl_handler()

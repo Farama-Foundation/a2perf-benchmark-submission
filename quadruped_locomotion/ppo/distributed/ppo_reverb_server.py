@@ -114,6 +114,8 @@ def main(_):
   absl_handler = logging.get_absl_handler()
   absl_handler.setFormatter(PrefixedLogFormatter())
 
+  tf.compat.v1.enable_v2_behavior()
+
   run_reverb_server(_ROOT_DIR.value)
 
 

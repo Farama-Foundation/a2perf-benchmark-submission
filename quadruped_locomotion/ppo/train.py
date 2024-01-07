@@ -5,8 +5,7 @@ import threading
 import numpy as np
 from absl import app
 from absl import logging
-
-from a2perf.domains import quadruped_locomotion
+import tensorflow as tf
 
 
 def print_subprocess_output(process):
@@ -52,27 +51,25 @@ def train():
   print(f'motion_file_path: {motion_file_path}')
   print(f'num_epochs: {num_epochs}')
 
-  # Set the number of minibatches such that we can split each rollout collection into minibatches of size 32
   num_minibatches = timesteps_per_actorbatch // batch_size
-  train_steps_per_iteration = num_minibatches * num_epochs
+  num_replicas = len(tf.config.list_physical_devices('GPU'))
+  train_steps_per_iteration = num_minibatches * num_epochs // num_replicas
   num_iterations = total_env_steps // timesteps_per_actorbatch
   max_train_steps = train_steps_per_iteration * num_iterations
   adjusted_timesteps_per_actorbatch = timesteps_per_actorbatch // env_batch_size
 
-  # All intervals start out in terms of environment steps, so we convert
-  # to train steps here.
-  policy_checkpoint_interval = np.round(
+  policy_checkpoint_interval = np.maximum(1, np.round(
       policy_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int)
-  train_checkpoint_interval = np.round(
+      int))
+  train_checkpoint_interval = np.maximum(1, np.round(
       train_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int)
-  eval_interval = np.round(
+      int))
+  eval_interval = np.maximum(1, np.round(
       eval_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int)
-  log_interval = np.round(
+      int))
+  log_interval = np.maximum(1, np.round(
       log_interval / env_batch_size / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int)
+      int))
 
   logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
   logging.info(f'num_iterations: {num_iterations}')
@@ -142,8 +139,6 @@ def train():
       f'--replay_buffer_server_address={replay_buffer_server_address}',
       f'--root_dir={root_dir}',
       f'--train_checkpoint_interval={train_checkpoint_interval}',
-      f'--use_gpu=False',
-      f'--use_tpu=False',
       f'--max_train_steps={max_train_steps}',
       f'--env_batch_size={env_batch_size}',
       f'--learning_rate={learning_rate}',
@@ -163,7 +158,7 @@ def train():
   # job is finished and the train job will fail.
   while True:
     try:
-      train_job.wait(timeout=10)
+      train_job.wait(timeout=30)
       break
     except subprocess.TimeoutExpired:
       logging.info('Train job still running.')
