@@ -51,8 +51,15 @@ def train():
   print(f'motion_file_path: {motion_file_path}')
   print(f'num_epochs: {num_epochs}')
 
+
+  # Force set gpu growth programmatically
+  gpus = tf.config.list_physical_devices('GPU')
+  for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
+  num_replicas = len(gpus) if gpus else 1
+
+  # Parameters for training
   num_minibatches = timesteps_per_actorbatch // batch_size
-  num_replicas = len(tf.config.list_physical_devices('GPU'))
   train_steps_per_iteration = num_minibatches * num_epochs // num_replicas
   num_iterations = total_env_steps // timesteps_per_actorbatch
   max_train_steps = train_steps_per_iteration * num_iterations

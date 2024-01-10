@@ -20,6 +20,7 @@ from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 
+# noinspection PyUnresolvedReferences
 from a2perf.domains import quadruped_locomotion
 
 _ROOT_DIR = flags.DEFINE_string(

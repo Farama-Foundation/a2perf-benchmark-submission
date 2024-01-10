@@ -2,7 +2,6 @@
 
 import functools
 import os
-from typing import Text
 
 import gin
 import reverb
@@ -21,6 +20,7 @@ from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 
+# noinspection PyUnresolvedReferences
 from a2perf.domains import quadruped_locomotion
 
 _ROOT_DIR = flags.DEFINE_string(
@@ -48,7 +48,7 @@ _MOTION_FILE_PATH = flags.DEFINE_string(
 )
 _SUMMARY_INTERVAL = flags.DEFINE_integer(
     'summary_interval',
-    0,
+    None,
     'Interval at which to record summaries.',
 )
 _SEQUENCE_LENGTH = flags.DEFINE_integer(
@@ -66,7 +66,7 @@ _INITIAL_COLLECT_STEPS = flags.DEFINE_integer(
     None,
     'Number of steps to run the initial collect policy.',
 )
-_TASK = flags.DEFINE_integer('task', 0,
+_TASK = flags.DEFINE_integer('task', None,
                              'Identifier of a collect task. Must be unique.')
 
 _GIN_FILE = flags.DEFINE_multi_string('gin_file', None,
@@ -89,11 +89,10 @@ def collect(environment_name: str,
     task: int,
     summary_interval: int,
     sequence_length: int,
-    max_train_steps: int,
     initial_collect_steps: int,
 
     gym_kwargs=None) -> None:
-  summary_dir = os.path.join(root_dir, 'summaries', str(task)),
+  summary_dir = os.path.join(root_dir, 'summaries', str(task))
 
   # Create the partial function with the default dictionary
   suite_load_function = functools.partial(
@@ -137,38 +136,29 @@ def collect(environment_name: str,
 
   # Create the collect actor.
   env_step_metric = py_metrics.EnvironmentSteps()
-
   collect_actor = actor.Actor(
       collect_env,
       collect_policy,
       train_step,
       steps_per_run=1,
       metrics=actor.collect_metrics(10),
-      summary_dir=os.path.join(_ROOT_DIR.value, 'summaries',
-                               str(_TASK.value)),
+      summary_dir=summary_dir,
       summary_interval=summary_interval,
       observers=[rb_observer, env_step_metric],
   )
 
   # Run the experience collection loop.
-  while train_step.numpy() < max_train_steps:
-    logging.info('Collecting with policy at step: %d', train_step.numpy())
-    collect_actor.run()
-    variable_container.update(variables)
-
-  # Run the experience collection loop.
   prev_num_steps_collected = 0
-
   while True:
     collect_actor.run()
     variable_container.update(variables)
-    logging.info('Collecting with policy at step: %d', train_step.numpy())
+    # logging.info('Collecting with policy at step: %d', train_step.numpy())
 
     num_steps_collected = env_step_metric.result()
-    logging.info('\tCollected %d steps', num_steps_collected)
-    logging.info('\tCollected %d steps this iteration',
-                 num_steps_collected - prev_num_steps_collected)
-    prev_num_steps_collected = num_steps_collected
+    # logging.info('\tCollected %d steps', num_steps_collected)
+    # logging.info('\tCollected %d steps this iteration',
+    #              num_steps_collected - prev_num_steps_collected)
+    # prev_num_steps_collected = num_steps_collected
 
 
 def run_collect(root_dir: str,
@@ -178,7 +168,6 @@ def run_collect(root_dir: str,
     motion_file_path: str,
     env_batch_size: int,
     task: int,
-    max_train_steps: int,
     initial_collect_steps: int,
     summary_interval: int,
     sequence_length: int) -> None:
@@ -199,7 +188,6 @@ def run_collect(root_dir: str,
           summary_interval=summary_interval,
           sequence_length=sequence_length,
           gym_kwargs=gym_kwargs,
-          max_train_steps=max_train_steps,
           initial_collect_steps=initial_collect_steps,
           )
 
@@ -207,7 +195,6 @@ def run_collect(root_dir: str,
 def main(_):
   absl_handler = logging.get_absl_handler()
   absl_handler.setFormatter(PrefixedLogFormatter())
-
   gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
                                       finalize_config=False)
 
@@ -219,7 +206,9 @@ def main(_):
               env_batch_size=_ENV_BATCH_SIZE.value,
               task=_TASK.value,
               summary_interval=_SUMMARY_INTERVAL.value,
-              sequence_length=_SEQUENCE_LENGTH.value)
+              sequence_length=_SEQUENCE_LENGTH.value,
+              initial_collect_steps=_INITIAL_COLLECT_STEPS.value,
+              )
 
 
 if __name__ == '__main__':
