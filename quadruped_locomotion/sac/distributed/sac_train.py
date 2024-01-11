@@ -69,7 +69,7 @@ _POLICY_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
     'policy_checkpoint_interval', 1000, 'Policy checkpoint interval.'
 )
 _TIMESTEPS_PER_ACTORBATCH = flags.DEFINE_integer(
-    'timesteps_per_actorbatch', 2048, 'Number of timesteps per actorbatch.')
+    'timesteps_per_actorbatch', None, 'Number of timesteps per actorbatch.')
 
 _ENV_BATCH_SIZE = flags.DEFINE_integer(
     'env_batch_size', None, 'Number of environments to run in parallel.'
@@ -141,9 +141,12 @@ def _create_agent(
       action_tensor_spec,
       actor_network=actor_net,
       critic_network=critic_net,
-      actor_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-      critic_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-      alpha_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
+      actor_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate,
+                                               epsilon=1e-5),
+      critic_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate,
+                                                epsilon=1e-5),
+      alpha_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate,
+                                               epsilon=1e-5),
       target_update_tau=0.005,
       target_update_period=1,
       td_errors_loss_fn=tf.math.squared_difference,
@@ -164,7 +167,6 @@ def train(
     variable_container_server_address: Text,
     debug_summaries: bool = False,
     gradient_clipping: Optional[float] = None,
-    learner_iterations_per_call: int = 1,
     learning_rate: float = 3e-4,
     log_interval: int = 1000,
     max_train_step: Optional[int] = None,
@@ -239,17 +241,20 @@ def train(
   # Close and delete the environment if it's no longer needed.
   env.close()
   del env
+  logging.info('Closed and deleted environment.')
 
   def experience_dataset_fn():
     with strategy.scope():
       return reverb_replay_train.as_dataset(
-          sample_batch_size=batch_size, num_steps=2)
+          sample_batch_size=batch_size,
+          num_steps=2).prefetch(3)
 
   # Create the learner.
   learning_triggers = [
       save_model_trigger,
       triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
   ]
+
   sac_learner = learner.Learner(
       root_dir=root_dir,
       train_step=train_step,
@@ -257,34 +262,27 @@ def train(
       experience_dataset_fn=experience_dataset_fn,
       triggers=learning_triggers,
       max_checkpoints_to_keep=1,
+      # only need a single checkpoint to resume training
       strategy=strategy,
       summary_interval=log_interval,
       checkpoint_interval=train_checkpoint_interval,
   )
   logging.info('Created learner.')
 
-  logging.info('Maximum train step: %d', max_train_step)
-
-  @tf.function
-  def _run_learner():
-    sac_learner.run(iterations=2)
-
-  # Run the training loop.
+  logging.info('Training. Train step: %d out of %d', train_step.numpy(),
+               max_train_step)
   while train_step < max_train_step:
-    logging.info('Training. Train step: %d', train_step.numpy())
-    _run_learner()
-    logging.info('\tFinished training step.')
+    sac_learner.run()
     variable_container.push(variables)
-    logging.info('\tPushed variables to variable container.')
 
   logging.info('Training finished.')
 
 
 def main(_):
+  tf.compat.v1.enable_v2_behavior()
+
   if _DEBUG.value:
     logging.set_verbosity(logging.DEBUG)
-    tf.config.run_functions_eagerly(True)
-    # tf.data.experimental.enable_debug_mode()
 
   # Add a prefix to our absl logger so we know which collect job this is
   absl_handler = logging.get_absl_handler()
@@ -316,7 +314,6 @@ def main(_):
       variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
       debug_summaries=_DEBUG_SUMMARIES.value,
       gradient_clipping=_GRADIENT_CLIPPING.value,
-      learner_iterations_per_call=1,
       learning_rate=_LEARNING_RATE.value,
       log_interval=_LOG_INTERVAL.value,
       max_train_step=_MAX_TRAIN_STEP.value,
@@ -338,7 +335,6 @@ if __name__ == '__main__':
       'variable_container_server_address',
       'env_batch_size',
       'motion_file_path',
-      'log_interval',
       'max_train_steps',
       'timesteps_per_actorbatch',
       'learning_rate',

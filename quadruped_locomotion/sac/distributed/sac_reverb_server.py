@@ -84,7 +84,8 @@ def run_reverb_server(root_dir):
               name=reverb_replay_buffer.DEFAULT_TABLE,
               sampler=reverb.selectors.Uniform(),
               remover=reverb.selectors.Fifo(),
-              rate_limiter=reverb.rate_limiters.MinSize(1),
+              rate_limiter=reverb.rate_limiters.MinSize(
+                  _MIN_TABLE_SIZE_BEFORE_SAMPLING.value),
               max_size=_REPLAY_BUFFER_CAPACITY.value,
               max_times_sampled=0,
               signature=replay_buffer_signature,
@@ -119,7 +120,8 @@ def main(_):
 
 if __name__ == '__main__':
   flags.mark_flags_as_required(['root_dir', 'port',
-                                'replay_buffer_capacity'
                                 # replay buffer size important for off-policy learning
+                                'replay_buffer_capacity'
+                                   , 'min_table_size_before_sampling',
                                 ])
   app.run(main)

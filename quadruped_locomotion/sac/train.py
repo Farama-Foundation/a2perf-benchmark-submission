@@ -5,7 +5,6 @@ import threading
 import numpy as np
 from absl import app
 from absl import logging
-import tensorflow as tf
 
 
 def print_subprocess_output(process):
@@ -47,12 +46,6 @@ def train():
   print(f'learning_rate: {learning_rate}')
   print(f'timesteps_per_actorbatch: {timesteps_per_actorbatch}')
   print(f'motion_file_path: {motion_file_path}')
-
-  # Force set gpu growth programmatically
-  gpus = tf.config.list_physical_devices('GPU')
-  for gpu in gpus:
-    tf.config.experimental.set_memory_growth(gpu, True)
-  num_replicas = len(gpus) if gpus else 1
 
   # Parameters for training
   train_steps_per_iteration = timesteps_per_actorbatch
