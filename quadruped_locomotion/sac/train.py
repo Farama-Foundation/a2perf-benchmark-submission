@@ -144,6 +144,7 @@ def train():
       f'--seed={seed}',
       f'--variable_container_server_address={variable_container_server_address}',
       f'--use_gpu',
+      f'--verbosity=2'
   ]
   train_job = subprocess.Popen(train_job_command, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, env=os.environ.copy())
