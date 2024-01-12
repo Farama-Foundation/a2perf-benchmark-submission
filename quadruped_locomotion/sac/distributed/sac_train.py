@@ -170,6 +170,7 @@ def train(
     learning_rate: float = 3e-4,
     log_interval: int = 1000,
     max_train_step: Optional[int] = None,
+    learner_iterations_per_call: int = 1,
     batch_size: int = 0,
     policy_checkpoint_interval: int = 1000,
     timesteps_per_actorbatch: int = 0,
@@ -272,7 +273,7 @@ def train(
   logging.info('Training. Train step: %d out of %d', train_step.numpy(),
                max_train_step)
   while train_step < max_train_step:
-    sac_learner.run()
+    sac_learner.run(iterations=learner_iterations_per_call)
     variable_container.push(variables)
 
   logging.info('Training finished.')
@@ -317,6 +318,7 @@ def main(_):
       learning_rate=_LEARNING_RATE.value,
       log_interval=_LOG_INTERVAL.value,
       max_train_step=_MAX_TRAIN_STEP.value,
+      learner_iterations_per_call=_LEARNER_ITERATIONS_PER_CALL.value,
       policy_checkpoint_interval=_POLICY_CHECKPOINT_INTERVAL.value,
       suite_load_fn=suite_load_function,
       summarize_grads_and_vars=_SUMMARIZE_GRADS_AND_VARS.value,
@@ -337,6 +339,7 @@ if __name__ == '__main__':
       'motion_file_path',
       'max_train_steps',
       'timesteps_per_actorbatch',
+      'learner_iterations_per_call',
       'learning_rate',
       'batch_size',
   ])

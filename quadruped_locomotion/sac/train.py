@@ -52,7 +52,7 @@ def train():
   num_iterations = total_env_steps // timesteps_per_actorbatch
   max_train_steps = train_steps_per_iteration * num_iterations
   adjusted_timesteps_per_actorbatch = timesteps_per_actorbatch // env_batch_size
-
+  learner_iterations_per_call = timesteps_per_actorbatch
   policy_checkpoint_interval = np.maximum(1, np.round(
       policy_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
       int))
@@ -143,6 +143,7 @@ def train():
       f'--log_interval={log_interval}',
       f'--seed={seed}',
       f'--variable_container_server_address={variable_container_server_address}',
+      f'--learner_iterations_per_call={learner_iterations_per_call}',
       f'--use_gpu',
       f'--verbosity=2'
   ]
