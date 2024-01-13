@@ -1,3 +1,36 @@
+# coding=utf-8
+# Copyright 2020 The TF-Agents Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+r"""Train and Eval PPO.
+
+To run:
+
+```bash
+tensorboard --logdir $HOME/tmp/ppo/gym/HalfCheetah-v2/ --port 2223 &
+
+python tf_agents/agents/ppo/examples/v2/train_eval_clip_agent.py \
+  --root_dir=$HOME/tmp/ppo/gym/HalfCheetah-v2/ \
+  --logtostderr
+```
+"""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import functools
 import json
 import multiprocessing as mp
 import os
@@ -9,20 +42,20 @@ import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 import tf_agents
+from absl import app
 from absl import logging
-from tf_agents.agents.sac import sac_agent
+from tf_agents.agents.ppo import ppo_clip_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
+from tf_agents.metrics import batched_py_metric
 from tf_agents.metrics import tf_metrics
-from tf_agents.policies import greedy_policy
 from tf_agents.policies import policy_saver
-from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
-from tf_agents.utils import common
-from tf_agents.train.utils import train_utils
 from tf_agents.train.utils import spec_utils
+from tf_agents.train.utils import train_utils
+from tf_agents.utils import common
 
 from a2perf.domains.web_navigation.gwob.CoDE import networks
 from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
@@ -42,42 +75,27 @@ def create_env(
   )
 
 
-def filter_invalid_transition(trajectories, _):
-  # Prepare replay buffer as dataset with invalid transitions filtered.
-  return ~trajectories.is_boundary()[0]
-
-
 @gin.configurable
 def train_eval(
     root_dir,
     env_name='WebNavigation-v0',
     # Params for collect
-    initial_collect_steps=5,
     collect_steps_per_iteration=1,
-    epsilon_greedy=0.05,
     max_vocab_size=500,
-    replay_buffer_capacity=100000,
-    # Params for target update
-    target_update_tau=0.05,
-    target_update_period=5000,
     # Params for train
-    num_iterations=100000,
-    train_steps_per_iteration=1,
-    batch_size=32,
+    optimizer=None,
+    entropy_regularization=0.0,
+    eval_interval=1,
+    total_env_steps=100000,
+    replay_buffer_capacity=1001,
     environment_batch_size=1,
-    learning_rate=1e-4,
-    n_step_update=1,
-    gamma=0.99,
-    reward_scale_factor=1.0,
     gradient_clipping=None,
-    use_tf_functions=True,
-    # Params for eval
-    num_eval_episodes=10,
-    eval_interval=1000,
+    use_tf_functions=False,
     # Params for checkpoints
     train_checkpoint_interval=10000,
     policy_checkpoint_interval=5000,
     # Params for summaries and logging
+    num_eval_episodes=1,
     log_interval=1000,
     summaries_flush_secs=10,
     debug_summaries=False,
@@ -85,8 +103,7 @@ def train_eval(
     env_args=None,
     seed=0,
 ):
-  """A simple train and eval for SAC"""
-
+  """A simple train and eval for PPO."""
   tf.random.set_seed(seed)
   np.random.seed(seed)
   random.seed(seed)
@@ -97,6 +114,7 @@ def train_eval(
   root_dir = os.path.expanduser(root_dir)
   train_dir = os.path.join(root_dir, 'train')
   summary_dir = os.path.join(root_dir, 'summaries')
+  screenshot_dir = os.path.join(root_dir, 'screenshots')
 
   train_summary_writer = tf.summary.create_file_writer(
       logdir=os.path.join(summary_dir, 'train'),
@@ -105,11 +123,12 @@ def train_eval(
       max_queue=10,
       experimental_trackable=True,
   )
+
   eval_summary_writer = tf.summary.create_file_writer(
       logdir=os.path.join(summary_dir, 'eval'),
       name='eval_summary_writer',
       flush_millis=summaries_flush_secs * 1000,
-      max_queue=tf.data.experimental.AUTOTUNE,
+      max_queue=10,
       experimental_trackable=True,
   )
   eval_metrics = [
@@ -129,14 +148,16 @@ def train_eval(
   envs = [
       lambda: create_env(
           env_name=env_name,
-          env_args={**env_args, 'seed': seed},
+          env_args=env_args,
       )
       for _ in range(environment_batch_size)
   ]
   eval_env_args = env_args.copy()
   eval_env_args.update(
       dict(
-          seed=seed,
+          render_mode='image',
+          generate_screenshots=True,
+          screenshot_save_dir=screenshot_dir,
           cyclic_action_penalty=0.0,
           timestep_penalty=0.0,
       )
@@ -151,12 +172,12 @@ def train_eval(
       envs, blocking=False, start_serially=True, flatten=False
   )
   tf_env = tf_py_environment.TFPyEnvironment(parallel_py_env)
-  logging.info('Successfully created environments')
-
   observation_spec, action_spec, time_step_spec = (
       spec_utils.get_tensor_specs(tf_env))
 
-  with tf.name_scope('ActorNetwork'):
+  logging.info('Successfully created environments')
+
+  with tf.name_scope('Actor'):
     actor_net = networks.WebLSTMActorDistributionNetwork(
         input_tensor_spec=observation_spec,
         output_tensor_spec=action_spec,
@@ -172,7 +193,7 @@ def train_eval(
     )
   logging.info('Successfully created actor network')
 
-  with tf.name_scope('CriticNetwork'):
+  with tf.name_scope('Value'):
     critic_net = networks.WebLSTMValueNetwork(
         input_tensor_spec=observation_spec,
         batch_squash=True,
@@ -186,36 +207,35 @@ def train_eval(
         latent_dim=LATENT_DIM
     )
   logging.info('Successfully created value network')
-  with tf.name_scope('SACAgent'):
-    tf_agent = sac_agent.SacAgent(
+
+  with tf.name_scope('PPOAgent'):
+    tf_agent = ppo_clip_agent.PPOClipAgent(
         time_step_spec=time_step_spec,
         action_spec=action_spec,
-        actor_network=actor_net,
-        critic_network=critic_net,
-        actor_optimizer=tf.keras.optimizers.Adam(
-            learning_rate=learning_rate),
-        critic_optimizer=tf.keras.optimizers.Adam(
-            learning_rate=learning_rate),
-        alpha_optimizer=tf.keras.optimizers.Adam(
-            learning_rate=learning_rate),
-        target_update_tau=target_update_tau,
-        target_update_period=target_update_period,
-        td_errors_loss_fn=tf.math.squared_difference,
-        gamma=gamma,
+        optimizer=optimizer,
+        actor_net=actor_net,
+        value_net=critic_net,
+        gradient_clipping=gradient_clipping,
+        entropy_regularization=entropy_regularization,
+        greedy_eval=False,
+        importance_ratio_clipping=0.2,
+        normalize_observations=False,
+        normalize_rewards=False,
+        use_gae=True,
         debug_summaries=debug_summaries,
         summarize_grads_and_vars=summarize_grads_and_vars,
-        reward_scale_factor=reward_scale_factor,
-        train_step_counter=global_step)
-  logging.info('Successfully created SAC agent')
+        train_step_counter=global_step,
+    )
+  logging.info('Successfully created PPO agent')
+
   tf_agent.initialize()
-  logging.info('Successfully initialized SAC agent')
+  logging.info('Successfully initialized PPO agent')
 
   environment_steps_metric = tf_metrics.EnvironmentSteps()
   step_metrics = [
       tf_metrics.NumberOfEpisodes(),
       environment_steps_metric,
   ]
-
   train_metrics = step_metrics + [
       tf_metrics.AverageReturnMetric(
           batch_size=environment_batch_size, buffer_size=num_eval_episodes
@@ -225,28 +245,25 @@ def train_eval(
       ),
   ]
 
-  eval_policy = greedy_policy.GreedyPolicy(tf_agent.policy)
-  initial_collect_policy = random_tf_policy.RandomTFPolicy(
-      tf_env.time_step_spec(), tf_env.action_spec()
-  )
+  eval_policy = tf_agent.policy
   collect_policy = tf_agent.collect_policy
 
-  # Make the replay buffer.
+  # Make the replay buffer. Cleared after every iteration
   replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
-      data_spec=tf_agent.collect_data_spec,
-      batch_size=tf_env.batch_size,
+      tf_agent.collect_data_spec,
+      batch_size=environment_batch_size,
       max_length=replay_buffer_capacity,
-      device='/cpu:0',
+      device='cpu:0',
   )
-  replay_observer = [replay_buffer.add_batch]
+  logging.info('Successfully created replay buffer')
 
   train_checkpointer = common.Checkpointer(
       ckpt_dir=train_dir,
       agent=tf_agent,
       global_step=global_step,
-      metrics=metric_utils.MetricsGroup(train_metrics, 'train_metrics'),
+      max_to_keep=1,
+      metrics=metric_utils.MetricsGroup(train_metrics, 'train'),
   )
-
   saved_model = policy_saver.PolicySaver(eval_policy, train_step=global_step)
   saved_model_dir = os.path.join(root_dir, 'policies')
   train_checkpointer.initialize_or_restore()
@@ -260,52 +277,21 @@ def train_eval(
     state = json.load(open(vocab_path, 'r'))
     global_vocab.restore(state)
 
-  initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
-      tf_env,
-      initial_collect_policy,
-      observers=replay_observer + train_metrics,
-      num_steps=initial_collect_steps,
-  )
-
   collect_driver = dynamic_step_driver.DynamicStepDriver(
-      tf_env,
-      collect_policy,
-      observers=replay_observer + train_metrics,
+      env=tf_env,
+      policy=collect_policy,
+      observers=[replay_buffer.add_batch] + train_metrics,
       num_steps=collect_steps_per_iteration,
   )
 
-  dataset = (
-      replay_buffer.as_dataset(
-          sample_batch_size=batch_size,
-          num_steps=2,
-          num_parallel_calls=tf.data.AUTOTUNE,
-      )
-      .unbatch()
-      .filter(filter_invalid_transition)
-      .batch(batch_size)
-      .prefetch(tf.data.AUTOTUNE)
-  )
-
-  # Dataset generates trajectories with shape [Bx2x...]
-  iterator = iter(dataset)
-
   def train_step():
-    experience, _ = next(iterator)
-    return tf_agent.train(experience)
+    trajectories = replay_buffer.gather_all()
+    replay_buffer.clear()  # clear within tf.function
+    return tf_agent.train(experience=trajectories)
 
   if use_tf_functions:
-    initial_collect_driver.run = common.function(initial_collect_driver.run)
-    collect_driver.run = common.function(collect_driver.run)
-    tf_agent.train = common.function(tf_agent.train)
-
-  if replay_buffer.num_frames() == 0:
-    # Collect initial replay data.
-    logging.info(
-        'Initializing replay buffer by collecting experience for %d steps '
-        'with a random policy.',
-        initial_collect_steps,
-    )
-    initial_collect_driver.run()
+    collect_driver.run = common.function(collect_driver.run, autograph=False)
+    tf_agent.train = common.function(tf_agent.train, autograph=False)
 
   train_step = common.function(train_step)
   time_acc = 0
@@ -325,27 +311,28 @@ def train_eval(
       use_function=True,
       summary_prefix='Metrics',
       metrics=eval_metrics,
+
   )
+  eval_tf_env.pyenv.envs[0].write_screenshots(
+      screenshot_save_dir=screenshot_dir)
 
   # Compute train metrics once at the beginning of training
   with train_summary_writer.as_default():
     for train_metric in train_metrics:
       metric_value = train_metric.result()
       metric_name = f'Metrics/{train_metric.name}'
-      tf.summary.scalar(metric_name, metric_value, step=global_step)
+      tf.summary.scalar(metric_name, metric_value, step=iters_so_far)
     tf.summary.scalar('info/iters_so_far', iters_so_far, step=iters_so_far)
 
   logging.info('Beginning training at step: %d', global_step.value().numpy())
   with train_summary_writer.as_default():
-    while iters_so_far < num_iterations:
+    while environment_steps_metric.result().numpy() < total_env_steps:
       start = time.time()
       collect_driver.run()
       collect_time += time.time() - start
 
       start = time.time()
-      train_loss = sum(
-          [train_step().loss for _ in range(train_steps_per_iteration)]
-      )
+      train_loss = train_step()
       train_time += time.time() - start
 
       iters_so_far += 1
@@ -400,7 +387,6 @@ def train_eval(
         start_time = time.time()
         collect_time = 0
         train_time = 0
-
       if iters_so_far % eval_interval == 0:
         eval_start_time = time.time()
         metric_utils.eager_compute(
@@ -416,7 +402,11 @@ def train_eval(
         eval_time = time.time() - eval_start_time
         print(f'eval_time: {eval_time}')
         metric_utils.log_metrics(eval_metrics)
+        eval_summary_writer.flush()
 
+        # Eval environment generates screenshots
+        eval_tf_env.pyenv.envs[0].write_screenshots(
+            screenshot_save_dir=screenshot_dir)
       if iters_so_far % train_checkpoint_interval == 0:
         logging.info(
             'Saving train checkpoint at step %d  (iteration %d)',
@@ -457,94 +447,77 @@ def train_eval(
   )
   saved_model.save(save_location)
   policy_vocab_save_path = os.path.join(
-      saved_model_dir, f'vocab_{environment_steps_metric.result().numpy()}.npy'
+      saved_model_dir,
+      f'vocab_{environment_steps_metric.result().numpy()}.npy'
   )
-  json.dump(dict(global_vocab._local_vocab), open(policy_vocab_save_path, 'w'))
+  json.dump(dict(global_vocab._local_vocab),
+            open(policy_vocab_save_path, 'w'))
+
   tf_env.close()
   eval_tf_env.close()
   manager.shutdown()
 
 
 def train_mp(_):
-  # Extract environment variables
-  batch_size = int(os.environ.get('BATCH_SIZE', None))
-  epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', None))
-  difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
-  env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
-  eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
-  learning_rate = float(os.environ.get('LEARNING_RATE', None))
-  log_interval = int(os.environ.get('LOG_INTERVAL', None))
-  policy_checkpoint_interval = int(
-      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None)
-  )
-  rb_capacity = int(os.environ.get('RB_CAPACITY', None))
-  root_dir = os.environ.get('ROOT_DIR', None)
   seed = int(os.environ.get('SEED', None))
-  num_websites = int(os.environ.get('NUM_WEBSITES', None))
+  root_dir = os.environ.get('ROOT_DIR', None)
+  env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
+  difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
+  eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
+  entropy_regularization = float(os.environ.get('ENTROPY_REGULARIZATION', None))
   train_checkpoint_interval = int(
-      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None)
-  )
-  timesteps_per_actorbatch_param = int(
-      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
-  )
-  batched_total_env_steps = total_env_steps // env_batch_size
-  timesteps_per_actorbatch = max(
-      1, timesteps_per_actorbatch_param // env_batch_size
-  )
-  num_iterations = max(1, batched_total_env_steps // timesteps_per_actorbatch)
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
+  policy_checkpoint_interval = int(
+      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
+  log_interval = int(os.environ.get('LOG_INTERVAL', None))
+  learning_rate = float(os.environ.get('LEARNING_RATE', None))
+  num_websites = int(os.environ.get('NUM_WEBSITES', None))
+  timesteps_per_actorbatch = int(
+      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
 
   # Print extracted and computed values
-  print(f'difficulty_level: {difficulty_level}')
-  print(f'env_batch_size: {env_batch_size}')
-  print(f'eval_interval: {eval_interval}')
-  print(f'epsilon_greedy: {epsilon_greedy}')
-  print(f'learning_rate: {learning_rate}')
-  print(f'log_interval: {log_interval}')
-  print(f'num_iterations: {num_iterations}')
-  print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
-  print(f'root_dir: {root_dir}')
   print(f'seed: {seed}')
   print(f'num_websites: {num_websites}')
+  print(f'root_dir: {root_dir}')
+  print(f'env_batch_size: {env_batch_size}')
   print(f'total_env_steps: {total_env_steps}')
+  print(f'difficulty_level: {difficulty_level}')
+  print(f'eval_interval: {eval_interval}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
-  print(f'train_steps_per_iteration: {timesteps_per_actorbatch_param}')
+  print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
+  print(f'log_interval: {log_interval}')
+  print(f'learning_rate: {learning_rate}')
 
   # Convert all of the intervals to be in terms of iterations instead of environment steps
-  eval_interval = max(1, eval_interval // timesteps_per_actorbatch_param)
-  train_checkpoint_interval = max(
-      1, train_checkpoint_interval // timesteps_per_actorbatch_param
-  )
-  policy_checkpoint_interval = max(
-      1, policy_checkpoint_interval // timesteps_per_actorbatch_param
-  )
-  log_interval = max(1, log_interval // timesteps_per_actorbatch_param)
-  rb_capacity = max(1, rb_capacity // env_batch_size)
+  eval_interval = max(1, round(eval_interval / timesteps_per_actorbatch))
+  train_checkpoint_interval = max(1, round(
+      train_checkpoint_interval / timesteps_per_actorbatch))
+  policy_checkpoint_interval = max(1, round(
+      policy_checkpoint_interval / timesteps_per_actorbatch))
+  log_interval = max(1, round(log_interval / timesteps_per_actorbatch))
 
   print(f'eval_interval: {eval_interval}')
-  print(f'log_interval: {log_interval}')
-  print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
+  print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
+  print(f'log_interval: {log_interval}')
 
   train_eval(
-      batch_size=batch_size,
       collect_steps_per_iteration=timesteps_per_actorbatch,
       debug_summaries=False,
       environment_batch_size=env_batch_size,
       eval_interval=eval_interval,
-      initial_collect_steps=timesteps_per_actorbatch * env_batch_size,
-      learning_rate=learning_rate,
       log_interval=log_interval,
-      num_iterations=num_iterations,
+      num_eval_episodes=10,
+      optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
       policy_checkpoint_interval=policy_checkpoint_interval,
-      replay_buffer_capacity=rb_capacity,
       root_dir=root_dir,
       seed=seed,
-      epsilon_greedy=epsilon_greedy,
       summarize_grads_and_vars=False,
+      total_env_steps=total_env_steps,
       train_checkpoint_interval=train_checkpoint_interval,
-      train_steps_per_iteration=timesteps_per_actorbatch,
       use_tf_functions=False,
+      entropy_regularization=entropy_regularization,
       env_args=dict(
           difficulty=difficulty_level,
           use_legacy_reset=True,
@@ -564,4 +537,6 @@ def train():
 
 
 if __name__ == '__main__':
-  tf_agents.system.multiprocessing.handle_main(train_mp)
+  tf_agents.system.multiprocessing.handle_main(
+      functools.partial(app.run, train_mp)
+  )

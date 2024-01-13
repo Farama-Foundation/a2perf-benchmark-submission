@@ -3,4 +3,3 @@ minari
 tensorflow[and-cuda]
 tf-agents[reverb]==0.19.0
 tf-keras
-dm-sonnet
