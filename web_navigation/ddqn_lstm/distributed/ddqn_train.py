@@ -70,7 +70,7 @@ _NUM_WEBSITES = flags.DEFINE_integer('num_websites', None,
                                      'Number of websites to use.')
 _DIFFICULTY_LEVEL = flags.DEFINE_integer('difficulty_level', None,
                                          'Difficulty of the task.')
-_DEBUG = flags.DEFINE_bool('debug', False, 'Debug mode')
+_DEBUG = flags.DEFINE_bool('debug', None, 'Debug mode')
 _ENV_NAME = flags.DEFINE_string('env_name', None, 'Name of the environment')
 _LOG_INTERVAL = flags.DEFINE_integer('log_interval', 1000, 'Log interval.')
 _REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
@@ -80,7 +80,7 @@ _POLICY_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
     'policy_checkpoint_interval', 1000, 'Policy checkpoint interval.'
 )
 _TIMESTEPS_PER_ACTORBATCH = flags.DEFINE_integer(
-    'timesteps_per_actorbatch', 2048, 'Number of timesteps per actorbatch.')
+    'timesteps_per_actorbatch', None, 'Number of timesteps per actorbatch.')
 
 _ENV_BATCH_SIZE = flags.DEFINE_integer(
     'env_batch_size', None, 'Number of environments to run in parallel.'
@@ -95,7 +95,7 @@ _VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
     None,
     'Variable container server address.'
 )
-_BATCH_SIZE = flags.DEFINE_integer('batch_size', 32, 'Batch size.')
+_BATCH_SIZE = flags.DEFINE_integer('batch_size', None, 'Batch size.')
 _GIN_FILE = flags.DEFINE_multi_string('gin_file', None,
                                       'Paths to the gin-config files.')
 _GIN_BINDINGS = flags.DEFINE_multi_string('gin_bindings', None,
@@ -314,11 +314,9 @@ def main(_):
       seed=0,
       browser_args=dict(
           threading=False,
-          chrome_options={
-              '--headless',
-              '--no-sandbox',
-              '--disable-dev-shm-usage'
-          }
+          chrome_options={'--no-sandbox',
+                          '--headless'
+                          }
       )
   )
 

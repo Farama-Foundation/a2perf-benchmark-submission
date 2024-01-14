@@ -221,11 +221,9 @@ def main(_):
       seed=0,
       browser_args=dict(
           threading=False,
-          chrome_options={
-              '--headless',
-              '--no-sandbox',
-              '--disable-dev-shm-usage'
-          }
+          chrome_options={'--no-sandbox',
+                          '--headless'
+                          }
       )
   )
 

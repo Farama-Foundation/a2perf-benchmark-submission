@@ -135,38 +135,41 @@ def train():
   # Launch the subprocess with the same environment and output redirection
   reverb_process = subprocess.Popen(reverb_command, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT,
-                                    env=os.environ.copy())
+                                    # env=os.environ.copy()
+                                    )
   threading.Thread(target=print_subprocess_output,
                    args=(reverb_process,)).start()
   logging.info('Successfully launched reverb server.')
 
   # Launch collect jobs
   collect_job_commands = [
-      ['xvfb-run',
-       'python', '-u',
-       'distributed/ddqn_collect.py',
-       '--verbosity=2' if debug else '--verbosity=-2',
-       f'--env_batch_size={env_batch_size}',
-       f'--env_name=WebNavigation-v0',
-       f'--initial_collect_steps={adjusted_timesteps_per_actorbatch}',
-       f'--max_train_steps={max_train_steps}',
-       f'--num_websites={num_websites}',
-       f'--difficulty_level={difficulty_level}',
-       f'--replay_buffer_server_address={replay_buffer_server_address}',
-       f'--root_dir={root_dir}',
-       f'--vocab_port={vocab_port}',
-       f'--auth_key={auth_key}',
+      [
+          'python', '-u',
+          'distributed/ddqn_collect.py',
+          '--verbosity=2' if debug else '--verbosity=-2',
+          f'--env_batch_size={env_batch_size}',
+          f'--env_name=WebNavigation-v0',
+          f'--initial_collect_steps={adjusted_timesteps_per_actorbatch}',
+          f'--max_train_steps={max_train_steps}',
+          f'--num_websites={num_websites}',
+          f'--difficulty_level={difficulty_level}',
+          f'--replay_buffer_server_address={replay_buffer_server_address}',
+          f'--root_dir={root_dir}',
+          f'--vocab_port={vocab_port}',
+          f'--auth_key={auth_key}',
 
-       f'--summary_interval={log_interval}',
-       f'--task={i}',
-       f'--variable_container_server_address={variable_container_server_address}',
-       ] for i in range(env_batch_size)
+          f'--summary_interval={log_interval}',
+          f'--task={i}',
+          f'--variable_container_server_address={variable_container_server_address}',
+      ] for i in range(env_batch_size)
   ]
 
   collect_jobs = []
   for command in collect_job_commands:
     process = subprocess.Popen(command, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT, env=os.environ.copy())
+                               stderr=subprocess.STDOUT,
+                               # env=os.environ.copy()
+                               )
     collect_jobs.append(process)
     threading.Thread(target=print_subprocess_output, args=(process,)).start()
   logging.info('Successfully launched collect jobs.')
@@ -201,7 +204,9 @@ def train():
       f'--verbosity=2'
   ]
   train_job = subprocess.Popen(train_job_command, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT, env=os.environ.copy())
+                               stderr=subprocess.STDOUT,
+                               # env=os.environ.copy()
+                               )
   threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
   logging.info('Successfully launched train job.')
 
