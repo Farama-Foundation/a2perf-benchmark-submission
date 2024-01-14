@@ -224,6 +224,7 @@ def main(_):
           chrome_options={
               '--headless',
               '--no-sandbox',
+              '--disable-dev-shm-usage'
           }
       )
   )

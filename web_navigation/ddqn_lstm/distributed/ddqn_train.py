@@ -307,13 +307,17 @@ def main(_):
                                          )
   # Define the default dictionary for gym_kwargs
   default_gym_kwargs = dict(
+      use_legacy_reset=True,
+      use_legacy_step=True,
       difficulty=_DIFFICULTY_LEVEL.value,
       num_websites=_NUM_WEBSITES.value,
       seed=0,
       browser_args=dict(
           threading=False,
           chrome_options={
+              '--headless',
               '--no-sandbox',
+              '--disable-dev-shm-usage'
           }
       )
   )
@@ -333,7 +337,7 @@ def main(_):
       debug_summaries=_DEBUG_SUMMARIES.value,
       epsilon_greedy=_EPSILON_GREEDY.value,
       gradient_clipping=_GRADIENT_CLIPPING.value,
-      learner_iterations_per_call=1,
+      learner_iterations_per_call=_LEARNER_ITERATIONS_PER_CALL.value,
       learning_rate=_LEARNING_RATE.value,
       log_interval=_LOG_INTERVAL.value,
       max_train_step=_MAX_TRAIN_STEP.value,
@@ -343,7 +347,6 @@ def main(_):
       timesteps_per_actorbatch=_TIMESTEPS_PER_ACTORBATCH.value,
       train_checkpoint_interval=_TRAIN_CHECKPOINT_INTERVAL.value,
       batch_size=_BATCH_SIZE.value,
-      # env_batch_size=_ENV_BATCH_SIZE.value,
       embedding_dim=_EMBEDDING_DIM.value,
       latent_dim=_LATENT_DIM.value,
       profile_value_dropout=_PROFILE_VALUE_DROPOUT.value,
@@ -353,19 +356,22 @@ def main(_):
 
 if __name__ == '__main__':
   flags.mark_flags_as_required([
-      'root_dir',
-      'env_name',
-      'seed',
-      'replay_buffer_server_address',
-      'variable_container_server_address',
-      'env_batch_size',
-      'num_websites',
       'difficulty_level',
+      'batch_size',
+      'debug',
       'embedding_dim',
+      'env_batch_size',
+      'env_name',
+      'epsilon_greedy',
       'latent_dim',
-      'profile_value_dropout',
       'learner_iterations_per_call',
       'max_vocab_size',
-      'epsilon_greedy',
+      'num_websites',
+      'profile_value_dropout',
+      'replay_buffer_server_address',
+      'root_dir',
+      'timesteps_per_actorbatch',
+      'seed',
+      'variable_container_server_address',
   ])
   multiprocessing.handle_main(lambda _: app.run(main))

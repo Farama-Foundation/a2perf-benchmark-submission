@@ -1,5 +1,6 @@
 --extra-index-url https://pypi.nvidia.com
 minari
-tensorflow[and-cuda]
-tf-agents[reverb]==0.19.0
+tensorflow[and-cuda]==2.14.0
+tf-agents[reverb]==0.18.0
 tf-keras
+dm-sonnet

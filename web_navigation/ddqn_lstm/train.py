@@ -88,7 +88,8 @@ def train():
   train_checkpoint_interval = np.maximum(1, np.round(
       train_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
       int))
-  learner_iterations_per_call = timesteps_per_actorbatch // batch_size
+  learner_iterations_per_call = np.maximum(1, np.round(
+      timesteps_per_actorbatch / batch_size).astype(int))
   logging.info(f'converted eval_interval: {eval_interval}')
   logging.info(f'converted log_interval: {log_interval}')
   logging.info(
@@ -105,7 +106,7 @@ def train():
   # Launch multiprocessing manager server
   auth_key = 'secretkey'
   manager_command = [
-      'python', 'distributed/vocabulary_manager.py',
+      'python', '-u', 'distributed/vocabulary_manager.py',
       f'--port={vocab_port}',
       f'--auth_key={auth_key}',
       f'--max_vocab_size=500',
@@ -122,7 +123,7 @@ def train():
 
   # Launch reverb server
   reverb_command = [
-      'python',
+      'python', '-u',
       'distributed/ddqn_reverb_server.py',
       '--verbosity=2',
       f'--min_table_size_before_sampling={timesteps_per_actorbatch}',
@@ -141,9 +142,10 @@ def train():
 
   # Launch collect jobs
   collect_job_commands = [
-      ['python',
+      ['xvfb-run',
+       'python', '-u',
        'distributed/ddqn_collect.py',
-       '--verbosity=-2',
+       '--verbosity=2' if debug else '--verbosity=-2',
        f'--env_batch_size={env_batch_size}',
        f'--env_name=WebNavigation-v0',
        f'--initial_collect_steps={adjusted_timesteps_per_actorbatch}',
@@ -171,26 +173,26 @@ def train():
 
   # Launch train job
   train_job_command = [
-      'python',
+      'python', '-u',
       'distributed/ddqn_train.py',
       f'--batch_size={batch_size}',
       f'--debug={debug}',
+      f'--difficulty_level={difficulty_level}',
+      f'--embedding_dim={embedding_dim}',
       f'--env_batch_size={env_batch_size}',
       f'--env_name=WebNavigation-v0',
+      f'--epsilon_greedy={epsilon_greedy}',
+      f'--latent_dim={latent_dim}',
+      f'--learner_iterations_per_call={learner_iterations_per_call}',
       f'--learning_rate={learning_rate}',
       f'--log_interval={log_interval}',
       f'--max_train_steps={max_train_steps}',
-      f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-      f'--replay_buffer_server_address={replay_buffer_server_address}',
-      f'--root_dir={root_dir}',
-      f'--epsilon_greedy={epsilon_greedy}',
-      f'--latent_dim={latent_dim}',
-      f'--embedding_dim={embedding_dim}',
-      f'--profile_value_dropout={profile_value_dropout}',
-      f'--learner_iterations_per_call={learner_iterations_per_call}',
       f'--max_vocab_size={max_vocab_size}',
       f'--num_websites={num_websites}',
-      f'--difficulty_level={difficulty_level}',
+      f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+      f'--profile_value_dropout={profile_value_dropout}',
+      f'--replay_buffer_server_address={replay_buffer_server_address}',
+      f'--root_dir={root_dir}',
       f'--seed={seed}',
       f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
       f'--train_checkpoint_interval={train_checkpoint_interval}',
