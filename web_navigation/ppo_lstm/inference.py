@@ -2,92 +2,82 @@ import os
 
 import gymnasium as gym
 import numpy as np
-import tensorflow as tf
-from tf_agents.agents.dqn import dqn_agent
-from tf_agents.environments import suite_gym, tf_py_environment
+from tf_agents.policies import policy_loader
 from tf_agents.trajectories import time_step as ts
-from tf_agents.utils import common
-
-from train import DQNLSTM
-
-from a2perf.domains.web_navigation.CoDE import vocabulary_node
 
 
-def load_model():
-    # get root dir from env var
+def load_policy():
+  root_dir = os.environ.get('ROOT_DIR', None)
+  if root_dir is None:
+    raise ValueError(
+        'ROOT_DIR environment variable must be set to load the model.')
 
-    root_dir = os.environ['ROOT_DIR']
-    # seed = os.environ['SEED']
-    # env_batch_size = os.environ['ENV_BATCH_SIZE']
+  saved_model_path = os.path.join(root_dir, 'policies', 'policy')
+  checkpoint_path = os.path.join(root_dir, 'policies', 'checkpoints')
 
-    root_dir = root_dir
-    print(root_dir)
+  # Get max checkpoint from checkpoint_path
+  max_checkpoint = sorted(os.listdir(checkpoint_path))[-1]
 
-    env_name = 'WebNavigation-v0'
-    learning_rate = 1e-4
-    max_vocab_size = 500
-    seed = 32
-    designs = [{'number_of_pages': 1, 'action': [], 'action_page': [], }]
-    train_dir = os.path.join(root_dir, 'train')
+  policy = policy_loader.load(saved_model_path=saved_model_path,
+                              checkpoint_path=os.path.join(checkpoint_path,
+                                                           max_checkpoint), )
 
-    # Load the global vocabulary
-    global_vocab_dict = np.load(os.path.join(train_dir, 'global_vocab.npy'), allow_pickle=True).item()
-    global_vocab = vocabulary_node.LockedMultiprocessingVocabulary()
-    global_vocab.restore(dict(global_vocab=global_vocab_dict))
-    tf_env = tf_py_environment.TFPyEnvironment(suite_gym.load(environment_name=env_name,
-                                                              spec_dtype_map={gym.spaces.Discrete: np.int32},
-                                                              gym_kwargs={'designs': designs, 'seed': seed,
-                                                                          'global_vocabulary': global_vocab, }))
-
-    global_step = tf.compat.v1.train.get_or_create_global_step()
-    q_net = DQNLSTM(
-        observation_spec=tf_env.observation_spec(),
-        action_spec=tf_env.action_spec(),
-        state_spec=(),
-        vocab_size=max_vocab_size if max_vocab_size is not None else tf_env.pyenv.envs[
-            0].env.local_vocab.max_vocabulary_size,
-        profile_value_dropout=0.0,
-        q_min=None,
-        q_max=None,
-        embedding_dim=100,
-        name='q_network',
-        latent_dim=50,
-        return_state_value=True)
-
-    tf_agent = dqn_agent.DqnAgent(
-        tf_env.time_step_spec(),
-        tf_env.action_spec(),
-        q_network=q_net,
-        optimizer=tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate),
-        td_errors_loss_fn=common.element_wise_huber_loss,
-        name='dqn_agent'
-    )
-    eval_policy = tf_agent.policy
-
-    policy_checkpointer = common.Checkpointer(
-        ckpt_dir=os.path.join(train_dir, 'policy'),
-        max_to_keep=3,
-        policy=eval_policy,
-        global_step=global_step)
-    policy_checkpointer.initialize_or_restore()
-
-    return eval_policy
+  return policy
 
 
-def preprocess_observation(observation):
-    # Write your code here to preprocess the observation. This function should return the preprocessed observation.
-    for key in observation:
-        observation[key] = tf.convert_to_tensor(observation[key], dtype=observation[key].dtype)
+def preprocess_observation(observation, reward=0.0, discount=1.0,
+    step_type=ts.StepType.MID):
+  """Preprocess raw observation from Gym environment into TF Agents TimeStep."""
+  # Ensure observation is a 1-D array
+  observation = np.array(observation, dtype=np.float32)
 
-    time_step = ts.TimeStep(step_type=ts.StepType.FIRST, reward=0.0, discount=1.0, observation=observation)
+  # Convert step_type to a numpy int32
+  step_type = np.array(step_type, dtype=np.int32)
 
-    # Convert the single timestep into a batch of size 1
-    time_step = tf.nest.map_structure(lambda t: tf.expand_dims(t, 0), time_step)
+  return ts.TimeStep(
+      step_type=step_type,  # Step type as numpy int32
+      reward=np.float32(reward),  # Reward as single float32 value
+      discount=np.float32(discount),  # Discount as single float32 value
+      observation=observation  # Observation as 1-D array
+  )
 
-    return time_step
+
+def infer_once(policy, preprocessed_observation):
+  """Run a single inference step using the given policy."""
+  action_step = policy.action(preprocessed_observation)
+  return action_step.action
 
 
-def infer_once(model, observation):
-    action_step = model.action(time_step=observation)
-    action = tf.nest.map_structure(lambda t: tf.squeeze(t, axis=0), action_step.action)
-    return action
+if __name__ == '__main__':
+
+  # noinspection PyUnresolvedReferences
+  from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
+
+  global_vocab = vocabulary_node.LockedThreadedVocabulary()
+  env = gym.make('WebNavigation-v0',
+
+                 use_legacy_reset=True,
+                 use_legacy_step=True,
+                 global_vocabulary=global_vocab,
+                 difficulty=1,
+                 num_websites=1,
+                 seed=0,
+                 browser_args=dict(
+                     threading=False,
+                     chrome_options={
+                         '--headless',
+                         '--no-sandbox',
+                     }
+                 )
+                 )
+  policy = load_policy()
+
+  # Run inference for a single episode
+  obs, info = env.reset()
+  terminated = False
+  truncated = False
+  while not (terminated or truncated):
+    preprocessed_obs = preprocess_observation(obs)
+    action = infer_once(policy, preprocessed_obs)
+    obs, reward, terminated, truncated, info = env.step(action)
+    env.render()

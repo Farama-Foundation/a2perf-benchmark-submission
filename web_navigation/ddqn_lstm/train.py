@@ -5,7 +5,6 @@ import threading
 import numpy as np
 from absl import app
 from absl import logging
-import tensorflow as tf
 
 
 def print_subprocess_output(process):
@@ -16,12 +15,11 @@ def print_subprocess_output(process):
 def train():
   seed = int(os.environ.get('SEED', None))
   root_dir = os.environ.get('ROOT_DIR', None)
-  num_epochs = int(os.environ.get('NUM_EPOCHS', None))
   env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
   batch_size = int(os.environ.get('BATCH_SIZE', None))
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
   eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
-  entropy_regularization = float(os.environ.get('ENTROPY_REGULARIZATION', None))
+  rb_capacity = int(os.environ.get('RB_CAPACITY', None))
   train_checkpoint_interval = int(
       os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
   policy_checkpoint_interval = int(
@@ -30,71 +28,79 @@ def train():
   learning_rate = float(os.environ.get('LEARNING_RATE', None))
   timesteps_per_actorbatch = int(
       os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
+  port = int(os.environ.get('PORT', '8008'))
+  host = os.environ.get('HOST', 'localhost')
+  replay_buffer_server_address = f'{host}:{port}'
+  variable_container_server_address = f'{host}:{port}'
+  debug = bool(os.environ.get('DEBUG', False))
+  epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', None))
   reverb_port = int(os.environ.get('REVERB_PORT', '8008'))
   vocab_port = int(os.environ.get('VOCAB_PORT', '50000'))
-  host = os.environ.get('HOST', 'localhost')
-  replay_buffer_server_address = f'{host}:{reverb_port}'
-  variable_container_server_address = f'{host}:{reverb_port}'
-  difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
   num_websites = int(os.environ.get('NUM_WEBSITES', None))
+  difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
+  max_vocab_size = int(os.environ.get('MAX_VOCAB_SIZE', None))
+  latent_dim = int(os.environ.get('LATENT_DIM', None))
+  embedding_dim = int(os.environ.get('EMBEDDING_DIM', None))
+  profile_value_dropout = float(os.environ.get('PROFILE_VALUE_DROPOUT', None))
 
   # Print extracted and computed values
-  print(f'seed: {seed}')
-  print(f'root_dir: {root_dir}')
-  print(f'env_batch_size: {env_batch_size}')
-  print(f'total_env_steps: {total_env_steps}')
-  print(f'difficulty_level: {difficulty_level}')
-  print(f'eval_interval: {eval_interval}')
-  print(f'train_checkpoint_interval: {train_checkpoint_interval}')
-  print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
-  print(f'log_interval: {log_interval}')
-  print(f'learning_rate: {learning_rate}')
-  print(f'timesteps_per_actorbatch: {timesteps_per_actorbatch}')
-  print(f'num_epochs: {num_epochs}')
   print(f'batch_size: {batch_size}')
-  print(f'entropy_regularization: {entropy_regularization}')
-  print(f'reverb_port: {reverb_port}')
-  print(f'vocab_port: {vocab_port}')
-  print(f'host: {host}')
+  print(f'debug: {debug}')
+  print(f'difficulty_level: {difficulty_level}')
+  print(f'env_batch_size: {env_batch_size}')
+  print(f'epsilon_greedy: {epsilon_greedy}')
+  print(f'eval_interval: {eval_interval}')
+  print(f'learning_rate: {learning_rate}')
+  print(f'log_interval: {log_interval}')
+  print(f'num_websites: {num_websites}')
+  print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
+  print(f'port: {port}')
+  print(f'rb_capacity: {rb_capacity}')
   print(f'replay_buffer_server_address: {replay_buffer_server_address}')
+  print(f'reverb_port: {reverb_port}')
+  print(f'root_dir: {root_dir}')
+  print(f'seed: {seed}')
+  print(f'timesteps_per_actorbatch: {timesteps_per_actorbatch}')
+  print(f'total_env_steps: {total_env_steps}')
+  print(f'train_checkpoint_interval: {train_checkpoint_interval}')
   print(
       f'variable_container_server_address: {variable_container_server_address}')
-  print(f'num_websites: {num_websites}')
-
-  # Get the number of GPUs
-  gpus = tf.config.list_physical_devices('GPU')
-  num_replicas = len(gpus) if gpus else 1
+  print(f'vocab_port: {vocab_port}')
+  print(f'max_vocab_size: {max_vocab_size}')
+  print(f'latent_dim: {latent_dim}')
+  print(f'profile_value_dropout: {profile_value_dropout}')
 
   # Parameters for training
-  num_minibatches = timesteps_per_actorbatch // batch_size
-  train_steps_per_iteration = num_minibatches * num_epochs // num_replicas
+  train_steps_per_iteration = timesteps_per_actorbatch
   num_iterations = total_env_steps // timesteps_per_actorbatch
   max_train_steps = train_steps_per_iteration * num_iterations
   adjusted_timesteps_per_actorbatch = timesteps_per_actorbatch // env_batch_size
 
-  policy_checkpoint_interval = np.maximum(1, np.round(
-      policy_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int))
-  train_checkpoint_interval = np.maximum(1, np.round(
-      train_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int))
   eval_interval = np.maximum(1, np.round(
       eval_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
       int))
   log_interval = np.maximum(1, np.round(
       log_interval / env_batch_size / timesteps_per_actorbatch * train_steps_per_iteration).astype(
       int))
-
-  logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
-  logging.info(f'num_iterations: {num_iterations}')
-  logging.info(f'max_train_steps: {max_train_steps}')
+  policy_checkpoint_interval = np.maximum(1, np.round(
+      policy_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
+      int))
+  train_checkpoint_interval = np.maximum(1, np.round(
+      train_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
+      int))
+  learner_iterations_per_call = timesteps_per_actorbatch // batch_size
+  logging.info(f'converted eval_interval: {eval_interval}')
+  logging.info(f'converted log_interval: {log_interval}')
   logging.info(
       f'converted policy_checkpoint_interval: {policy_checkpoint_interval}')
   logging.info(
       f'converted train_checkpoint_interval: {train_checkpoint_interval}')
-  logging.info(f'converted eval_interval: {eval_interval}')
-  logging.info(f'converted log_interval: {log_interval}')
+  logging.info(f'max_train_steps: {max_train_steps}')
+  logging.info(f'num_iterations: {num_iterations}')
   logging.info(f'random seed: {seed}')
+  logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
+  logging.info(
+      f'learner_iterations_per_call: {learner_iterations_per_call}')
 
   # Launch multiprocessing manager server
   auth_key = 'secretkey'
@@ -107,20 +113,22 @@ def train():
   ]
 
   # Launch the subprocess with the same environment and output redirection
-  manager_process = subprocess.Popen(manager_command, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT,
-                                     env=os.environ.copy())
+  vocab_manager = subprocess.Popen(manager_command, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT,
+                                   env=os.environ.copy())
   threading.Thread(target=print_subprocess_output,
-                   args=(manager_process,)).start()
+                   args=(vocab_manager,)).start()
   logging.info('Successfully launched vocab manager server.')
 
   # Launch reverb server
   reverb_command = [
       'python',
-      'distributed/ppo_lstm_reverb_server.py',
-      f'--port={reverb_port}',
-      f'--root_dir={root_dir}',
+      'distributed/ddqn_reverb_server.py',
       '--verbosity=2',
+      f'--min_table_size_before_sampling={timesteps_per_actorbatch}',
+      f'--port={port}',
+      f'--replay_buffer_capacity={rb_capacity}',
+      f'--root_dir={root_dir}',
   ]
 
   # Launch the subprocess with the same environment and output redirection
@@ -134,20 +142,22 @@ def train():
   # Launch collect jobs
   collect_job_commands = [
       ['python',
-       'distributed/ppo_lstm_collect.py',
+       'distributed/ddqn_collect.py',
+       '--verbosity=-2',
+       f'--env_batch_size={env_batch_size}',
+       f'--env_name=WebNavigation-v0',
+       f'--initial_collect_steps={adjusted_timesteps_per_actorbatch}',
+       f'--max_train_steps={max_train_steps}',
+       f'--num_websites={num_websites}',
+       f'--difficulty_level={difficulty_level}',
+       f'--replay_buffer_server_address={replay_buffer_server_address}',
        f'--root_dir={root_dir}',
        f'--vocab_port={vocab_port}',
        f'--auth_key={auth_key}',
-       f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+
        f'--summary_interval={log_interval}',
-       f'--env_name=WebNavigation-v0',
-       f'--env_batch_size={env_batch_size}',
-       f'--replay_buffer_server_address={replay_buffer_server_address}',
-       f'--variable_container_server_address={variable_container_server_address}',
-       f'--num_websites={num_websites}',
-       f'--difficulty_level={difficulty_level}',
        f'--task={i}',
-       '--verbosity=-2',
+       f'--variable_container_server_address={variable_container_server_address}',
        ] for i in range(env_batch_size)
   ]
 
@@ -155,38 +165,38 @@ def train():
   for command in collect_job_commands:
     process = subprocess.Popen(command, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, env=os.environ.copy())
-  collect_jobs.append(process)
-  threading.Thread(target=print_subprocess_output, args=(process,)).start()
+    collect_jobs.append(process)
+    threading.Thread(target=print_subprocess_output, args=(process,)).start()
   logging.info('Successfully launched collect jobs.')
 
   # Launch train job
   train_job_command = [
       'python',
-      'distributed/ppo_lstm_train.py',
-      f'--entropy_regularization={entropy_regularization}',
-      f'--env_name=WebNavigation-v0',
-      f'--num_epochs={num_epochs}',
+      'distributed/ddqn_train.py',
       f'--batch_size={batch_size}',
-      f'--debug=False',
-      f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
-      f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+      f'--debug={debug}',
+      f'--env_batch_size={env_batch_size}',
+      f'--env_name=WebNavigation-v0',
+      f'--learning_rate={learning_rate}',
+      f'--log_interval={log_interval}',
+      f'--max_train_steps={max_train_steps}',
       f'--policy_checkpoint_interval={policy_checkpoint_interval}',
       f'--replay_buffer_server_address={replay_buffer_server_address}',
       f'--root_dir={root_dir}',
-      f'--train_checkpoint_interval={train_checkpoint_interval}',
+      f'--epsilon_greedy={epsilon_greedy}',
+      f'--latent_dim={latent_dim}',
+      f'--embedding_dim={embedding_dim}',
+      f'--profile_value_dropout={profile_value_dropout}',
+      f'--learner_iterations_per_call={learner_iterations_per_call}',
+      f'--max_vocab_size={max_vocab_size}',
       f'--num_websites={num_websites}',
       f'--difficulty_level={difficulty_level}',
-      f'--max_train_steps={max_train_steps}',
-      f'--env_batch_size={env_batch_size}',
-      f'--learning_rate={learning_rate}',
-      f'--embedding_dim=100',
-      f'--latent_dim=50',
-      f'--profile_value_dropout=0.0',
-      f'--max_vocab_size=500',
-      f'--log_interval={log_interval}',
       f'--seed={seed}',
+      f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
+      f'--train_checkpoint_interval={train_checkpoint_interval}',
+      f'--use_gpu',
       f'--variable_container_server_address={variable_container_server_address}',
-      f'--use_gpu'
+      f'--verbosity=2'
   ]
   train_job = subprocess.Popen(train_job_command, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, env=os.environ.copy())
@@ -213,6 +223,10 @@ def train():
   for process in collect_jobs:
     process.terminate()
   logging.info('Successfully terminated collect jobs.')
+
+  # Terminate the vocab manager server
+  vocab_manager.terminate()
+  logging.info('Successfully terminated vocab manager server.')
 
 
 def main(_):

@@ -1,3 +1,0 @@
-[submodule "web_navigation/debug/sonnet-debug"]
-	path = web_navigation/debug/sonnet-debug
-	url = https://github.com/google-deepmind/sonnet.git
