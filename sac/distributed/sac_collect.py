@@ -1,10 +1,11 @@
 """Sample collection Job using a variable container for policy updates."""
-
 import functools
 import os
 
 import gin
+import numpy as np
 import reverb
+import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
@@ -28,6 +29,7 @@ _ROOT_DIR = flags.DEFINE_string(
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
     'Root directory for writing logs/summaries/checkpoints.',
 )
+_SEED = flags.DEFINE_integer('seed', None, 'Random seed.')
 _ENV_NAME = flags.DEFINE_string('env_name', None, 'Name of the environment')
 _REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
     'replay_buffer_server_address', None, 'Replay buffer server address.'
@@ -193,6 +195,12 @@ def run_collect(root_dir: str,
 
 
 def main(_):
+  tf.compat.v1.enable_v2_behavior()
+
+  # Set the random seeds
+  tf.random.set_seed(_SEED.value)
+  np.random.seed(_SEED.value)
+
   absl_handler = logging.get_absl_handler()
   absl_handler.setFormatter(PrefixedLogFormatter())
   gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
@@ -216,5 +224,5 @@ if __name__ == '__main__':
       ['root_dir', 'env_name', 'replay_buffer_server_address',
        'variable_container_server_address',
        'sequence_length', 'env_batch_size', 'motion_file_path', 'task',
-       'summary_interval', 'max_train_steps', 'initial_collect_steps'])
+       'summary_interval', 'max_train_steps', 'initial_collect_steps', 'seed'])
   multiprocessing.handle_main(functools.partial(app.run, main))

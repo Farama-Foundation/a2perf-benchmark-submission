@@ -131,7 +131,6 @@ def _create_actor_net(env_name: Text,
         observation_tensor_spec,
         action_tensor_spec,
         fc_layer_params=(512, 256),
-        seed=seed
     )
   elif env_name == 'WebNavigation-v0':
     max_vocab_size = kwargs.get('max_vocab_size', None)
@@ -163,7 +162,6 @@ def _create_value_net(env_name: Text,
     return value_network.ValueNetwork(
         observation_tensor_spec,
         fc_layer_params=(512, 256),
-        seed=seed
     )
   elif env_name == 'WebNavigation-v0':
     max_vocab_size = kwargs.get('max_vocab_size', None)
@@ -406,15 +404,18 @@ def train(
 
 
 def main(_):
-  # Add a prefix to our absl logger so we know which collect job this is
-  absl_handler = logging.get_absl_handler()
-  absl_handler.setFormatter(PrefixedLogFormatter())
-
   tf.compat.v1.enable_v2_behavior()
+
+  if _DEBUG.value:
+    logging.set_verbosity(logging.DEBUG)
 
   # Set the random seeds
   tf.random.set_seed(_SEED.value)
   np.random.seed(_SEED.value)
+
+  # Add a prefix to our absl logger so we know which collect job this is
+  absl_handler = logging.get_absl_handler()
+  absl_handler.setFormatter(PrefixedLogFormatter())
 
   gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
                                       finalize_config=False

@@ -14,22 +14,22 @@ def print_subprocess_output(process):
 
 
 def train():
-  seed = int(os.environ.get('SEED', None))
+  seed = int(os.environ.get('SEED', -1))
   root_dir = os.environ.get('ROOT_DIR', None)
-  num_epochs = int(os.environ.get('NUM_EPOCHS', None))
-  env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
-  batch_size = int(os.environ.get('BATCH_SIZE', None))
-  total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
-  eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
-  entropy_regularization = float(os.environ.get('ENTROPY_REGULARIZATION', None))
+  num_epochs = int(os.environ.get('NUM_EPOCHS', -1))
+  env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', -1))
+  batch_size = int(os.environ.get('BATCH_SIZE', -1))
+  total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', -1))
+  eval_interval = int(os.environ.get('EVAL_INTERVAL', -1))
+  entropy_regularization = float(os.environ.get('ENTROPY_REGULARIZATION', -1))
   train_checkpoint_interval = int(
-      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', -1))
   policy_checkpoint_interval = int(
-      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
-  log_interval = int(os.environ.get('LOG_INTERVAL', None))
-  learning_rate = float(os.environ.get('LEARNING_RATE', None))
+      os.environ.get('POLICY_CHECKPOINT_INTERVAL', -1))
+  log_interval = int(os.environ.get('LOG_INTERVAL', -1))
+  learning_rate = float(os.environ.get('LEARNING_RATE', -1))
   timesteps_per_actorbatch = int(
-      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
+      os.environ.get('TIMESTEPS_PER_ACTORBATCH', -1))
   env_name = os.environ.get('ENV_NAME',
                             None)
   motion_file_path = os.environ.get('MOTION_FILE_PATH',
@@ -37,31 +37,31 @@ def train():
   vocab_port = int(os.environ.get('VOCAB_PORT',
                                   '50000'))
   difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL',
-                                        None))
+                                        -1))
   num_websites = int(os.environ.get('NUM_WEBSITES',
-                                    None))
+                                    -1))
   port = int(os.environ.get('PORT', '8008'))
   host = os.environ.get('HOST', 'localhost')
   replay_buffer_server_address = f'{host}:{port}'
   variable_container_server_address = f'{host}:{port}'
   debug = bool(os.environ.get('DEBUG', None))
-  max_vocab_size = int(os.envrion.get('MAX_VOCAB_SIZE', None))
+  max_vocab_size = int(os.environ.get('MAX_VOCAB_SIZE', -1))
 
-  print(f'env_name: {env_name}')
-  print(f'seed: {seed}')
-  print(f'root_dir: {root_dir}')
-  print(f'env_batch_size: {env_batch_size}')
-  print(f'total_env_steps: {total_env_steps}')
-  print(f'eval_interval: {eval_interval}')
-  print(f'train_checkpoint_interval: {train_checkpoint_interval}')
-  print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
-  print(f'log_interval: {log_interval}')
-  print(f'learning_rate: {learning_rate}')
-  print(f'timesteps_per_actorbatch: {timesteps_per_actorbatch}')
-  print(f'num_epochs: {num_epochs}')
-  print(f'entropy_regularization: {entropy_regularization}')
   print(f'batch_size: {batch_size}')
   print(f'debug: {debug}')
+  print(f'entropy_regularization: {entropy_regularization}')
+  print(f'env_batch_size: {env_batch_size}')
+  print(f'env_name: {env_name}')
+  print(f'eval_interval: {eval_interval}')
+  print(f'learning_rate: {learning_rate}')
+  print(f'log_interval: {log_interval}')
+  print(f'num_epochs: {num_epochs}')
+  print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
+  print(f'root_dir: {root_dir}')
+  print(f'seed: {seed}')
+  print(f'timesteps_per_actorbatch: {timesteps_per_actorbatch}')
+  print(f'total_env_steps: {total_env_steps}')
+  print(f'train_checkpoint_interval: {train_checkpoint_interval}')
 
   if env_name == 'QuadrupedLocomotion-v0':
     print(f'motion_file_path: {motion_file_path}')

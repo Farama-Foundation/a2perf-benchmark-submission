@@ -1,5 +1,7 @@
 --extra-index-url https://pypi.nvidia.com
 tensorflow[and-cuda]
-tf-agents
+tf-agents[reverb]
 tf-keras
 dm-sonnet
+selenium
+webdriver-manager

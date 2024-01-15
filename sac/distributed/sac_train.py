@@ -24,6 +24,7 @@ from typing import Optional
 from typing import Text
 
 import gin
+import numpy as np
 import reverb
 import tensorflow as tf
 from absl import app
@@ -32,7 +33,6 @@ from absl import logging
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ddpg import critic_network
 from tf_agents.agents.sac import sac_agent
-from tf_agents.agents.sac import tanh_normal_projection_network
 from tf_agents.environments import py_environment
 from tf_agents.environments import suite_mujoco
 from tf_agents.environments import suite_pybullet
@@ -82,6 +82,10 @@ _MOTION_FILE_PATH = flags.DEFINE_string(
 _TRAIN_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
     'train_checkpoint_interval', 1000, 'Train checkpoint interval.'
 )
+_NUM_WEBSITES = flags.DEFINE_integer('num_websites', None,
+                                     'Number of websites to use.')
+_DIFFICULTY_LEVEL = flags.DEFINE_integer('difficulty_level', None,
+                                         'Difficulty of the task.')
 
 _USE_TPU = flags.DEFINE_bool('use_tpu', False, 'Whether to use TPU or not.')
 _VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
@@ -154,7 +158,6 @@ def _create_critic_net(env_name: Text,
     return critic_network.CriticNetwork(
         (observation_tensor_spec, action_tensor_spec),
         joint_fc_layer_params=(512, 256),
-        seed=seed
     )
   elif env_name == 'WebNavigation-v0':
     raise ValueError(
@@ -339,6 +342,10 @@ def main(_):
   if _DEBUG.value:
     logging.set_verbosity(logging.DEBUG)
 
+  # Set the random seeds
+  tf.random.set_seed(_SEED.value)
+  np.random.seed(_SEED.value)
+
   # Add a prefix to our absl logger so we know which collect job this is
   absl_handler = logging.get_absl_handler()
   absl_handler.setFormatter(PrefixedLogFormatter())
@@ -351,9 +358,23 @@ def main(_):
                                          use_gpu=FLAGS.use_gpu
                                          # Defined in tensorflow strategies
                                          )
-  # Define the default dictionary for gym_kwargs
-  default_gym_kwargs = dict(motion_files=[_MOTION_FILE_PATH.value],
-                            num_parallel_envs=_ENV_BATCH_SIZE.value)
+  if _ENV_NAME.value == 'QuadrupedLocomotion-v0':
+    default_gym_kwargs = dict(motion_files=[_MOTION_FILE_PATH.value],
+                              num_parallel_envs=_ENV_BATCH_SIZE.value)
+  elif _ENV_NAME.value == 'WebNavigation-v0':
+    default_gym_kwargs = dict(
+        difficulty=_DIFFICULTY_LEVEL.value,
+        num_websites=_NUM_WEBSITES.value,
+        seed=0,
+        browser_args=dict(
+            threading=False,
+            chrome_options={
+                '--no-sandbox',
+            }
+        )
+    )
+  else:
+    raise ValueError(f'Unknown environment: {_ENV_NAME.value}')
 
   # Create the partial function with the default dictionary
   suite_load_function = functools.partial(
@@ -390,7 +411,6 @@ if __name__ == '__main__':
       'replay_buffer_server_address',
       'variable_container_server_address',
       'env_batch_size',
-      'motion_file_path',
       'max_train_steps',
       'timesteps_per_actorbatch',
       'learner_iterations_per_call',
