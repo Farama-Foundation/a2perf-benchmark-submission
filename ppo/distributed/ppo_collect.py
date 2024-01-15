@@ -10,6 +10,7 @@ import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
+from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_pybullet
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
@@ -23,6 +24,16 @@ from tf_agents.train.utils import train_utils
 # noinspection PyUnresolvedReferences
 from a2perf.domains import quadruped_locomotion
 
+_DIFFICULTY_LEVEL = flags.DEFINE_integer(
+    'difficulty_level',
+    None,
+    'Difficulty level of the environment.',
+)
+_NUM_WEBSITES = flags.DEFINE_integer(
+    'num_websites',
+    None,
+    'Number of websites to use in the environment.',
+)
 _ROOT_DIR = flags.DEFINE_string(
     'root_dir',
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
@@ -80,16 +91,10 @@ def collect(
     variable_container_server_address: Text,
     sequence_length: int = 0,
     summary_interval: int = 0,
-    gym_kwargs=None,
+    suite_load_function: callable = suite_pybullet.load,
 ) -> None:
   """Collects experience using a policy updated after every episode."""
   logging.info('Sequence length collect: %s', sequence_length)
-
-  # Create the partial function with the default dictionary
-  suite_load_function = functools.partial(
-      suite_pybullet.load,
-      gym_kwargs=gym_kwargs,
-  )
   collect_env = suite_load_function(environment_name)
 
   # Create the variable container.
@@ -149,7 +154,7 @@ def run_collect(
     environment_name: str,
     sequence_length: int,
     summary_interval: int,
-    gym_kwargs=None,
+    suite_load_fn: callable,
 ) -> None:
   """Wait for the collect policy to be ready and run collect job."""
   # Wait for the collect policy to become available, then load it.
@@ -169,7 +174,7 @@ def run_collect(
       replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
       variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
       sequence_length=sequence_length,
-      gym_kwargs=gym_kwargs,
+      suite_load_fn=suite_load_fn,
   )
 
 
@@ -188,14 +193,40 @@ def main(_):
                                       finalize_config=False)
 
   # Define the default dictionary for gym_kwargs
-  gym_kwargs = dict(motion_files=[_MOTION_FILE_PATH.value],
-                    num_parallel_envs=_ENV_BATCH_SIZE.value)
+  if _ENV_NAME.value == 'QuadrupedLocomotion-v0':
+    default_gym_kwargs = dict(motion_files=[_MOTION_FILE_PATH.value],
+                              num_parallel_envs=_ENV_BATCH_SIZE.value)
+    suite_load_function = functools.partial(
+        suite_pybullet.load,
+        gym_kwargs=default_gym_kwargs
+    )
+  elif _ENV_NAME.value == 'WebNavigation-v0':
+    default_gym_kwargs = dict(
+        use_legacy_step=True,
+        use_legacy_reset=True,
+        difficulty=_DIFFICULTY_LEVEL.value,
+        num_websites=_NUM_WEBSITES.value,
+        seed=0,
+        browser_args=dict(
+            threading=False,
+            chrome_options={
+                '--disable-gpu'
+            }
+        )
+    )
+    suite_load_function = functools.partial(
+        suite_gym.load,
+        gym_kwargs=default_gym_kwargs
+    )
+  else:
+    raise ValueError(f'Unknown environment: {_ENV_NAME.value}')
+
   run_collect(
       root_dir=_ROOT_DIR.value,
       environment_name=_ENV_NAME.value,
       sequence_length=_SEQUENCE_LENGTH.value,
       summary_interval=_SUMMARY_INTERVAL.value,
-      gym_kwargs=gym_kwargs,
+      suite_load_fn=suite_load_function,
   )
 
 

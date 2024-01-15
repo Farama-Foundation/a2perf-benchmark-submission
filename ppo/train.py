@@ -15,6 +15,7 @@ def print_subprocess_output(process):
 
 def train():
   seed = int(os.environ.get('SEED', -1))
+  use_gae = bool(os.environ.get('USE_GAE', None))
   root_dir = os.environ.get('ROOT_DIR', None)
   num_epochs = int(os.environ.get('NUM_EPOCHS', -1))
   env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', -1))
@@ -189,6 +190,7 @@ def train():
                        f'--seed={seed}',
                        f'--variable_container_server_address={variable_container_server_address}',
                        f'--use_gpu',
+                       f'--use_gae={use_gae}',
                        f'--use_tpu=False'] + env_flags
 
   train_job = subprocess.Popen(train_job_command, stdout=subprocess.PIPE,

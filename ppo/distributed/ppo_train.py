@@ -33,6 +33,7 @@ from absl import logging
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ppo import ppo_clip_agent
 from tf_agents.environments import py_environment
+from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_mujoco
 from tf_agents.environments import suite_pybullet
 from tf_agents.experimental.distributed import reverb_variable_container
@@ -426,30 +427,33 @@ def main(_):
                                          # Defined in tensorflow strategies
                                          )
   # Define the default dictionary for gym_kwargs
-
   if _ENV_NAME.value == 'QuadrupedLocomotion-v0':
     default_gym_kwargs = dict(motion_files=[_MOTION_FILE_PATH.value],
                               num_parallel_envs=_ENV_BATCH_SIZE.value)
+    suite_load_function = functools.partial(
+        suite_pybullet.load,
+        gym_kwargs=default_gym_kwargs
+    )
   elif _ENV_NAME.value == 'WebNavigation-v0':
     default_gym_kwargs = dict(
+        use_legacy_step=True,
+        use_legacy_reset=True,
         difficulty=_DIFFICULTY_LEVEL.value,
         num_websites=_NUM_WEBSITES.value,
         seed=0,
         browser_args=dict(
             threading=False,
             chrome_options={
-                '--no-sandbox',
+                '--disable-gpu'
             }
         )
     )
+    suite_load_function = functools.partial(
+        suite_gym.load,
+        gym_kwargs=default_gym_kwargs
+    )
   else:
     raise ValueError(f'Unknown environment: {_ENV_NAME.value}')
-
-  # Create the partial function with the default dictionary
-  suite_load_function = functools.partial(
-      suite_pybullet.load,
-      gym_kwargs=default_gym_kwargs
-  )
 
   train(
       root_dir=_ROOT_DIR.value,

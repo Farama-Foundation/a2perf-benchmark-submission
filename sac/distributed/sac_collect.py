@@ -9,6 +9,7 @@ import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
+from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_pybullet
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
@@ -24,6 +25,16 @@ from tf_agents.train.utils import train_utils
 # noinspection PyUnresolvedReferences
 from a2perf.domains import quadruped_locomotion
 
+_DIFFICULTY_LEVEL = flags.DEFINE_integer(
+    'difficulty_level',
+    None,
+    'Difficulty level of the environment.',
+)
+_NUM_WEBSITES = flags.DEFINE_integer(
+    'num_websites',
+    None,
+    'Number of websites to use in the environment.',
+)
 _ROOT_DIR = flags.DEFINE_string(
     'root_dir',
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
@@ -91,16 +102,12 @@ def collect(environment_name: str,
     task: int,
     summary_interval: int,
     sequence_length: int,
+    suite_load_function: callable,
     initial_collect_steps: int,
 
-    gym_kwargs=None) -> None:
+) -> None:
   summary_dir = os.path.join(root_dir, 'summaries', str(task))
 
-  # Create the partial function with the default dictionary
-  suite_load_function = functools.partial(
-      suite_pybullet.load,
-      gym_kwargs=gym_kwargs,
-  )
   collect_env = suite_load_function(environment_name)
 
   # Create the variable container.
@@ -167,15 +174,12 @@ def run_collect(root_dir: str,
     environment_name: str,
     replay_buffer_server_address: str,
     variable_container_server_address: str,
-    motion_file_path: str,
-    env_batch_size: int,
     task: int,
     initial_collect_steps: int,
+    suite_load_fn: callable,
     summary_interval: int,
     sequence_length: int) -> None:
   """Wait for the collect policy to be ready and run collect job."""
-  gym_kwargs = dict(motion_files=[motion_file_path],
-                    num_parallel_envs=env_batch_size)
   collect_policy_dir = os.path.join(root_dir, learner.POLICY_SAVED_MODEL_DIR,
                                     learner.COLLECT_POLICY_SAVED_MODEL_DIR)
   collect_policy = train_utils.wait_for_policy(collect_policy_dir,
@@ -189,7 +193,7 @@ def run_collect(root_dir: str,
           task=task,
           summary_interval=summary_interval,
           sequence_length=sequence_length,
-          gym_kwargs=gym_kwargs,
+          suite_load_function=suite_load_fn,
           initial_collect_steps=initial_collect_steps,
           )
 
@@ -206,16 +210,46 @@ def main(_):
   gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
                                       finalize_config=False)
 
+  # Define the default dictionary for gym_kwargs
+  if _ENV_NAME.value == 'QuadrupedLocomotion-v0':
+    default_gym_kwargs = dict(motion_files=[_MOTION_FILE_PATH.value],
+                              num_parallel_envs=_ENV_BATCH_SIZE.value)
+    suite_load_function = functools.partial(
+        suite_pybullet.load,
+        gym_kwargs=default_gym_kwargs
+    )
+  elif _ENV_NAME.value == 'WebNavigation-v0':
+    default_gym_kwargs = dict(
+        use_legacy_step=True,
+        use_legacy_reset=True,
+        difficulty=_DIFFICULTY_LEVEL.value,
+        num_websites=_NUM_WEBSITES.value,
+        seed=0,
+        browser_args=dict(
+            threading=False,
+            chrome_options={
+                '--headless',
+                '--no-sandbox',
+            }
+        )
+    )
+    suite_load_function = functools.partial(
+        suite_gym.load,
+        gym_kwargs=default_gym_kwargs
+    )
+  else:
+    raise ValueError(f'Unknown environment: {_ENV_NAME.value}')
+
   run_collect(root_dir=_ROOT_DIR.value,
               environment_name=_ENV_NAME.value,
               replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
               variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
-              motion_file_path=_MOTION_FILE_PATH.value,
-              env_batch_size=_ENV_BATCH_SIZE.value,
               task=_TASK.value,
               summary_interval=_SUMMARY_INTERVAL.value,
               sequence_length=_SEQUENCE_LENGTH.value,
               initial_collect_steps=_INITIAL_COLLECT_STEPS.value,
+              suite_load_fn=suite_load_function,
+
               )
 
 

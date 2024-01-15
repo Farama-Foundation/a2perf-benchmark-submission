@@ -1,15 +1,15 @@
 """Sample collection Job using a variable container for policy updates."""
-
 import functools
 import os
-from multiprocessing.managers import BaseManager
 
 import gin
+import numpy as np
 import reverb
+import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
-from tf_agents.environments import suite_gym
+from tf_agents.environments import suite_pybullet
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
 from tf_agents.policies import py_tf_eager_policy
@@ -23,13 +23,13 @@ from tf_agents.train.utils import train_utils
 
 # noinspection PyUnresolvedReferences
 from a2perf.domains import quadruped_locomotion
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 _ROOT_DIR = flags.DEFINE_string(
     'root_dir',
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
     'Root directory for writing logs/summaries/checkpoints.',
 )
+_SEED = flags.DEFINE_integer('seed', None, 'Random seed.')
 _ENV_NAME = flags.DEFINE_string('env_name', None, 'Name of the environment')
 _REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
     'replay_buffer_server_address', None, 'Replay buffer server address.'
@@ -53,6 +53,11 @@ _SUMMARY_INTERVAL = flags.DEFINE_integer(
     None,
     'Interval at which to record summaries.',
 )
+_SEQUENCE_LENGTH = flags.DEFINE_integer(
+    'sequence_length',
+    None,
+    'Size of reverb buffer to sample.',
+)
 _MAX_TRAIN_STEPS = flags.DEFINE_integer(
     'max_train_steps',
     None,
@@ -70,18 +75,6 @@ _GIN_FILE = flags.DEFINE_multi_string('gin_file', None,
                                       'Paths to the gin-config files.')
 _GIN_BINDINGS = flags.DEFINE_multi_string('gin_bindings', None,
                                           'Gin binding parameters.')
-_AUTH_KEY = flags.DEFINE_string('auth_key', None,
-                                'Authentication key for the vocabulary server.')
-_VOCAB_PORT = flags.DEFINE_integer('vocab_port', None,
-                                   'Port to connect to the vocabulary server.')
-_NUM_WEBSITES = flags.DEFINE_integer('num_websites', None,
-                                     'Number of websites to use.')
-_DIFFICULTY_LEVEL = flags.DEFINE_integer('difficulty_level', None,
-                                         'Difficulty of the task.')
-
-
-class VocabularyManager(BaseManager):
-  pass
 
 
 class PrefixedLogFormatter(logging.PythonFormatter):
@@ -97,6 +90,7 @@ def collect(environment_name: str,
     root_dir: str,
     task: int,
     summary_interval: int,
+    sequence_length: int,
     initial_collect_steps: int,
 
     gym_kwargs=None) -> None:
@@ -104,7 +98,7 @@ def collect(environment_name: str,
 
   # Create the partial function with the default dictionary
   suite_load_function = functools.partial(
-      suite_gym.load,
+      suite_pybullet.load,
       gym_kwargs=gym_kwargs,
   )
   collect_env = suite_load_function(environment_name)
@@ -148,7 +142,7 @@ def collect(environment_name: str,
       collect_env,
       collect_policy,
       train_step,
-      steps_per_run=1,
+      steps_per_run=sequence_length,
       metrics=actor.collect_metrics(10),
       summary_dir=summary_dir,
       summary_interval=summary_interval,
@@ -156,9 +150,17 @@ def collect(environment_name: str,
   )
 
   # Run the experience collection loop.
+  prev_num_steps_collected = 0
   while True:
     collect_actor.run()
     variable_container.update(variables)
+    logging.info('Collecting with policy at step: %d', train_step.numpy())
+
+    num_steps_collected = env_step_metric.result()
+    logging.info('\tCollected %d steps', num_steps_collected)
+    logging.info('\tCollected %d steps this iteration',
+                 num_steps_collected - prev_num_steps_collected)
+    prev_num_steps_collected = num_steps_collected
 
 
 def run_collect(root_dir: str,
@@ -170,9 +172,10 @@ def run_collect(root_dir: str,
     task: int,
     initial_collect_steps: int,
     summary_interval: int,
-    gym_kwargs=None
-) -> None:
+    sequence_length: int) -> None:
   """Wait for the collect policy to be ready and run collect job."""
+  gym_kwargs = dict(motion_files=[motion_file_path],
+                    num_parallel_envs=env_batch_size)
   collect_policy_dir = os.path.join(root_dir, learner.POLICY_SAVED_MODEL_DIR,
                                     learner.COLLECT_POLICY_SAVED_MODEL_DIR)
   collect_policy = train_utils.wait_for_policy(collect_policy_dir,
@@ -185,47 +188,23 @@ def run_collect(root_dir: str,
           root_dir=root_dir,
           task=task,
           summary_interval=summary_interval,
+          sequence_length=sequence_length,
           gym_kwargs=gym_kwargs,
           initial_collect_steps=initial_collect_steps,
           )
 
 
 def main(_):
+  tf.compat.v1.enable_v2_behavior()
+
+  # Set the random seeds
+  tf.random.set_seed(_SEED.value)
+  np.random.seed(_SEED.value)
+
   absl_handler = logging.get_absl_handler()
   absl_handler.setFormatter(PrefixedLogFormatter())
   gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
                                       finalize_config=False)
-
-  VocabularyManager.register('get_shared_lock')
-  VocabularyManager.register('get_shared_dict')
-
-  # Connect to the manager server
-  vocabulary_manager = VocabularyManager(
-      address=('127.0.0.1', _VOCAB_PORT.value),
-      authkey=_AUTH_KEY.value.encode())
-  vocabulary_manager.connect()
-
-  global_vocab = vocabulary_node.LockedMultiprocessingVocabulary(
-      shared_lock=vocabulary_manager.get_shared_lock(),
-      shared_dict=vocabulary_manager.get_shared_dict(),
-      max_vocabulary_size=15000,
-  )
-
-  # Define the default dictionary for gym_kwargs
-  gym_kwargs = dict(
-      use_legacy_reset=True,
-      use_legacy_step=True,
-      global_vocabulary=global_vocab,
-      difficulty=_DIFFICULTY_LEVEL.value,
-      num_websites=_NUM_WEBSITES.value,
-      seed=0,
-      browser_args=dict(
-          threading=False,
-          chrome_options={'--no-sandbox',
-                          '--headless'
-                          }
-      )
-  )
 
   run_collect(root_dir=_ROOT_DIR.value,
               environment_name=_ENV_NAME.value,
@@ -235,22 +214,15 @@ def main(_):
               env_batch_size=_ENV_BATCH_SIZE.value,
               task=_TASK.value,
               summary_interval=_SUMMARY_INTERVAL.value,
+              sequence_length=_SEQUENCE_LENGTH.value,
               initial_collect_steps=_INITIAL_COLLECT_STEPS.value,
-              gym_kwargs=gym_kwargs,
               )
 
 
 if __name__ == '__main__':
   flags.mark_flags_as_required(
-      ['root_dir',
-       'env_name',
-       'replay_buffer_server_address',
+      ['root_dir', 'env_name', 'replay_buffer_server_address',
        'variable_container_server_address',
-       'vocab_port',
-       'auth_key',
-       'env_batch_size',
-       'task',
-       'summary_interval',
-       'max_train_steps',
-       'initial_collect_steps'])
+       'sequence_length', 'env_batch_size', 'motion_file_path', 'task',
+       'summary_interval', 'max_train_steps', 'initial_collect_steps', 'seed'])
   multiprocessing.handle_main(functools.partial(app.run, main))

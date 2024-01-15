@@ -5,3 +5,4 @@ tf-keras
 dm-sonnet
 selenium
 webdriver-manager
+pybullet
