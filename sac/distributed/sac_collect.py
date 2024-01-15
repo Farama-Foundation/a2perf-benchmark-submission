@@ -229,6 +229,7 @@ def main(_):
             threading=False,
             chrome_options={
                 '--headless',
+                '--no-sandbox'
             }
         )
     )

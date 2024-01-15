@@ -227,7 +227,8 @@ def main(_):
         browser_args=dict(
             threading=False,
             chrome_options={
-                '--headless'
+                '--headless',
+                '--no-sandbox'
             }
         )
     )
