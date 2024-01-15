@@ -58,7 +58,8 @@ _ROOT_DIR = flags.DEFINE_string(
     'Root directory for writing logs/summaries/checkpoints.'
 )
 _LEARNER_ITERATIONS_PER_CALL = flags.DEFINE_integer(
-    'learner_iterations_per_call', 1, 'Number of iterations per learner call.')
+    'learner_iterations_per_call', None,
+    'Number of iterations per learner call.')
 _DEBUG = flags.DEFINE_bool('debug', False, 'Debug mode')
 _ENV_NAME = flags.DEFINE_string('env_name', None, 'Name of the environment')
 _LOG_INTERVAL = flags.DEFINE_integer('log_interval', 1000, 'Log interval.')
@@ -245,11 +246,13 @@ def train(
   logging.info('Closed and deleted environment.')
 
   def experience_dataset_fn():
-    with strategy.scope():
-      return reverb_replay_train.as_dataset(
-          sample_batch_size=batch_size,
-          num_parallel_calls=tf.data.experimental.AUTOTUNE,
-          num_steps=2).prefetch(3)
+    # with strategy.scope():
+    # Problem is that the dataset is created on the GPU, but the agent is on the
+    # CPU. Also, the GPU has less memory than the CPU
+    return reverb_replay_train.as_dataset(
+        sample_batch_size=batch_size,
+        num_parallel_calls=tf.data.experimental.AUTOTUNE,
+        num_steps=2).prefetch(3)
 
   # Create the learner.
   learning_triggers = [
@@ -276,6 +279,8 @@ def train(
   while train_step < max_train_step:
     sac_learner.run(iterations=learner_iterations_per_call)
     variable_container.push(variables)
+    logging.info('Train step: %d out of %d', train_step.numpy(),
+                 max_train_step)
 
   logging.info('Training finished.')
 
