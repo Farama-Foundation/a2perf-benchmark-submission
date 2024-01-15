@@ -17,6 +17,7 @@ _ROOT_DIR = flags.DEFINE_string(
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
     'Root directory for writing logs/summaries/checkpoints.',
 )
+_SEED = flags.DEFINE_integer('seed', None, 'Random seed.')
 _REPLAY_BUFFER_CAPACITY = flags.DEFINE_integer(
     'replay_buffer_capacity', 1000000, 'Capacity of the replay buffer table.'
 )
@@ -115,10 +116,10 @@ def main(_):
   absl_handler.setFormatter(PrefixedLogFormatter())
 
   tf.compat.v1.enable_v2_behavior()
-
+  tf.random.set_seed(_SEED.value)
   run_reverb_server(_ROOT_DIR.value)
 
 
 if __name__ == '__main__':
-  flags.mark_flags_as_required(['root_dir', 'port'])
+  flags.mark_flags_as_required(['root_dir', 'port', 'seed'])
   app.run(main)

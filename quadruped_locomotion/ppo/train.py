@@ -35,13 +35,13 @@ def train():
   host = os.environ.get('HOST', 'localhost')
   replay_buffer_server_address = f'{host}:{port}'
   variable_container_server_address = f'{host}:{port}'
+  debug = bool(os.environ.get('DEBUG', None))
 
   # Print extracted and computed values
   print(f'seed: {seed}')
   print(f'root_dir: {root_dir}')
   print(f'env_batch_size: {env_batch_size}')
   print(f'total_env_steps: {total_env_steps}')
-  # print(f'difficulty_level: {difficulty_level}')
   print(f'eval_interval: {eval_interval}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
@@ -50,12 +50,12 @@ def train():
   print(f'timesteps_per_actorbatch: {timesteps_per_actorbatch}')
   print(f'motion_file_path: {motion_file_path}')
   print(f'num_epochs: {num_epochs}')
-
+  print(f'entropy_regularization: {entropy_regularization}')
+  print(f'batch_size: {batch_size}')
+  print(f'debug: {debug}')
 
   # Force set gpu growth programmatically
   gpus = tf.config.list_physical_devices('GPU')
-  for gpu in gpus:
-    tf.config.experimental.set_memory_growth(gpu, True)
   num_replicas = len(gpus) if gpus else 1
 
   # Parameters for training
@@ -119,6 +119,7 @@ def train():
        f'--replay_buffer_server_address={replay_buffer_server_address}',
        f'--variable_container_server_address={variable_container_server_address}',
        f'--task={i}',
+       f'--seed={seed}',
        '--verbosity=-2',
        ] for i in range(env_batch_size)
   ]
@@ -139,7 +140,7 @@ def train():
       f'--env_name=QuadrupedLocomotion-v0',
       f'--num_epochs={num_epochs}',
       f'--batch_size={batch_size}',
-      f'--debug=False',
+      f'--debug={debug}',
       f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
       f'--sequence_length={adjusted_timesteps_per_actorbatch}',
       f'--policy_checkpoint_interval={policy_checkpoint_interval}',
@@ -153,7 +154,8 @@ def train():
       f'--log_interval={log_interval}',
       f'--seed={seed}',
       f'--variable_container_server_address={variable_container_server_address}',
-      f'--use_gpu'
+      f'--use_gpu',
+      f'--use_tpu=False'
   ]
   train_job = subprocess.Popen(train_job_command, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, env=os.environ.copy())

@@ -106,7 +106,7 @@ def train():
   # Launch multiprocessing manager server
   auth_key = 'secretkey'
   manager_command = [
-      'python', '-u', 'distributed/vocabulary_manager.py',
+      'python', 'distributed/vocabulary_manager.py',
       f'--port={vocab_port}',
       f'--auth_key={auth_key}',
       f'--max_vocab_size=500',
@@ -123,7 +123,7 @@ def train():
 
   # Launch reverb server
   reverb_command = [
-      'python', '-u',
+      'python',
       'distributed/ddqn_reverb_server.py',
       '--verbosity=2',
       f'--min_table_size_before_sampling={timesteps_per_actorbatch}',
@@ -135,7 +135,7 @@ def train():
   # Launch the subprocess with the same environment and output redirection
   reverb_process = subprocess.Popen(reverb_command, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT,
-                                    # env=os.environ.copy()
+                                    env=os.environ.copy()
                                     )
   threading.Thread(target=print_subprocess_output,
                    args=(reverb_process,)).start()
@@ -144,7 +144,7 @@ def train():
   # Launch collect jobs
   collect_job_commands = [
       [
-          'python', '-u',
+          'python',
           'distributed/ddqn_collect.py',
           '--verbosity=2' if debug else '--verbosity=-2',
           f'--env_batch_size={env_batch_size}',
@@ -166,9 +166,10 @@ def train():
 
   collect_jobs = []
   for command in collect_job_commands:
-    process = subprocess.Popen(command, stdout=subprocess.PIPE,
+    process = subprocess.Popen(command,
+                               stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,
-                               # env=os.environ.copy()
+                               env=os.environ.copy()
                                )
     collect_jobs.append(process)
     threading.Thread(target=print_subprocess_output, args=(process,)).start()
@@ -176,7 +177,7 @@ def train():
 
   # Launch train job
   train_job_command = [
-      'python', '-u',
+      'python',
       'distributed/ddqn_train.py',
       f'--batch_size={batch_size}',
       f'--debug={debug}',
@@ -203,9 +204,10 @@ def train():
       f'--variable_container_server_address={variable_container_server_address}',
       f'--verbosity=2'
   ]
-  train_job = subprocess.Popen(train_job_command, stdout=subprocess.PIPE,
+  train_job = subprocess.Popen(train_job_command,
+                               stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,
-                               # env=os.environ.copy()
+                               env=os.environ.copy()
                                )
   threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
   logging.info('Successfully launched train job.')

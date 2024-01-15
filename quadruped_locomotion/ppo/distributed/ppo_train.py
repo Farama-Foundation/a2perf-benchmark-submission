@@ -24,6 +24,7 @@ from typing import Optional
 from typing import Text
 
 import gin
+import numpy as np
 import reverb
 import tensorflow as tf
 from absl import app
@@ -47,13 +48,11 @@ from tf_agents.train.utils import train_utils
 from tf_agents.trajectories import time_step as ts
 from tf_agents.typing import types
 
-from a2perf.domains import quadruped_locomotion
-
 _SEQUENCE_LENGTH = flags.DEFINE_integer(
-    'sequence_length', 0,
+    'sequence_length', None,
     'Length of sequences to sample from the replay buffer.'
 )
-_SEED = flags.DEFINE_integer('seed', 0, 'Random seed.')
+_SEED = flags.DEFINE_integer('seed', None, 'Random seed.')
 _ROOT_DIR = flags.DEFINE_string(
     'root_dir',
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
@@ -61,15 +60,15 @@ _ROOT_DIR = flags.DEFINE_string(
 )
 _DEBUG = flags.DEFINE_bool('debug', False, 'Debug mode')
 _ENV_NAME = flags.DEFINE_string('env_name', None, 'Name of the environment')
-_LOG_INTERVAL = flags.DEFINE_integer('log_interval', 1000, 'Log interval.')
+_LOG_INTERVAL = flags.DEFINE_integer('log_interval', None, 'Log interval.')
 _REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
     'replay_buffer_server_address', None, 'Replay buffer server address.'
 )
 _POLICY_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
-    'policy_checkpoint_interval', 1000, 'Policy checkpoint interval.'
+    'policy_checkpoint_interval', None, 'Policy checkpoint interval.'
 )
 _TIMESTEPS_PER_ACTORBATCH = flags.DEFINE_integer(
-    'timesteps_per_actorbatch', 2048, 'Number of timesteps per actorbatch.')
+    'timesteps_per_actorbatch', None, 'Number of timesteps per actorbatch.')
 
 _ENV_BATCH_SIZE = flags.DEFINE_integer(
     'env_batch_size', None, 'Number of environments to run in parallel.'
@@ -78,7 +77,7 @@ _MOTION_FILE_PATH = flags.DEFINE_string(
     'motion_file_path', None, 'Path to the motion file.'
 )
 _TRAIN_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
-    'train_checkpoint_interval', 1000, 'Train checkpoint interval.'
+    'train_checkpoint_interval', None, 'Train checkpoint interval.'
 )
 
 _USE_TPU = flags.DEFINE_bool('use_tpu', False, 'Whether to use TPU or not.')
@@ -87,15 +86,15 @@ _VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
     None,
     'Variable container server address.'
 )
-_BATCH_SIZE = flags.DEFINE_integer('batch_size', 32, 'Batch size.')
-_NUM_EPOCHS = flags.DEFINE_integer('num_epochs', 1, 'Number of epochs.')
+_BATCH_SIZE = flags.DEFINE_integer('batch_size', None, 'Batch size.')
+_NUM_EPOCHS = flags.DEFINE_integer('num_epochs', None, 'Number of epochs.')
 _GIN_FILE = flags.DEFINE_multi_string('gin_file', None,
                                       'Paths to the gin-config files.')
-_ENTROPY_REGULARIZATION = flags.DEFINE_float('entropy_regularization', 0.0,
+_ENTROPY_REGULARIZATION = flags.DEFINE_float('entropy_regularization', None,
                                              'Entropy regularization.')
 _GIN_BINDINGS = flags.DEFINE_multi_string('gin_bindings', None,
                                           'Gin binding parameters.')
-_MAX_TRAIN_STEP = flags.DEFINE_integer('max_train_steps', 2000000,
+_MAX_TRAIN_STEP = flags.DEFINE_integer('max_train_steps', None,
                                        'Number of iterations.')
 _GRADIENT_CLIPPING = flags.DEFINE_float('gradient_clipping', None,
                                         'Gradient clipping.')
@@ -103,8 +102,8 @@ _DEBUG_SUMMARIES = flags.DEFINE_bool('debug_summaries', False,
                                      'Whether to use debug summaries.')
 _SUMMARIZE_GRADS_AND_VARS = flags.DEFINE_bool('summarize_grads_and_vars', False,
                                               'Whether to summarize grads and vars.')
-_LEARNING_RATE = flags.DEFINE_float('learning_rate', 3e-4, 'Learning rate.')
-_USE_GAE = flags.DEFINE_bool('use_gae', True, 'Whether to use GAE or not.')
+_LEARNING_RATE = flags.DEFINE_float('learning_rate', None, 'Learning rate.')
+_USE_GAE = flags.DEFINE_bool('use_gae', None, 'Whether to use GAE or not.')
 FLAGS = flags.FLAGS
 
 
@@ -333,11 +332,15 @@ def train(
 
 
 def main(_):
-  tf.compat.v1.enable_v2_behavior()
-
   # Add a prefix to our absl logger so we know which collect job this is
   absl_handler = logging.get_absl_handler()
   absl_handler.setFormatter(PrefixedLogFormatter())
+
+  tf.compat.v1.enable_v2_behavior()
+
+  # Set the random seeds
+  tf.random.set_seed(_SEED.value)
+  np.random.seed(_SEED.value)
 
   gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
                                       finalize_config=False
@@ -393,5 +396,6 @@ if __name__ == '__main__':
       'env_batch_size',
       'sequence_length',
       'motion_file_path',
+      'seed'
   ])
   multiprocessing.handle_main(lambda _: app.run(main))

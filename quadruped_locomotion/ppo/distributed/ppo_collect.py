@@ -3,7 +3,7 @@
 import functools
 import os
 from typing import Text
-
+import numpy as np
 import gin
 import reverb
 import tensorflow as tf
@@ -35,6 +35,7 @@ _REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
 _ENV_BATCH_SIZE = flags.DEFINE_integer(
     'env_batch_size', None, 'Number of environments to run in parallel.'
 )
+_SEED = flags.DEFINE_integer('seed', None, 'Random seed.')
 _VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
     'variable_container_server_address',
     None,
@@ -179,6 +180,10 @@ def main(_):
 
   tf.compat.v1.enable_v2_behavior()
 
+  # Set the random seeds
+  tf.random.set_seed(_SEED.value)
+  np.random.seed(_SEED.value)
+
   gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
                                       finalize_config=False)
 
@@ -202,5 +207,6 @@ if __name__ == '__main__':
       'variable_container_server_address',
       'sequence_length',
       'env_batch_size',
+      'seed',
   ])
   multiprocessing.handle_main(functools.partial(app.run, main))
