@@ -122,7 +122,7 @@ def collect(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(1),
+      metrics=actor.collect_metrics(10),
       summary_interval=summary_interval,
       summary_dir=os.path.join(_ROOT_DIR.value, 'summaries',
                                str(_TASK.value)),

@@ -140,7 +140,7 @@ def collect(environment_name: str,
       collect_env,
       collect_policy,
       train_step,
-      steps_per_run=1,
+      steps_per_run=sequence_length,
       metrics=actor.collect_metrics(10),
       summary_dir=summary_dir,
       summary_interval=summary_interval,
@@ -152,13 +152,13 @@ def collect(environment_name: str,
   while True:
     collect_actor.run()
     variable_container.update(variables)
-    # logging.info('Collecting with policy at step: %d', train_step.numpy())
+    logging.info('Collecting with policy at step: %d', train_step.numpy())
 
     num_steps_collected = env_step_metric.result()
-    # logging.info('\tCollected %d steps', num_steps_collected)
-    # logging.info('\tCollected %d steps this iteration',
-    #              num_steps_collected - prev_num_steps_collected)
-    # prev_num_steps_collected = num_steps_collected
+    logging.info('\tCollected %d steps', num_steps_collected)
+    logging.info('\tCollected %d steps this iteration',
+                 num_steps_collected - prev_num_steps_collected)
+    prev_num_steps_collected = num_steps_collected
 
 
 def run_collect(root_dir: str,

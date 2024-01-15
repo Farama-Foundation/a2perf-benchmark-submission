@@ -88,7 +88,7 @@ _VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
     None,
     'Variable container server address.'
 )
-_BATCH_SIZE = flags.DEFINE_integer('batch_size', 32, 'Batch size.')
+_BATCH_SIZE = flags.DEFINE_integer('batch_size', None, 'Batch size.')
 _GIN_FILE = flags.DEFINE_multi_string('gin_file', None,
                                       'Paths to the gin-config files.')
 _GIN_BINDINGS = flags.DEFINE_multi_string('gin_bindings', None,
@@ -279,9 +279,6 @@ def train(
   while train_step < max_train_step:
     sac_learner.run(iterations=learner_iterations_per_call)
     variable_container.push(variables)
-    logging.info('Train step: %d out of %d', train_step.numpy(),
-                 max_train_step)
-
   logging.info('Training finished.')
 
 
