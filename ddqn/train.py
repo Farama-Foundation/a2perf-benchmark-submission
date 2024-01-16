@@ -21,13 +21,16 @@ def train():
   eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
   rb_capacity = int(os.environ.get('RB_CAPACITY', None))
   train_checkpoint_interval = int(
-      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None))
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None)
+  )
   policy_checkpoint_interval = int(
-      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None))
+      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None)
+  )
   log_interval = int(os.environ.get('LOG_INTERVAL', None))
   learning_rate = float(os.environ.get('LEARNING_RATE', None))
   timesteps_per_actorbatch = int(
-      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None))
+      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
+  )
   port = int(os.environ.get('PORT', '8008'))
   host = os.environ.get('HOST', 'localhost')
   replay_buffer_server_address = f'{host}:{port}'
@@ -64,7 +67,8 @@ def train():
   print(f'total_env_steps: {total_env_steps}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
   print(
-      f'variable_container_server_address: {variable_container_server_address}')
+      f'variable_container_server_address: {variable_container_server_address}'
+  )
   print(f'vocab_port: {vocab_port}')
   print(f'max_vocab_size: {max_vocab_size}')
   print(f'latent_dim: {latent_dim}')
@@ -76,37 +80,59 @@ def train():
   max_train_steps = train_steps_per_iteration * num_iterations
   adjusted_timesteps_per_actorbatch = timesteps_per_actorbatch // env_batch_size
 
-  eval_interval = np.maximum(1, np.round(
-      eval_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int))
-  log_interval = np.maximum(1, np.round(
-      log_interval / env_batch_size / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int))
-  policy_checkpoint_interval = np.maximum(1, np.round(
-      policy_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int))
-  train_checkpoint_interval = np.maximum(1, np.round(
-      train_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int))
-  learner_iterations_per_call = np.maximum(1, np.round(
-      timesteps_per_actorbatch / batch_size).astype(int))
+  eval_interval = np.maximum(
+      1,
+      np.round(
+          eval_interval / timesteps_per_actorbatch * train_steps_per_iteration
+      ).astype(int),
+  )
+  log_interval = np.maximum(
+      1,
+      np.round(
+          log_interval
+          / env_batch_size
+          / timesteps_per_actorbatch
+          * train_steps_per_iteration
+      ).astype(int),
+  )
+  policy_checkpoint_interval = np.maximum(
+      1,
+      np.round(
+          policy_checkpoint_interval
+          / timesteps_per_actorbatch
+          * train_steps_per_iteration
+      ).astype(int),
+  )
+  train_checkpoint_interval = np.maximum(
+      1,
+      np.round(
+          train_checkpoint_interval
+          / timesteps_per_actorbatch
+          * train_steps_per_iteration
+      ).astype(int),
+  )
+  learner_iterations_per_call = np.maximum(
+      1, np.round(timesteps_per_actorbatch / batch_size).astype(int)
+  )
   logging.info(f'converted eval_interval: {eval_interval}')
   logging.info(f'converted log_interval: {log_interval}')
   logging.info(
-      f'converted policy_checkpoint_interval: {policy_checkpoint_interval}')
+      f'converted policy_checkpoint_interval: {policy_checkpoint_interval}'
+  )
   logging.info(
-      f'converted train_checkpoint_interval: {train_checkpoint_interval}')
+      f'converted train_checkpoint_interval: {train_checkpoint_interval}'
+  )
   logging.info(f'max_train_steps: {max_train_steps}')
   logging.info(f'num_iterations: {num_iterations}')
   logging.info(f'random seed: {seed}')
   logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
-  logging.info(
-      f'learner_iterations_per_call: {learner_iterations_per_call}')
+  logging.info(f'learner_iterations_per_call: {learner_iterations_per_call}')
 
   # Launch multiprocessing manager server
   auth_key = 'secretkey'
   manager_command = [
-      'python', 'distributed/vocabulary_manager.py',
+      'python',
+      'distributed/vocabulary_manager.py',
       f'--port={vocab_port}',
       f'--auth_key={auth_key}',
       f'--max_vocab_size=500',
@@ -114,15 +140,20 @@ def train():
   ]
 
   # Launch the subprocess with the same environment and output redirection
-  vocab_manager = subprocess.Popen(manager_command, stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT,
-                                   env=os.environ.copy())
-  threading.Thread(target=print_subprocess_output,
-                   args=(vocab_manager,)).start()
+  vocab_manager = subprocess.Popen(
+      manager_command,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.STDOUT,
+      env=os.environ.copy(),
+  )
+  threading.Thread(
+      target=print_subprocess_output, args=(vocab_manager,)
+  ).start()
   logging.info('Successfully launched vocab manager server.')
 
   # Launch reverb server
   reverb_command = [
+      'CUDA_VISIBLE_DEVICES=-1',
       'python',
       'distributed/ddqn_reverb_server.py',
       '--verbosity=2',
@@ -133,17 +164,21 @@ def train():
   ]
 
   # Launch the subprocess with the same environment and output redirection
-  reverb_process = subprocess.Popen(reverb_command, stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT,
-                                    env=os.environ.copy()
-                                    )
-  threading.Thread(target=print_subprocess_output,
-                   args=(reverb_process,)).start()
+  reverb_process = subprocess.Popen(
+      reverb_command,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.STDOUT,
+      env=os.environ.copy(),
+  )
+  threading.Thread(
+      target=print_subprocess_output, args=(reverb_process,)
+  ).start()
   logging.info('Successfully launched reverb server.')
 
   # Launch collect jobs
   collect_job_commands = [
       [
+          'CUDA_VISIBLE_DEVICES=-1',
           'python',
           'distributed/ddqn_collect.py',
           '--verbosity=2' if debug else '--verbosity=-2',
@@ -157,20 +192,21 @@ def train():
           f'--root_dir={root_dir}',
           f'--vocab_port={vocab_port}',
           f'--auth_key={auth_key}',
-
           f'--summary_interval={log_interval}',
           f'--task={i}',
           f'--variable_container_server_address={variable_container_server_address}',
-      ] for i in range(env_batch_size)
+      ]
+      for i in range(env_batch_size)
   ]
 
   collect_jobs = []
   for command in collect_job_commands:
-    process = subprocess.Popen(command,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT,
-                               env=os.environ.copy()
-                               )
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=os.environ.copy(),
+    )
     collect_jobs.append(process)
     threading.Thread(target=print_subprocess_output, args=(process,)).start()
   logging.info('Successfully launched collect jobs.')
@@ -202,13 +238,14 @@ def train():
       f'--train_checkpoint_interval={train_checkpoint_interval}',
       f'--use_gpu',
       f'--variable_container_server_address={variable_container_server_address}',
-      f'--verbosity=2'
+      f'--verbosity=2',
   ]
-  train_job = subprocess.Popen(train_job_command,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT,
-                               env=os.environ.copy()
-                               )
+  train_job = subprocess.Popen(
+      train_job_command,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.STDOUT,
+      env=os.environ.copy(),
+  )
   threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
   logging.info('Successfully launched train job.')
 
