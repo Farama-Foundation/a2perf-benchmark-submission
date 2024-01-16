@@ -3,13 +3,15 @@
 import functools
 import os
 from typing import Text
-import numpy as np
-import gin
-import reverb
-import tensorflow as tf
+# noinspection PyUnresolvedReferences
+from a2perf.domains import quadruped_locomotion
 from absl import app
 from absl import flags
 from absl import logging
+import gin
+import numpy as np
+import reverb
+import tensorflow as tf
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_pybullet
 from tf_agents.experimental.distributed import reverb_variable_container
@@ -20,9 +22,6 @@ from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
-
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
 
 _DIFFICULTY_LEVEL = flags.DEFINE_integer(
     'difficulty_level',
@@ -68,16 +67,20 @@ _SEQUENCE_LENGTH = flags.DEFINE_integer(
     None,
     'Size of reverb buffer to sample.',
 )
-_TASK = flags.DEFINE_integer('task', 0,
-                             'Identifier of a collect task. Must be unique.')
+_TASK = flags.DEFINE_integer(
+    'task', 0, 'Identifier of a collect task. Must be unique.'
+)
 
-_GIN_FILE = flags.DEFINE_multi_string('gin_file', None,
-                                      'Paths to the gin-config files.')
-_GIN_BINDINGS = flags.DEFINE_multi_string('gin_bindings', None,
-                                          'Gin binding parameters.')
+_GIN_FILE = flags.DEFINE_multi_string(
+    'gin_file', None, 'Paths to the gin-config files.'
+)
+_GIN_BINDINGS = flags.DEFINE_multi_string(
+    'gin_bindings', None, 'Gin binding parameters.'
+)
 
 
 class PrefixedLogFormatter(logging.PythonFormatter):
+
   def format(self, record):
     original = super(PrefixedLogFormatter, self).format(record)
     return f'Collect {_TASK.value}: {original}'
@@ -130,8 +133,7 @@ def collect(
       steps_per_run=sequence_length,
       metrics=actor.collect_metrics(10),
       summary_interval=summary_interval,
-      summary_dir=os.path.join(_ROOT_DIR.value, 'summaries',
-                               str(_TASK.value)),
+      summary_dir=os.path.join(_ROOT_DIR.value, 'summaries', str(_TASK.value)),
       observers=[experience_observer, env_step_metric],
   )
 
@@ -144,8 +146,10 @@ def collect(
 
     num_steps_collected = env_step_metric.result()
     logging.info('\tCollected %d steps', num_steps_collected)
-    logging.info('\tCollected %d steps this iteration',
-                 num_steps_collected - prev_num_steps_collected)
+    logging.info(
+        '\tCollected %d steps this iteration',
+        num_steps_collected - prev_num_steps_collected,
+    )
     prev_num_steps_collected = num_steps_collected
 
 
@@ -174,7 +178,7 @@ def run_collect(
       replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
       variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
       sequence_length=sequence_length,
-      suite_load_fn=suite_load_fn,
+      suite_load_function=suite_load_fn,
   )
 
 
@@ -189,16 +193,18 @@ def main(_):
   tf.random.set_seed(_SEED.value)
   np.random.seed(_SEED.value)
 
-  gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
-                                      finalize_config=False)
+  gin.parse_config_files_and_bindings(
+      _GIN_FILE.value, _GIN_BINDINGS.value, finalize_config=False
+  )
 
   # Define the default dictionary for gym_kwargs
   if _ENV_NAME.value == 'QuadrupedLocomotion-v0':
-    default_gym_kwargs = dict(motion_files=[_MOTION_FILE_PATH.value],
-                              num_parallel_envs=_ENV_BATCH_SIZE.value)
+    default_gym_kwargs = dict(
+        motion_files=[_MOTION_FILE_PATH.value],
+        num_parallel_envs=_ENV_BATCH_SIZE.value,
+    )
     suite_load_function = functools.partial(
-        suite_pybullet.load,
-        gym_kwargs=default_gym_kwargs
+        suite_pybullet.load, gym_kwargs=default_gym_kwargs
     )
   elif _ENV_NAME.value == 'WebNavigation-v0':
     default_gym_kwargs = dict(
@@ -208,16 +214,11 @@ def main(_):
         num_websites=_NUM_WEBSITES.value,
         seed=0,
         browser_args=dict(
-            threading=False,
-            chrome_options={
-                '--headless',
-                '--no-sandbox'
-            }
-        )
+            threading=False, chrome_options={'--headless', '--no-sandbox'}
+        ),
     )
     suite_load_function = functools.partial(
-        suite_gym.load,
-        gym_kwargs=default_gym_kwargs
+        suite_gym.load, gym_kwargs=default_gym_kwargs
     )
   else:
     raise ValueError(f'Unknown environment: {_ENV_NAME.value}')

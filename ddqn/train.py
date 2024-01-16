@@ -2,9 +2,9 @@ import os
 import subprocess
 import threading
 
-import numpy as np
 from absl import app
 from absl import logging
+import numpy as np
 
 
 def print_subprocess_output(process):

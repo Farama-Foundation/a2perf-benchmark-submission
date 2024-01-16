@@ -23,13 +23,15 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+from absl import app
+from absl import flags
+from absl import logging
 import gin
 import numpy as np
 import reverb
 import tensorflow as tf
-from absl import app
-from absl import flags
-from absl import logging
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ppo import ppo_clip_agent
 from tf_agents.environments import py_environment
@@ -48,10 +50,6 @@ from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.trajectories import time_step as ts
 from tf_agents.typing import types
-
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains.web_navigation.gwob.CoDE import networks
 
 _SEQUENCE_LENGTH = flags.DEFINE_integer(
     'sequence_length', None,

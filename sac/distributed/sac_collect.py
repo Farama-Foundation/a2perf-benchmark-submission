@@ -2,13 +2,14 @@
 import functools
 import os
 
+from a2perf.domains import quadruped_locomotion
+from absl import app
+from absl import flags
+from absl import logging
 import gin
 import numpy as np
 import reverb
 import tensorflow as tf
-from absl import app
-from absl import flags
-from absl import logging
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_pybullet
 from tf_agents.experimental.distributed import reverb_variable_container
@@ -21,9 +22,6 @@ from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
-
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
 
 _DIFFICULTY_LEVEL = flags.DEFINE_integer(
     'difficulty_level',

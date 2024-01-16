@@ -1,6 +1,6 @@
 import multiprocessing
-import time
 from multiprocessing.managers import BaseManager
+import time
 
 from absl import app
 from absl import flags

@@ -2,11 +2,11 @@
 
 import os
 
-import reverb
-import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
+import reverb
+import tensorflow as tf
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.specs import tensor_spec
