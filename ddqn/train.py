@@ -128,6 +128,9 @@ def train():
   logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
   logging.info(f'learner_iterations_per_call: {learner_iterations_per_call}')
 
+  no_gpu_env = os.environ.copy()
+  no_gpu_env['CUDA_VISIBLE_DEVICES'] = '-1'
+
   # Launch multiprocessing manager server
   auth_key = 'secretkey'
   manager_command = [
@@ -153,7 +156,6 @@ def train():
 
   # Launch reverb server
   reverb_command = [
-      'CUDA_VISIBLE_DEVICES=-1',
       'python',
       'distributed/ddqn_reverb_server.py',
       '--verbosity=2',
@@ -168,7 +170,7 @@ def train():
       reverb_command,
       stdout=subprocess.PIPE,
       stderr=subprocess.STDOUT,
-      env=os.environ.copy(),
+      env=no_gpu_env
   )
   threading.Thread(
       target=print_subprocess_output, args=(reverb_process,)
@@ -178,7 +180,6 @@ def train():
   # Launch collect jobs
   collect_job_commands = [
       [
-          'CUDA_VISIBLE_DEVICES=-1',
           'python',
           'distributed/ddqn_collect.py',
           '--verbosity=2' if debug else '--verbosity=-2',
@@ -205,7 +206,7 @@ def train():
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env=os.environ.copy(),
+        env=no_gpu_env,
     )
     collect_jobs.append(process)
     threading.Thread(target=print_subprocess_output, args=(process,)).start()

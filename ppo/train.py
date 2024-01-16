@@ -124,6 +124,9 @@ def train():
   logging.info(f'converted log_interval: {log_interval}')
   logging.info(f'random seed: {seed}')
 
+  no_gpu_env = os.environ.copy()
+  no_gpu_env['CUDA_VISIBLE_DEVICES'] = '-1'
+
   env_flags = []
   if env_name == 'WebNavigation-v0':
     env_flags.extend([
@@ -144,8 +147,7 @@ def train():
         manager_command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env=os.environ.copy(),
-    )
+env=no_gpu_env    )
     threading.Thread(
         target=print_subprocess_output, args=(manager_process,)
     ).start()
@@ -157,7 +159,7 @@ def train():
 
   # Launch reverb server
   reverb_command = [
-      'CUDA_VISIBLE_DEVICES=-1',
+
       'python',
       'distributed/ppo_reverb_server.py',
       f'--port={port}',
@@ -169,7 +171,7 @@ def train():
       reverb_command,
       stdout=subprocess.PIPE,
       stderr=subprocess.STDOUT,
-      env=os.environ.copy(),
+      env=no_gpu_env,
   )
   threading.Thread(
       target=print_subprocess_output, args=(reverb_process,)
@@ -179,7 +181,7 @@ def train():
   # Launch collect jobs without GPU
   collect_job_commands = [
       [
-          'CUDA_VISIBLE_DEVICES=-1',
+
           'python',
           'distributed/ppo_collect.py',
           f'--root_dir={root_dir}',
@@ -202,7 +204,7 @@ def train():
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env=os.environ.copy(),
+        env=no_gpu_env
     )
     collect_jobs.append(process)
     threading.Thread(target=print_subprocess_output, args=(process,)).start()
