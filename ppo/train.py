@@ -147,7 +147,8 @@ def train():
         manager_command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-env=no_gpu_env    )
+        env=no_gpu_env
+    )
     threading.Thread(
         target=print_subprocess_output, args=(manager_process,)
     ).start()
@@ -181,7 +182,6 @@ env=no_gpu_env    )
   # Launch collect jobs without GPU
   collect_job_commands = [
       [
-
           'python',
           'distributed/ppo_collect.py',
           f'--root_dir={root_dir}',
@@ -212,28 +212,28 @@ env=no_gpu_env    )
 
   # Launch train job
   train_job_command = [
-      'python',
-      'distributed/ppo_train.py',
-      f'--entropy_regularization={entropy_regularization}',
-      f'--num_epochs={num_epochs}',
-      f'--batch_size={batch_size}',
-      f'--debug={debug}',
-      f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
-      f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-      f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-      f'--replay_buffer_server_address={replay_buffer_server_address}',
-      f'--root_dir={root_dir}',
-      f'--train_checkpoint_interval={train_checkpoint_interval}',
-      f'--max_train_steps={max_train_steps}',
-      f'--env_batch_size={env_batch_size}',
-      f'--learning_rate={learning_rate}',
-      f'--log_interval={log_interval}',
-      f'--seed={seed}',
-      f'--variable_container_server_address={variable_container_server_address}',
-      f'--use_gpu',
-      f'--use_gae={use_gae}',
-      f'--use_tpu=False',
-  ] + env_flags
+                          'python',
+                          'distributed/ppo_train.py',
+                          f'--entropy_regularization={entropy_regularization}',
+                          f'--num_epochs={num_epochs}',
+                          f'--batch_size={batch_size}',
+                          f'--debug={debug}',
+                          f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
+                          f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+                          f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+                          f'--replay_buffer_server_address={replay_buffer_server_address}',
+                          f'--root_dir={root_dir}',
+                          f'--train_checkpoint_interval={train_checkpoint_interval}',
+                          f'--max_train_steps={max_train_steps}',
+                          f'--env_batch_size={env_batch_size}',
+                          f'--learning_rate={learning_rate}',
+                          f'--log_interval={log_interval}',
+                          f'--seed={seed}',
+                          f'--variable_container_server_address={variable_container_server_address}',
+                          f'--use_gpu',
+                          f'--use_gae={use_gae}',
+                          f'--use_tpu=False',
+                      ] + env_flags
 
   train_job = subprocess.Popen(
       train_job_command,
