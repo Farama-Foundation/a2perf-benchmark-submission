@@ -195,7 +195,7 @@ def train():
   collect_job_commands = [
       [
           'python',
-          'distributed/sac_collect.py',  # Note: Use SAC-specific collect script
+          'distributed/ddqn_collect.py',  # Note: Use ddqn-specific collect script
           f'--root_dir={root_dir}',
           f'--sequence_length={adjusted_timesteps_per_actorbatch}',
           f'--summary_interval={log_interval}',
@@ -228,7 +228,7 @@ def train():
   # Launch train job
   train_job_command = [
       'python',
-      'distributed/sac_train.py',
+      'distributed/ddqn_train.py',
       f'--batch_size={batch_size}',
       f'--debug={debug}',
       f'--epsilon_greedy={epsilon_greedy}',

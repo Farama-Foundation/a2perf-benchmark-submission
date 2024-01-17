@@ -169,7 +169,7 @@ def train():
   # Launch reverb server
   reverb_command = [
       'python',
-      'distributed/sac_reverb_server.py',
+      'distributed/ppo_reverb_server.py',
       f'--port={port}',
       f'--root_dir={root_dir}',
       f'--min_table_size_before_sampling={timesteps_per_actorbatch}',
@@ -191,7 +191,7 @@ def train():
   collect_job_commands = [
       [
           'python',
-          'distributed/sac_collect.py',  # Note: Use SAC-specific collect script
+          'distributed/ppo_collect.py',  # Note: Use ppo-specific collect script
           f'--root_dir={root_dir}',
           f'--sequence_length={adjusted_timesteps_per_actorbatch}',
           f'--summary_interval={log_interval}',
