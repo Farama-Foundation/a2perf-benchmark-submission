@@ -43,6 +43,10 @@ def train():
   variable_container_server_address = f'{host}:{port}'
   debug = bool(os.environ.get('DEBUG', None))
   max_vocab_size = int(os.environ.get('MAX_VOCAB_SIZE', -1))
+  embedding_dim = int(os.environ.get('EMBEDDING_DIM', -1))
+  latent_dim = int(os.environ.get('LATENT_DIM', -1))
+  epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', -1))
+  profile_value_dropout = float(os.environ.get('PROFILE_VALUE_DROPOUT', -1))
 
   print(f'batch_size: {batch_size}')
   print(f'debug: {debug}')
@@ -68,6 +72,10 @@ def train():
     print(f'vocab_port: {vocab_port}')
     print(f'difficulty_level: {difficulty_level}')
     print(f'num_websites: {num_websites}')
+    print(f'embedding_dim: {embedding_dim}')
+    print(f'latent_dim: {latent_dim}')
+    print(f'epsilon_greedy: {epsilon_greedy}')
+    print(f'profile_value_dropout: {profile_value_dropout}')
 
   gpus = tf.config.list_physical_devices('GPU')
   num_replicas = len(gpus) if gpus else 1
@@ -147,7 +155,7 @@ def train():
         manager_command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env=no_gpu_env
+        env=no_gpu_env,
     )
     threading.Thread(
         target=print_subprocess_output, args=(manager_process,)
@@ -160,11 +168,11 @@ def train():
 
   # Launch reverb server
   reverb_command = [
-
       'python',
-      'distributed/ppo_reverb_server.py',
+      'distributed/sac_reverb_server.py',
       f'--port={port}',
       f'--root_dir={root_dir}',
+      f'--min_table_size_before_sampling={timesteps_per_actorbatch}',
       '--verbosity=2',
   ]
 
@@ -179,20 +187,21 @@ def train():
   ).start()
   logging.info('Successfully launched reverb server.')
 
-  # Launch collect jobs without GPU
+  # Launch collect jobs with domain-specific configurations
   collect_job_commands = [
       [
           'python',
-          'distributed/ppo_collect.py',
+          'distributed/sac_collect.py',  # Note: Use SAC-specific collect script
           f'--root_dir={root_dir}',
           f'--sequence_length={adjusted_timesteps_per_actorbatch}',
           f'--summary_interval={log_interval}',
           f'--env_batch_size={env_batch_size}',
+          f'--max_train_steps={max_train_steps}',
           f'--replay_buffer_server_address={replay_buffer_server_address}',
           f'--variable_container_server_address={variable_container_server_address}',
           f'--task={i}',
           f'--seed={seed}',
-          '--verbosity=-2',
+          '--verbosity=2' if i == 0 else '--verbosity=-2',
       ]
       + env_flags
       for i in range(env_batch_size)
@@ -204,7 +213,7 @@ def train():
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env=no_gpu_env
+        env=no_gpu_env,
     )
     collect_jobs.append(process)
     threading.Thread(target=print_subprocess_output, args=(process,)).start()
@@ -212,28 +221,28 @@ def train():
 
   # Launch train job
   train_job_command = [
-                          'python',
-                          'distributed/ppo_train.py',
-                          f'--entropy_regularization={entropy_regularization}',
-                          f'--num_epochs={num_epochs}',
-                          f'--batch_size={batch_size}',
-                          f'--debug={debug}',
-                          f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
-                          f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-                          f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-                          f'--replay_buffer_server_address={replay_buffer_server_address}',
-                          f'--root_dir={root_dir}',
-                          f'--train_checkpoint_interval={train_checkpoint_interval}',
-                          f'--max_train_steps={max_train_steps}',
-                          f'--env_batch_size={env_batch_size}',
-                          f'--learning_rate={learning_rate}',
-                          f'--log_interval={log_interval}',
-                          f'--seed={seed}',
-                          f'--variable_container_server_address={variable_container_server_address}',
-                          f'--use_gpu',
-                          f'--use_gae={use_gae}',
-                          f'--use_tpu=False',
-                      ] + env_flags
+      'python',
+      'distributed/ppo_train.py',
+      f'--entropy_regularization={entropy_regularization}',
+      f'--num_epochs={num_epochs}',
+      f'--batch_size={batch_size}',
+      f'--debug={debug}',
+      f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
+      f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+      f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+      f'--replay_buffer_server_address={replay_buffer_server_address}',
+      f'--root_dir={root_dir}',
+      f'--train_checkpoint_interval={train_checkpoint_interval}',
+      f'--max_train_steps={max_train_steps}',
+      f'--env_batch_size={env_batch_size}',
+      f'--learning_rate={learning_rate}',
+      f'--log_interval={log_interval}',
+      f'--seed={seed}',
+      f'--variable_container_server_address={variable_container_server_address}',
+      f'--use_gpu',
+      f'--use_gae={use_gae}',
+      f'--use_tpu=False',
+  ] + env_flags
 
   train_job = subprocess.Popen(
       train_job_command,

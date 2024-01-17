@@ -5,6 +5,7 @@ import threading
 from absl import app
 from absl import logging
 import numpy as np
+import tensorflow as tf
 
 
 def print_subprocess_output(process):
@@ -13,67 +14,72 @@ def print_subprocess_output(process):
 
 
 def train():
-  seed = int(os.environ.get('SEED', None))
+  seed = int(os.environ.get('SEED', -1))
   root_dir = os.environ.get('ROOT_DIR', None)
-  env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', None))
-  batch_size = int(os.environ.get('BATCH_SIZE', None))
-  total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', None))
-  eval_interval = int(os.environ.get('EVAL_INTERVAL', None))
-  rb_capacity = int(os.environ.get('RB_CAPACITY', None))
+  env_batch_size = int(os.environ.get('ENV_BATCH_SIZE', -1))
+  batch_size = int(os.environ.get('BATCH_SIZE', -1))
+  total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', -1))
+  eval_interval = int(os.environ.get('EVAL_INTERVAL', -1))
   train_checkpoint_interval = int(
-      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', None)
+      os.environ.get('TRAIN_CHECKPOINT_INTERVAL', -1)
   )
   policy_checkpoint_interval = int(
-      os.environ.get('POLICY_CHECKPOINT_INTERVAL', None)
+      os.environ.get('POLICY_CHECKPOINT_INTERVAL', -1)
   )
-  log_interval = int(os.environ.get('LOG_INTERVAL', None))
-  learning_rate = float(os.environ.get('LEARNING_RATE', None))
-  timesteps_per_actorbatch = int(
-      os.environ.get('TIMESTEPS_PER_ACTORBATCH', None)
-  )
+  log_interval = int(os.environ.get('LOG_INTERVAL', -1))
+  learning_rate = float(os.environ.get('LEARNING_RATE', -1))
+  timesteps_per_actorbatch = int(os.environ.get('TIMESTEPS_PER_ACTORBATCH', -1))
+  env_name = os.environ.get('ENV_NAME', None)
+  motion_file_path = os.environ.get('MOTION_FILE_PATH', None)
+  vocab_port = int(os.environ.get('VOCAB_PORT', '50000'))
+  difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', -1))
+  num_websites = int(os.environ.get('NUM_WEBSITES', -1))
   port = int(os.environ.get('PORT', '8008'))
   host = os.environ.get('HOST', 'localhost')
   replay_buffer_server_address = f'{host}:{port}'
   variable_container_server_address = f'{host}:{port}'
-  debug = bool(os.environ.get('DEBUG', False))
-  epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', None))
-  reverb_port = int(os.environ.get('REVERB_PORT', '8008'))
-  vocab_port = int(os.environ.get('VOCAB_PORT', '50000'))
-  num_websites = int(os.environ.get('NUM_WEBSITES', None))
-  difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', None))
-  max_vocab_size = int(os.environ.get('MAX_VOCAB_SIZE', None))
-  latent_dim = int(os.environ.get('LATENT_DIM', None))
-  embedding_dim = int(os.environ.get('EMBEDDING_DIM', None))
-  profile_value_dropout = float(os.environ.get('PROFILE_VALUE_DROPOUT', None))
+  debug = bool(os.environ.get('DEBUG', None))
+  max_vocab_size = int(os.environ.get('MAX_VOCAB_SIZE', -1))
+  rb_capacity = int(os.environ.get('RB_CAPACITY', -1))
+  embedding_dim = int(os.environ.get('EMBEDDING_DIM', -1))
+  latent_dim = int(os.environ.get('LATENT_DIM', -1))
+  epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', -1))
+  profile_value_dropout = float(os.environ.get('PROFILE_VALUE_DROPOUT', -1))
 
-  # Print extracted and computed values
   print(f'batch_size: {batch_size}')
   print(f'debug: {debug}')
-  print(f'difficulty_level: {difficulty_level}')
   print(f'env_batch_size: {env_batch_size}')
-  print(f'epsilon_greedy: {epsilon_greedy}')
+  print(f'env_name: {env_name}')
   print(f'eval_interval: {eval_interval}')
   print(f'learning_rate: {learning_rate}')
   print(f'log_interval: {log_interval}')
-  print(f'num_websites: {num_websites}')
   print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
-  print(f'port: {port}')
   print(f'rb_capacity: {rb_capacity}')
-  print(f'replay_buffer_server_address: {replay_buffer_server_address}')
-  print(f'reverb_port: {reverb_port}')
   print(f'root_dir: {root_dir}')
   print(f'seed: {seed}')
   print(f'timesteps_per_actorbatch: {timesteps_per_actorbatch}')
   print(f'total_env_steps: {total_env_steps}')
   print(f'train_checkpoint_interval: {train_checkpoint_interval}')
-  print(
-      f'variable_container_server_address: {variable_container_server_address}'
-  )
-  print(f'vocab_port: {vocab_port}')
-  print(f'max_vocab_size: {max_vocab_size}')
-  print(f'latent_dim: {latent_dim}')
-  print(f'profile_value_dropout: {profile_value_dropout}')
 
+  if env_name == 'QuadrupedLocomotion-v0':
+    print(f'motion_file_path: {motion_file_path}')
+    print(f'max_vocab_size: {max_vocab_size}')
+  elif env_name == 'WebNavigation-v0':
+    print(f'reverb_port: {port}')
+    print(f'vocab_port: {vocab_port}')
+    print(f'difficulty_level: {difficulty_level}')
+    print(f'num_websites: {num_websites}')
+    print(f'embedding_dim: {embedding_dim}')
+    print(f'latent_dim: {latent_dim}')
+    print(f'epsilon_greedy: {epsilon_greedy}')
+    print(f'profile_value_dropout: {profile_value_dropout}')
+
+  gpus = tf.config.list_physical_devices('GPU')
+  num_replicas = len(gpus) if gpus else 1
+
+  # Depending on the number of replicas, increase the batch size so that each
+  # update is done with a batch of size `batch_size`.
+  batch_size = batch_size * num_replicas
   # Parameters for training
   train_steps_per_iteration = timesteps_per_actorbatch
   num_iterations = total_env_steps // timesteps_per_actorbatch
@@ -131,28 +137,36 @@ def train():
   no_gpu_env = os.environ.copy()
   no_gpu_env['CUDA_VISIBLE_DEVICES'] = '-1'
 
-  # Launch multiprocessing manager server
-  auth_key = 'secretkey'
-  manager_command = [
-      'python',
-      'distributed/vocabulary_manager.py',
-      f'--port={vocab_port}',
-      f'--auth_key={auth_key}',
-      f'--max_vocab_size=500',
-      '--verbosity=2',
-  ]
-
-  # Launch the subprocess with the same environment and output redirection
-  vocab_manager = subprocess.Popen(
-      manager_command,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.STDOUT,
-      env=os.environ.copy(),
-  )
-  threading.Thread(
-      target=print_subprocess_output, args=(vocab_manager,)
-  ).start()
-  logging.info('Successfully launched vocab manager server.')
+  env_flags = []
+  if env_name == 'WebNavigation-v0':
+    env_flags.extend([
+        f'--env_name={env_name}',
+        f'--num_websites={num_websites}',
+        f'--difficulty_level={difficulty_level}',
+    ])
+    auth_key = 'secretkey'
+    manager_command = [
+        'python',
+        'distributed/vocabulary_manager.py',
+        f'--port={vocab_port}',
+        f'--auth_key={auth_key}',
+        f'--max_vocab_size={max_vocab_size}',
+        '--verbosity=2',
+    ]
+    manager_process = subprocess.Popen(
+        manager_command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=no_gpu_env,
+    )
+    threading.Thread(
+        target=print_subprocess_output, args=(manager_process,)
+    ).start()
+    logging.info('Successfully launched vocab manager server.')
+  elif env_name == 'QuadrupedLocomotion-v0':
+    env_flags.extend(
+        [f'--env_name={env_name}', f'--motion_file_path={motion_file_path}']
+    )
 
   # Launch reverb server
   reverb_command = [
@@ -170,35 +184,34 @@ def train():
       reverb_command,
       stdout=subprocess.PIPE,
       stderr=subprocess.STDOUT,
-      env=no_gpu_env
+      env=no_gpu_env,
   )
   threading.Thread(
       target=print_subprocess_output, args=(reverb_process,)
   ).start()
   logging.info('Successfully launched reverb server.')
 
-  # Launch collect jobs
+  # Launch collect jobs with domain-specific configurations
   collect_job_commands = [
       [
           'python',
-          'distributed/ddqn_collect.py',
-          '--verbosity=2' if debug else '--verbosity=-2',
+          'distributed/sac_collect.py',  # Note: Use SAC-specific collect script
+          f'--root_dir={root_dir}',
+          f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+          f'--summary_interval={log_interval}',
           f'--env_batch_size={env_batch_size}',
-          f'--env_name=WebNavigation-v0',
           f'--initial_collect_steps={adjusted_timesteps_per_actorbatch}',
           f'--max_train_steps={max_train_steps}',
-          f'--num_websites={num_websites}',
-          f'--difficulty_level={difficulty_level}',
           f'--replay_buffer_server_address={replay_buffer_server_address}',
-          f'--root_dir={root_dir}',
-          f'--vocab_port={vocab_port}',
-          f'--auth_key={auth_key}',
-          f'--summary_interval={log_interval}',
-          f'--task={i}',
           f'--variable_container_server_address={variable_container_server_address}',
+          f'--task={i}',
+          f'--seed={seed}',
+          '--verbosity=2' if i == 0 else '--verbosity=-2',
       ]
+      + env_flags
       for i in range(env_batch_size)
   ]
+
 
   collect_jobs = []
   for command in collect_job_commands:
@@ -215,44 +228,36 @@ def train():
   # Launch train job
   train_job_command = [
       'python',
-      'distributed/ddqn_train.py',
+      'distributed/sac_train.py',
       f'--batch_size={batch_size}',
       f'--debug={debug}',
-      f'--difficulty_level={difficulty_level}',
-      f'--embedding_dim={embedding_dim}',
-      f'--env_batch_size={env_batch_size}',
-      f'--env_name=WebNavigation-v0',
       f'--epsilon_greedy={epsilon_greedy}',
-      f'--latent_dim={latent_dim}',
-      f'--learner_iterations_per_call={learner_iterations_per_call}',
+      f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
+      f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+      f'--replay_buffer_server_address={replay_buffer_server_address}',
+      f'--max_train_steps={max_train_steps}',
+      f'--root_dir={root_dir}',
+      f'--train_checkpoint_interval={train_checkpoint_interval}',
+      f'--env_batch_size={env_batch_size}',
       f'--learning_rate={learning_rate}',
       f'--log_interval={log_interval}',
-      f'--max_train_steps={max_train_steps}',
-      f'--max_vocab_size={max_vocab_size}',
-      f'--num_websites={num_websites}',
-      f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-      f'--profile_value_dropout={profile_value_dropout}',
-      f'--replay_buffer_server_address={replay_buffer_server_address}',
-      f'--root_dir={root_dir}',
       f'--seed={seed}',
-      f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
-      f'--train_checkpoint_interval={train_checkpoint_interval}',
-      f'--use_gpu',
       f'--variable_container_server_address={variable_container_server_address}',
+      f'--learner_iterations_per_call={learner_iterations_per_call}',
+      f'--use_gpu',
       f'--verbosity=2',
-  ]
+  ] + env_flags
   train_job = subprocess.Popen(
       train_job_command,
       stdout=subprocess.PIPE,
       stderr=subprocess.STDOUT,
       env=os.environ.copy(),
   )
+
   threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
   logging.info('Successfully launched train job.')
 
-  # We need to wait for the train job to finish before we can terminate the
-  # reverb server. Otherwise, the reverb server will terminate before the train
-  # job is finished and the train job will fail.
+  # Monitor the training job and handle its completion
   while True:
     try:
       train_job.wait(timeout=30)
@@ -270,10 +275,6 @@ def train():
   for process in collect_jobs:
     process.terminate()
   logging.info('Successfully terminated collect jobs.')
-
-  # Terminate the vocab manager server
-  vocab_manager.terminate()
-  logging.info('Successfully terminated vocab manager server.')
 
 
 def main(_):

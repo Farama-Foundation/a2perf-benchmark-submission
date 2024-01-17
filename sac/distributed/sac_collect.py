@@ -163,11 +163,10 @@ def collect(
   # Run the experience collection loop.
   prev_num_steps_collected = 0
   while True:
-    # Time the collection
-
     start_time = time.time()
     collect_actor.run()
     end_time = time.time()
+    variable_container.update(variables)
     logging.info('Collecting with policy at step: %d', train_step.numpy())
     logging.info('\tCollected %d steps', env_step_metric.result())
     logging.info(
@@ -273,7 +272,6 @@ if __name__ == '__main__':
       'variable_container_server_address',
       'sequence_length',
       'env_batch_size',
-      'motion_file_path',
       'task',
       'summary_interval',
       'max_train_steps',

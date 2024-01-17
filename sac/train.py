@@ -40,8 +40,11 @@ def train():
   variable_container_server_address = f'{host}:{port}'
   debug = bool(os.environ.get('DEBUG', None))
   max_vocab_size = int(os.environ.get('MAX_VOCAB_SIZE', -1))
-
   rb_capacity = int(os.environ.get('RB_CAPACITY', -1))
+  embedding_dim = int(os.environ.get('EMBEDDING_DIM', -1))
+  latent_dim = int(os.environ.get('LATENT_DIM', -1))
+  epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', -1))
+  profile_value_dropout = float(os.environ.get('PROFILE_VALUE_DROPOUT', -1))
 
   print(f'batch_size: {batch_size}')
   print(f'debug: {debug}')
@@ -66,6 +69,10 @@ def train():
     print(f'vocab_port: {vocab_port}')
     print(f'difficulty_level: {difficulty_level}')
     print(f'num_websites: {num_websites}')
+    print(f'embedding_dim: {embedding_dim}')
+    print(f'latent_dim: {latent_dim}')
+    print(f'epsilon_greedy: {epsilon_greedy}')
+    print(f'profile_value_dropout: {profile_value_dropout}')
 
   gpus = tf.config.list_physical_devices('GPU')
   num_replicas = len(gpus) if gpus else 1
@@ -218,7 +225,6 @@ def train():
   train_job_command = [
       'python',
       'distributed/sac_train.py',
-      # Note: Use SAC-specific train script
       f'--batch_size={batch_size}',
       f'--debug={debug}',
       f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',

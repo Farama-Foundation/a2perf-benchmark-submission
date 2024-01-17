@@ -21,9 +21,15 @@ _REPLAY_BUFFER_CAPACITY = flags.DEFINE_integer(
     'replay_buffer_capacity', 1000000, 'Capacity of the replay buffer table.'
 )
 _PORT = flags.DEFINE_integer('port', None, 'Port to start the server on.')
+_MIN_TABLE_SIZE_BEFORE_SAMPLING = flags.DEFINE_integer(
+    'min_table_size_before_sampling',
+    None,
+    'Minimum number of items in the replay buffer table before sampling.',
+)
 
 
 class PrefixedLogFormatter(logging.PythonFormatter):
+
   def format(self, record):
     original = super(PrefixedLogFormatter, self).format(record)
     return f'Reverb Server: {original}'
@@ -77,7 +83,9 @@ def run_reverb_server(root_dir):
               name='training_table',
               sampler=reverb.selectors.Fifo(),
               remover=reverb.selectors.Fifo(),
-              rate_limiter=reverb.rate_limiters.MinSize(1),
+              rate_limiter=reverb.rate_limiters.MinSize(
+                  _MIN_TABLE_SIZE_BEFORE_SAMPLING.value
+              ),
               max_size=_REPLAY_BUFFER_CAPACITY.value,
               max_times_sampled=1,
               signature=replay_buffer_signature,
@@ -86,7 +94,9 @@ def run_reverb_server(root_dir):
               name='normalization_table',
               sampler=reverb.selectors.Fifo(),
               remover=reverb.selectors.Fifo(),
-              rate_limiter=reverb.rate_limiters.MinSize(1),
+              rate_limiter=reverb.rate_limiters.MinSize(
+                  _MIN_TABLE_SIZE_BEFORE_SAMPLING.value
+              ),
               max_size=_REPLAY_BUFFER_CAPACITY.value,
               max_times_sampled=1,
               signature=replay_buffer_signature,
@@ -105,7 +115,9 @@ def run_reverb_server(root_dir):
   )
 
   logging.info(
-      f'Started Reverb server on port {_PORT.value} with capacity {_REPLAY_BUFFER_CAPACITY.value}')
+      f'Started Reverb server on port {_PORT.value} with capacity'
+      f' {_REPLAY_BUFFER_CAPACITY.value}'
+  )
   server.wait()
 
 

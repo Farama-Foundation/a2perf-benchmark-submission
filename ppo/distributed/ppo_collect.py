@@ -2,8 +2,9 @@
 
 import functools
 import os
+import time
 from typing import Text
-# noinspection PyUnresolvedReferences
+
 from a2perf.domains import quadruped_locomotion
 from absl import app
 from absl import flags
@@ -27,6 +28,11 @@ _DIFFICULTY_LEVEL = flags.DEFINE_integer(
     'difficulty_level',
     None,
     'Difficulty level of the environment.',
+)
+_MAX_TRAIN_STEPS = flags.DEFINE_integer(
+    'max_train_steps',
+    None,
+    'Maximum number of training steps.',
 )
 _NUM_WEBSITES = flags.DEFINE_integer(
     'num_websites',
@@ -92,12 +98,16 @@ def collect(
     collect_policy: py_tf_eager_policy.PyTFEagerPolicyBase,
     replay_buffer_server_address: Text,
     variable_container_server_address: Text,
-    sequence_length: int = 0,
-    summary_interval: int = 0,
-    suite_load_function: callable = suite_pybullet.load,
+    root_dir: str,
+    task: int,
+    summary_interval: int,
+    sequence_length: int,
+    suite_load_function: callable,
 ) -> None:
   """Collects experience using a policy updated after every episode."""
   logging.info('Sequence length collect: %s', sequence_length)
+  summary_dir = os.path.join(root_dir, 'summaries', str(task))
+
   collect_env = suite_load_function(environment_name)
 
   # Create the variable container.
@@ -133,32 +143,36 @@ def collect(
       steps_per_run=sequence_length,
       metrics=actor.collect_metrics(10),
       summary_interval=summary_interval,
-      summary_dir=os.path.join(_ROOT_DIR.value, 'summaries', str(_TASK.value)),
+      summary_dir=summary_dir,
       observers=[experience_observer, env_step_metric],
   )
 
   # Run the experience collection loop.
   prev_num_steps_collected = 0
   while True:
+    start_time = time.time()
     collect_actor.run()
+    end_time = time.time()
     variable_container.update(variables)
     logging.info('Collecting with policy at step: %d', train_step.numpy())
-
-    num_steps_collected = env_step_metric.result()
-    logging.info('\tCollected %d steps', num_steps_collected)
+    logging.info('\tCollected %d steps', env_step_metric.result())
     logging.info(
         '\tCollected %d steps this iteration',
-        num_steps_collected - prev_num_steps_collected,
+        env_step_metric.result() - prev_num_steps_collected,
     )
-    prev_num_steps_collected = num_steps_collected
+    logging.info('\tCollection took %.3f seconds', end_time - start_time)
+    prev_num_steps_collected = env_step_metric.result()
 
 
 def run_collect(
     root_dir: str,
     environment_name: str,
-    sequence_length: int,
-    summary_interval: int,
+    replay_buffer_server_address: str,
+    variable_container_server_address: str,
+    task: int,
     suite_load_fn: callable,
+    summary_interval: int,
+    sequence_length: int,
 ) -> None:
   """Wait for the collect policy to be ready and run collect job."""
   # Wait for the collect policy to become available, then load it.
@@ -174,9 +188,11 @@ def run_collect(
   collect(
       environment_name=environment_name,
       collect_policy=collect_policy,
+      replay_buffer_server_address=replay_buffer_server_address,
+      variable_container_server_address=variable_container_server_address,
+      root_dir=root_dir,
+      task=task,
       summary_interval=summary_interval,
-      replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
-      variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
       sequence_length=sequence_length,
       suite_load_function=suite_load_fn,
   )
@@ -226,8 +242,11 @@ def main(_):
   run_collect(
       root_dir=_ROOT_DIR.value,
       environment_name=_ENV_NAME.value,
-      sequence_length=_SEQUENCE_LENGTH.value,
+      replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
+      variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
+      task=_TASK.value,
       summary_interval=_SUMMARY_INTERVAL.value,
+      sequence_length=_SEQUENCE_LENGTH.value,
       suite_load_fn=suite_load_function,
   )
 
@@ -240,6 +259,9 @@ if __name__ == '__main__':
       'variable_container_server_address',
       'sequence_length',
       'env_batch_size',
+      'task',
+      'summary_interval',
+      'max_train_steps',
       'seed',
   ])
   multiprocessing.handle_main(functools.partial(app.run, main))
