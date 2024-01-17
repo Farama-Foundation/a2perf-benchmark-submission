@@ -65,7 +65,7 @@ _MOTION_FILE_PATH = flags.DEFINE_string(
 )
 _SUMMARY_INTERVAL = flags.DEFINE_integer(
     'summary_interval',
-    0,
+    None,
     'Interval at which to record summaries.',
 )
 _SEQUENCE_LENGTH = flags.DEFINE_integer(
@@ -74,7 +74,7 @@ _SEQUENCE_LENGTH = flags.DEFINE_integer(
     'Size of reverb buffer to sample.',
 )
 _TASK = flags.DEFINE_integer(
-    'task', 0, 'Identifier of a collect task. Must be unique.'
+    'task', None, 'Identifier of a collect task. Must be unique.'
 )
 
 _GIN_FILE = flags.DEFINE_multi_string(

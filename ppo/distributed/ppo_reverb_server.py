@@ -83,9 +83,7 @@ def run_reverb_server(root_dir):
               name='training_table',
               sampler=reverb.selectors.Fifo(),
               remover=reverb.selectors.Fifo(),
-              rate_limiter=reverb.rate_limiters.MinSize(
-                  _MIN_TABLE_SIZE_BEFORE_SAMPLING.value
-              ),
+              rate_limiter=reverb.rate_limiters.MinSize(1),
               max_size=_REPLAY_BUFFER_CAPACITY.value,
               max_times_sampled=1,
               signature=replay_buffer_signature,
@@ -94,9 +92,7 @@ def run_reverb_server(root_dir):
               name='normalization_table',
               sampler=reverb.selectors.Fifo(),
               remover=reverb.selectors.Fifo(),
-              rate_limiter=reverb.rate_limiters.MinSize(
-                  _MIN_TABLE_SIZE_BEFORE_SAMPLING.value
-              ),
+              rate_limiter=reverb.rate_limiters.MinSize(1),
               max_size=_REPLAY_BUFFER_CAPACITY.value,
               max_times_sampled=1,
               signature=replay_buffer_signature,
