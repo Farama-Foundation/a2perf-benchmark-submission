@@ -14,6 +14,9 @@ def print_subprocess_output(process):
 
 
 def train():
+  mode = os.environ.get('MODE', None)
+  if mode is None:
+    raise ValueError('Mode must be set.')
   seed = int(os.environ.get('SEED', -1))
   use_gae = bool(os.environ.get('USE_GAE', None))
   root_dir = os.environ.get('ROOT_DIR', None)
@@ -115,145 +118,141 @@ def train():
   logging.info(f'converted log_interval: {log_interval}')
   logging.info(f'random seed: {seed}')
 
-  no_gpu_env = os.environ.copy()
-  no_gpu_env['CUDA_VISIBLE_DEVICES'] = '-1'
-
   env_flags = []
+  all_processes = []
   if env_name == 'WebNavigation-v0':
     env_flags.extend([
         f'--env_name={env_name}',
         f'--num_websites={num_websites}',
         f'--difficulty_level={difficulty_level}',
     ])
-    auth_key = 'secretkey'
-    manager_command = [
-        'python',
-        'distributed/vocabulary_manager.py',
-        f'--port={vocab_port}',
-        f'--auth_key={auth_key}',
-        f'--max_vocab_size={max_vocab_size}',
-        '--verbosity=2',
-    ]
-    manager_process = subprocess.Popen(
-        manager_command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=no_gpu_env,
-    )
-    threading.Thread(
-        target=print_subprocess_output, args=(manager_process,)
-    ).start()
-    logging.info('Successfully launched vocab manager server.')
+
+    if mode == 'collect':
+      auth_key = 'secretkey'
+      manager_command = [
+          'python',
+          'distributed/vocabulary_manager.py',
+          f'--port={vocab_port}',
+          f'--auth_key={auth_key}',
+          f'--max_vocab_size={max_vocab_size}',
+          '--verbosity=2',
+      ]
+      manager_process = subprocess.Popen(
+          manager_command,
+          stdout=subprocess.PIPE,
+          stderr=subprocess.STDOUT,
+          env=os.environ.copy(),
+      )
+      all_processes.append(manager_process)
+      threading.Thread(
+          target=print_subprocess_output, args=(manager_process,)
+      ).start()
+      logging.info('Successfully launched vocab manager server.')
   elif env_name == 'QuadrupedLocomotion-v0':
     env_flags.extend(
         [f'--env_name={env_name}', f'--motion_file_path={motion_file_path}']
     )
 
-  # Launch reverb server
-  reverb_command = [
-      'python',
-      'distributed/ppo_reverb_server.py',
-      f'--port={port}',
-      f'--root_dir={root_dir}',
-      f'--min_table_size_before_sampling={timesteps_per_actorbatch}',
-      '--verbosity=2',
-  ]
+  if mode == 'train':
+    # Launch reverb server
+    reverb_command = [
+        'python',
+        'distributed/ppo_reverb_server.py',
+        f'--port={port}',
+        f'--root_dir={root_dir}',
+        f'--min_table_size_before_sampling={timesteps_per_actorbatch}',
+        '--verbosity=2',
+    ]
 
-  reverb_process = subprocess.Popen(
-      reverb_command,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.STDOUT,
-      # env=no_gpu_env,
-      env=os.environ.copy(),
-  )
-  threading.Thread(
-      target=print_subprocess_output, args=(reverb_process,)
-  ).start()
-  logging.info('Successfully launched reverb server.')
-
-  # Launch collect jobs with domain-specific configurations
-  collect_job_commands = [
-      [
-          'python',
-          'distributed/ppo_collect.py',  # Note: Use ppo-specific collect script
-          f'--root_dir={root_dir}',
-          f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-          f'--summary_interval={log_interval}',
-          f'--env_batch_size={env_batch_size}',
-          f'--max_train_steps={max_train_steps}',
-          f'--replay_buffer_server_address={replay_buffer_server_address}',
-          f'--variable_container_server_address={variable_container_server_address}',
-          f'--task={i}',
-          f'--seed={seed}',
-          '--verbosity=2' if i == 0 else '--verbosity=-2',
-      ]
-      + env_flags
-      for i in range(env_batch_size)
-  ]
-
-  collect_jobs = []
-  for command in collect_job_commands:
-    process = subprocess.Popen(
-        command,
+    reverb_process = subprocess.Popen(
+        reverb_command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        # env=os.environ.copy(),
-        env=no_gpu_env,
+        env=os.environ.copy(),
     )
-    collect_jobs.append(process)
-    threading.Thread(target=print_subprocess_output, args=(process,)).start()
-  logging.info('Successfully launched collect jobs.')
+    threading.Thread(
+        target=print_subprocess_output, args=(reverb_process,)
+    ).start()
+    logging.info('Successfully launched reverb server.')
 
-  # Launch train job
-  train_job_command = [
-                          'python',
-                          'distributed/ppo_train.py',
-                          f'--entropy_regularization={entropy_regularization}',
-                          f'--num_epochs={num_epochs}',
-                          f'--batch_size={batch_size}',
-                          f'--debug={debug}',
-                          f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
-                          f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-                          f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-                          f'--replay_buffer_server_address={replay_buffer_server_address}',
-                          f'--root_dir={root_dir}',
-                          f'--train_checkpoint_interval={train_checkpoint_interval}',
-                          f'--max_train_steps={max_train_steps}',
-                          f'--env_batch_size={env_batch_size}',
-                          f'--learning_rate={learning_rate}',
-                          f'--log_interval={log_interval}',
-                          f'--seed={seed}',
-                          f'--variable_container_server_address={variable_container_server_address}',
-                          f'--use_gpu=True',
-                          f'--use_gae={use_gae}',
-                          f'--use_tpu=False',
-                      ] + env_flags
+  if mode == 'collect':
+    # Launch collect jobs with domain-specific configurations
+    collect_job_commands = [
+        [
+            'python',
+            'distributed/ppo_collect.py',
+            f'--root_dir={root_dir}',
+            f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+            f'--summary_interval={log_interval}',
+            f'--env_batch_size={env_batch_size}',
+            f'--max_train_steps={max_train_steps}',
+            f'--replay_buffer_server_address={replay_buffer_server_address}',
+            f'--variable_container_server_address={variable_container_server_address}',
+            f'--task={i}',
+            f'--seed={seed}',
+            '--verbosity=2' if i == 0 else '--verbosity=-2',
+        ]
+        + env_flags
+        for i in range(env_batch_size)
+    ]
 
-  train_job = subprocess.Popen(
-      train_job_command,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.STDOUT,
-      env=os.environ.copy(),
-  )
-  threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
-  logging.info('Successfully launched train job.')
-  while True:
-    try:
-      train_job.wait(timeout=30)
-      break
-    except subprocess.TimeoutExpired:
-      logging.info('Train job still running.')
-      continue
-  logging.info('Train job finished.')
+    collect_jobs = []
+    for command in collect_job_commands:
+      process = subprocess.Popen(
+          command,
+          stdout=subprocess.PIPE,
+          stderr=subprocess.STDOUT,
+          env=os.environ.copy(),
+      )
+      collect_jobs.append(process)
+      threading.Thread(target=print_subprocess_output, args=(process,)).start()
+    all_processes.extend(collect_jobs)
+    logging.info('Successfully launched collect jobs.')
 
-  # Terminate the reverb server
-  reverb_process.terminate()
-  logging.info('Successfully terminated reverb server.')
+  if mode == 'train':
+    # Launch train job
+    train_job_command = [
+                            'python',
+                            'distributed/ppo_train.py',
+                            f'--entropy_regularization={entropy_regularization}',
+                            f'--num_epochs={num_epochs}',
+                            f'--batch_size={batch_size}',
+                            f'--debug={debug}',
+                            f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
+                            f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+                            f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+                            f'--replay_buffer_server_address={replay_buffer_server_address}',
+                            f'--root_dir={root_dir}',
+                            f'--train_checkpoint_interval={train_checkpoint_interval}',
+                            f'--max_train_steps={max_train_steps}',
+                            f'--env_batch_size={env_batch_size}',
+                            f'--learning_rate={learning_rate}',
+                            f'--log_interval={log_interval}',
+                            f'--seed={seed}',
+                            f'--variable_container_server_address={variable_container_server_address}',
+                            f'--use_gpu=True',
+                            f'--use_gae={use_gae}',
+                            f'--use_tpu=False',
+                        ] + env_flags
 
-  # Terminate the collect jobs
-  for process in collect_jobs:
-    process.terminate()
-  logging.info('Successfully terminated collect jobs.')
+    train_job = subprocess.Popen(
+        train_job_command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=os.environ.copy(),
+    )
+    threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
+    logging.info('Successfully launched train job.')
+
+  # Wait for all_processes to terminate
+  for process in all_processes:
+    process.wait()
+  logging.info('Training complete.')
+
+  # Reverb server has to be killed manually if we are the train job
+  if mode == 'train':
+    reverb_process.terminate()
+    logging.info('Successfully terminated reverb server.')
 
 
 def main(_):
