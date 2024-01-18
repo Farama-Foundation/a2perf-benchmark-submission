@@ -97,7 +97,7 @@ _GIN_FILE = flags.DEFINE_multi_string('gin_file', None,
                                       'Paths to the gin-config files.')
 _GIN_BINDINGS = flags.DEFINE_multi_string('gin_bindings', None,
                                           'Gin binding parameters.')
-_MAX_TRAIN_STEP = flags.DEFINE_integer('max_train_steps', 2000000,
+_MAX_TRAIN_STEP = flags.DEFINE_integer('max_train_steps', None,
                                        'Number of iterations.')
 _GRADIENT_CLIPPING = flags.DEFINE_float('gradient_clipping', None,
                                         'Gradient clipping.')
@@ -105,7 +105,7 @@ _DEBUG_SUMMARIES = flags.DEFINE_bool('debug_summaries', False,
                                      'Whether to use debug summaries.')
 _SUMMARIZE_GRADS_AND_VARS = flags.DEFINE_bool('summarize_grads_and_vars', False,
                                               'Whether to summarize grads and vars.')
-_LEARNING_RATE = flags.DEFINE_float('learning_rate', 3e-4, 'Learning rate.')
+_LEARNING_RATE = flags.DEFINE_float('learning_rate', None, 'Learning rate.')
 FLAGS = flags.FLAGS
 
 

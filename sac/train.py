@@ -79,14 +79,16 @@ def train():
 
   # Depending on the number of replicas, increase the batch size so that each
   # update is done with a batch of size `batch_size`.
-  batch_size = batch_size * num_replicas
 
   # Parameters for training
-  train_steps_per_iteration = timesteps_per_actorbatch
-  num_iterations = total_env_steps // timesteps_per_actorbatch
+  num_minibatches = timesteps_per_actorbatch // batch_size
+  train_steps_per_iteration =num_minibatches // num_replicas
+  num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
   max_train_steps = train_steps_per_iteration * num_iterations
-  adjusted_timesteps_per_actorbatch = timesteps_per_actorbatch // env_batch_size
-  learner_iterations_per_call = timesteps_per_actorbatch
+  adjusted_timesteps_per_actorbatch = np.maximum(
+      1, timesteps_per_actorbatch // env_batch_size
+  )
+  learner_iterations_per_call = 1
   policy_checkpoint_interval = np.maximum(
       1,
       np.round(
@@ -181,7 +183,8 @@ def train():
       reverb_command,
       stdout=subprocess.PIPE,
       stderr=subprocess.STDOUT,
-      env=no_gpu_env,
+      # env=no_gpu_env,
+      env=os.environ.copy(),
   )
   threading.Thread(
       target=print_subprocess_output, args=(reverb_process,)
