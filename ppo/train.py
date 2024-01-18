@@ -163,7 +163,8 @@ def train():
       reverb_command,
       stdout=subprocess.PIPE,
       stderr=subprocess.STDOUT,
-      env=no_gpu_env,
+      # env=no_gpu_env,
+      env=os.environ.copy(),
   )
   threading.Thread(
       target=print_subprocess_output, args=(reverb_process,)
@@ -196,6 +197,7 @@ def train():
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        # env=os.environ.copy(),
         env=no_gpu_env,
     )
     collect_jobs.append(process)

@@ -390,7 +390,6 @@ def train(
       logging.info('Training. Train step: %d', train_step.numpy())
       logging.info('\tThe max train step is: %d', max_train_step)
       ppo_learner.run()
-      logging.info('\tFinished training step.')
 
       variable_container.push(variables)
       logging.info('\tPushed variables to variable container.')
