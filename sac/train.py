@@ -82,7 +82,7 @@ def train():
 
   # Parameters for training
   num_minibatches = timesteps_per_actorbatch // batch_size
-  train_steps_per_iteration =num_minibatches // num_replicas
+  train_steps_per_iteration = num_minibatches // num_replicas
   num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
   max_train_steps = train_steps_per_iteration * num_iterations
   adjusted_timesteps_per_actorbatch = np.maximum(
@@ -114,12 +114,8 @@ def train():
   log_interval = np.maximum(
       1,
       np.round(
-          log_interval
-          / env_batch_size
-          / timesteps_per_actorbatch
-          * train_steps_per_iteration
-      ).astype(int),
-  )
+          log_interval / timesteps_per_actorbatch * train_steps_per_iteration
+      ).astype(int))
 
   logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
   logging.info(f'num_iterations: {num_iterations}')
@@ -226,25 +222,25 @@ def train():
 
   # Launch train job with domain-specific configurations
   train_job_command = [
-      'python',
-      'distributed/sac_train.py',
-      f'--batch_size={batch_size}',
-      f'--debug={debug}',
-      f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
-      f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-      f'--replay_buffer_server_address={replay_buffer_server_address}',
-      f'--max_train_steps={max_train_steps}',
-      f'--root_dir={root_dir}',
-      f'--train_checkpoint_interval={train_checkpoint_interval}',
-      f'--env_batch_size={env_batch_size}',
-      f'--learning_rate={learning_rate}',
-      f'--log_interval={log_interval}',
-      f'--seed={seed}',
-      f'--variable_container_server_address={variable_container_server_address}',
-      f'--learner_iterations_per_call={learner_iterations_per_call}',
-      f'--use_gpu',
-      f'--verbosity=2',
-  ] + env_flags
+                          'python',
+                          'distributed/sac_train.py',
+                          f'--batch_size={batch_size}',
+                          f'--debug={debug}',
+                          f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
+                          f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+                          f'--replay_buffer_server_address={replay_buffer_server_address}',
+                          f'--max_train_steps={max_train_steps}',
+                          f'--root_dir={root_dir}',
+                          f'--train_checkpoint_interval={train_checkpoint_interval}',
+                          f'--env_batch_size={env_batch_size}',
+                          f'--learning_rate={learning_rate}',
+                          f'--log_interval={log_interval}',
+                          f'--seed={seed}',
+                          f'--variable_container_server_address={variable_container_server_address}',
+                          f'--learner_iterations_per_call={learner_iterations_per_call}',
+                          f'--use_gpu',
+                          f'--verbosity=2',
+                      ] + env_flags
 
   train_job = subprocess.Popen(
       train_job_command,
