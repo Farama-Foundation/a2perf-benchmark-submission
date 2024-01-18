@@ -67,8 +67,6 @@ def run_reverb_server(root_dir):
   replay_buffer_signature = tensor_spec.add_outer_dim(replay_buffer_signature)
   logging.info('Signature of experience: \n%s', replay_buffer_signature)
 
-  # Crete and start the replay buffer and variable container server.
-  # TODO(b/159130813): Optionally turn the reverb server pieces into a library.
   server = reverb.Server(
       tables=[
           # Note that the training table and the normalization table are
@@ -83,7 +81,9 @@ def run_reverb_server(root_dir):
               name='training_table',
               sampler=reverb.selectors.Fifo(),
               remover=reverb.selectors.Fifo(),
-              rate_limiter=reverb.rate_limiters.MinSize(1),
+              rate_limiter=reverb.rate_limiters.MinSize(
+                  _MIN_TABLE_SIZE_BEFORE_SAMPLING.value
+              ),
               max_size=_REPLAY_BUFFER_CAPACITY.value,
               max_times_sampled=1,
               signature=replay_buffer_signature,
@@ -92,7 +92,9 @@ def run_reverb_server(root_dir):
               name='normalization_table',
               sampler=reverb.selectors.Fifo(),
               remover=reverb.selectors.Fifo(),
-              rate_limiter=reverb.rate_limiters.MinSize(1),
+              rate_limiter=reverb.rate_limiters.MinSize(
+                  _MIN_TABLE_SIZE_BEFORE_SAMPLING.value
+              ),
               max_size=_REPLAY_BUFFER_CAPACITY.value,
               max_times_sampled=1,
               signature=replay_buffer_signature,

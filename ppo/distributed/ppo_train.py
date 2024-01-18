@@ -288,6 +288,7 @@ def train(
         gradient_clipping=gradient_clipping,
         seed=seed,
     )
+    logging.info('Created agent.')
 
     # Create the policy saver which saves the initial model now, then it
     # periodically checkpoints the policy weights.
@@ -492,9 +493,14 @@ if __name__ == '__main__':
       'seed',
       'timesteps_per_actorbatch',
       'batch_size',
+      'debug',
       'num_epochs',
       'max_train_steps',
       'learning_rate',
       'entropy_regularization',
+      'log_interval',
+      'train_checkpoint_interval',
+      'policy_checkpoint_interval',
+
   ])
   multiprocessing.handle_main(lambda _: app.run(main))

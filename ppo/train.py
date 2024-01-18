@@ -83,41 +83,24 @@ def train():
   # Parameters for training
   num_minibatches = timesteps_per_actorbatch // batch_size
   train_steps_per_iteration = num_minibatches * num_epochs // num_replicas
-  num_iterations = total_env_steps // timesteps_per_actorbatch
+  num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
   max_train_steps = train_steps_per_iteration * num_iterations
-  adjusted_timesteps_per_actorbatch = timesteps_per_actorbatch // env_batch_size
 
-  policy_checkpoint_interval = np.maximum(
-      1,
-      np.round(
-          policy_checkpoint_interval
-          / timesteps_per_actorbatch
-          * train_steps_per_iteration
-      ).astype(int),
+  adjusted_timesteps_per_actorbatch = np.maximum(
+      1, timesteps_per_actorbatch // env_batch_size
   )
-  train_checkpoint_interval = np.maximum(
-      1,
-      np.round(
-          train_checkpoint_interval
-          / timesteps_per_actorbatch
-          * train_steps_per_iteration
-      ).astype(int),
-  )
-  eval_interval = np.maximum(
-      1,
-      np.round(
-          eval_interval / timesteps_per_actorbatch * train_steps_per_iteration
-      ).astype(int),
-  )
-  log_interval = np.maximum(
-      1,
-      np.round(
-          log_interval
-          / env_batch_size
-          / timesteps_per_actorbatch
-          * train_steps_per_iteration
-      ).astype(int),
-  )
+  policy_checkpoint_interval = np.maximum(1, np.round(
+      policy_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
+      int))
+  train_checkpoint_interval = np.maximum(1, np.round(
+      train_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
+      int))
+  eval_interval = np.maximum(1, np.round(
+      eval_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
+      int))
+  log_interval = np.maximum(1, np.round(
+      log_interval / env_batch_size / timesteps_per_actorbatch * train_steps_per_iteration).astype(
+      int))
 
   logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
   logging.info(f'num_iterations: {num_iterations}')
@@ -221,28 +204,28 @@ def train():
 
   # Launch train job
   train_job_command = [
-      'python',
-      'distributed/ppo_train.py',
-      f'--entropy_regularization={entropy_regularization}',
-      f'--num_epochs={num_epochs}',
-      f'--batch_size={batch_size}',
-      f'--debug={debug}',
-      f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
-      f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-      f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-      f'--replay_buffer_server_address={replay_buffer_server_address}',
-      f'--root_dir={root_dir}',
-      f'--train_checkpoint_interval={train_checkpoint_interval}',
-      f'--max_train_steps={max_train_steps}',
-      f'--env_batch_size={env_batch_size}',
-      f'--learning_rate={learning_rate}',
-      f'--log_interval={log_interval}',
-      f'--seed={seed}',
-      f'--variable_container_server_address={variable_container_server_address}',
-      f'--use_gpu',
-      f'--use_gae={use_gae}',
-      f'--use_tpu=False',
-  ] + env_flags
+                          'python',
+                          'distributed/ppo_train.py',
+                          f'--entropy_regularization={entropy_regularization}',
+                          f'--num_epochs={num_epochs}',
+                          f'--batch_size={batch_size}',
+                          f'--debug={debug}',
+                          f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
+                          f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+                          f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+                          f'--replay_buffer_server_address={replay_buffer_server_address}',
+                          f'--root_dir={root_dir}',
+                          f'--train_checkpoint_interval={train_checkpoint_interval}',
+                          f'--max_train_steps={max_train_steps}',
+                          f'--env_batch_size={env_batch_size}',
+                          f'--learning_rate={learning_rate}',
+                          f'--log_interval={log_interval}',
+                          f'--seed={seed}',
+                          f'--variable_container_server_address={variable_container_server_address}',
+                          f'--use_gpu=True',
+                          f'--use_gae={use_gae}',
+                          f'--use_tpu=False',
+                      ] + env_flags
 
   train_job = subprocess.Popen(
       train_job_command,

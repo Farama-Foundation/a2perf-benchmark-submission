@@ -302,10 +302,11 @@ def train(
   logging.info('Closed and deleted environment.')
 
   def experience_dataset_fn():
-    return reverb_replay_train.as_dataset(
-        sample_batch_size=batch_size,
-        num_parallel_calls=tf.data.experimental.AUTOTUNE,
-        num_steps=2).prefetch(3)
+    with strategy.scope():
+      return reverb_replay_train.as_dataset(
+          sample_batch_size=batch_size,
+          num_parallel_calls=tf.data.experimental.AUTOTUNE,
+          num_steps=2).prefetch(3)
 
   # Create the learner.
   learning_triggers = [

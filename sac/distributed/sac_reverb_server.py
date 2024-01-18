@@ -84,8 +84,7 @@ def run_reverb_server(root_dir):
               name=reverb_replay_buffer.DEFAULT_TABLE,
               sampler=reverb.selectors.Uniform(),
               remover=reverb.selectors.Fifo(),
-              rate_limiter=reverb.rate_limiters.MinSize(
-                  _MIN_TABLE_SIZE_BEFORE_SAMPLING.value),
+              rate_limiter=reverb.rate_limiters.MinSize(1),
               max_size=_REPLAY_BUFFER_CAPACITY.value,
               max_times_sampled=0,
               signature=replay_buffer_signature,
@@ -109,7 +108,7 @@ def run_reverb_server(root_dir):
 
 
 def main(_):
-  # tf.compat.v1.enable_v2_behavior()
+  tf.compat.v1.enable_v2_behavior()
 
   # Add a prefix to our absl logger so we know which collect job this is
   absl_handler = logging.get_absl_handler()
