@@ -51,7 +51,6 @@ _REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
 _ENV_BATCH_SIZE = flags.DEFINE_integer(
     'env_batch_size', None, 'Number of environments to run in parallel.'
 )
-_SEED = flags.DEFINE_integer('seed', None, 'Random seed.')
 _VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
     'variable_container_server_address',
     None,
@@ -141,7 +140,7 @@ def collect(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(10),
+      metrics=actor.collect_metrics(1),
       summary_interval=summary_interval,
       summary_dir=summary_dir,
       observers=[experience_observer, env_step_metric],
@@ -175,15 +174,18 @@ def run_collect(
     sequence_length: int,
 ) -> None:
   """Wait for the collect policy to be ready and run collect job."""
-  # Wait for the collect policy to become available, then load it.
   collect_policy_dir = os.path.join(
       root_dir,
+      '../',
       learner.POLICY_SAVED_MODEL_DIR,
       learner.COLLECT_POLICY_SAVED_MODEL_DIR,
   )
+  logging.info('Looking for collect policy in %s', collect_policy_dir)
+
   collect_policy = train_utils.wait_for_policy(
       collect_policy_dir, load_specs_from_pbtxt=True
   )
+  logging.info('Loaded collect policy from %s', collect_policy_dir)
 
   collect(
       environment_name=environment_name,
@@ -204,10 +206,6 @@ def main(_):
   absl_handler.setFormatter(PrefixedLogFormatter())
 
   tf.compat.v1.enable_v2_behavior()
-
-  # Set the random seeds
-  tf.random.set_seed(_SEED.value)
-  np.random.seed(_SEED.value)
 
   gin.parse_config_files_and_bindings(
       _GIN_FILE.value, _GIN_BINDINGS.value, finalize_config=False
@@ -262,6 +260,5 @@ if __name__ == '__main__':
       'task',
       'summary_interval',
       'max_train_steps',
-      'seed',
   ])
   multiprocessing.handle_main(functools.partial(app.run, main))

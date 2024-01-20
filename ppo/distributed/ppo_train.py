@@ -23,15 +23,12 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains.web_navigation.gwob.CoDE import networks
+import gin
+import numpy as np
+import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
-import gin
-import numpy as np
-import reverb
-import tensorflow as tf
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ppo import ppo_clip_agent
 from tf_agents.environments import py_environment
@@ -51,6 +48,14 @@ from tf_agents.train.utils import train_utils
 from tf_agents.trajectories import time_step as ts
 from tf_agents.typing import types
 
+# noinspection PyUnresolvedReferences
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+
+_SHUFFLE_BUFFER_SIZE = flags.DEFINE_integer(
+    'shuffle_buffer_size', None,
+    'Size of the shuffle buffer for the training dataset.'
+)
 _SEQUENCE_LENGTH = flags.DEFINE_integer(
     'sequence_length', None,
     'Length of sequences to sample from the replay buffer.'
@@ -213,25 +218,25 @@ def _create_agent(
                                        epsilon=1e-5)
 
   return ppo_clip_agent.PPOClipAgent(
-      time_step_spec=time_step_tensor_spec,
       action_spec=action_tensor_spec,
-      optimizer=optimizer,
       actor_net=actor_net,
-      greedy_eval=False,
-      value_net=value_net,
+      compute_value_and_advantage_in_train=False,
+      debug_summaries=debug_summaries,
       entropy_regularization=entropy_regularization,
       gradient_clipping=gradient_clipping,
-      use_gae=use_gae,
-      debug_summaries=debug_summaries,
-      summarize_grads_and_vars=summarize_grads_and_vars,
-      normalize_observations=False,
-      normalize_rewards=False,
+      greedy_eval=False,
       importance_ratio_clipping=0.2,
-      use_td_lambda_return=True,
+      normalize_observations=True,
+      normalize_rewards=True,
       num_epochs=1,  # this is a legacy argument and should always be 1
+      optimizer=optimizer,
+      summarize_grads_and_vars=summarize_grads_and_vars,
+      time_step_spec=time_step_tensor_spec,
       train_step_counter=train_step,
-      compute_value_and_advantage_in_train=False,
       update_normalizers_in_train=False,
+      use_gae=use_gae,
+      use_td_lambda_return=True,
+      value_net=value_net,
   )
 
 
@@ -251,6 +256,7 @@ def train(
     max_train_step: Optional[int] = None,
     num_epochs: int = 0,
     batch_size: int = 0,
+    shuffle_buffer_size: int = 0,
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     timesteps_per_actorbatch: int = 0,
@@ -314,9 +320,6 @@ def train(
                             table=reverb_variable_container.DEFAULT_TABLE)
 
     # Create the replay buffer.
-    reverb_client = reverb.Client(replay_buffer_server_address)
-
-    # Create the replay buffer.
     reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
         agent.collect_data_spec,
         sequence_length=sequence_length,
@@ -339,16 +342,18 @@ def train(
     # deterministic sampling, so that normalization and training use the same
     # collected data.
     def experience_dataset_fn():
-      return reverb_replay_train.as_dataset(
-          sample_batch_size=env_batch_size,  # sample ALL on-policy data
-          sequence_preprocess_fn=agent.preprocess_sequence
-      )
+      with strategy.scope():
+        return reverb_replay_train.as_dataset(
+            sample_batch_size=1,
+            sequence_preprocess_fn=agent.preprocess_sequence
+        ).prefetch(tf.data.experimental.AUTOTUNE)
 
     def normalization_dataset_fn():
-      return reverb_replay_normalization.as_dataset(
-          sample_batch_size=env_batch_size,  # sample ALL on-policy data
-          sequence_preprocess_fn=agent.preprocess_sequence
-      )
+      with strategy.scope():
+        return reverb_replay_normalization.as_dataset(
+            sample_batch_size=1,
+            sequence_preprocess_fn=agent.preprocess_sequence
+        ).prefetch(tf.data.experimental.AUTOTUNE)
 
     # Create the learner.
     learning_triggers = [
@@ -375,11 +380,12 @@ def train(
         agent,
         experience_dataset_fn=experience_dataset_fn,
         normalization_dataset_fn=normalization_dataset_fn,
-        num_samples=learner_iterations_per_call,
+        num_samples=env_batch_size,
         num_epochs=num_epochs,
         minibatch_size=batch_size,
         checkpoint_interval=train_checkpoint_interval,
-        shuffle_buffer_size=100,
+        shuffle_buffer_size=shuffle_buffer_size,
+        summary_interval=log_interval,
         triggers=learning_triggers,
         strategy=strategy,
         after_train_strategy_step_fn=after_train_strategy_step_fn,
@@ -390,7 +396,6 @@ def train(
       logging.info('Training. Train step: %d', train_step.numpy())
       logging.info('\tThe max train step is: %d', max_train_step)
       ppo_learner.run()
-
       variable_container.push(variables)
       logging.info('\tPushed variables to variable container.')
 
@@ -476,6 +481,7 @@ def main(_):
       train_checkpoint_interval=_TRAIN_CHECKPOINT_INTERVAL.value,
       use_gae=_USE_GAE.value,
       batch_size=_BATCH_SIZE.value,
+      shuffle_buffer_size=_SHUFFLE_BUFFER_SIZE.value,
       env_batch_size=_ENV_BATCH_SIZE.value,
       seed=_SEED.value,
   )
@@ -500,6 +506,7 @@ if __name__ == '__main__':
       'log_interval',
       'train_checkpoint_interval',
       'policy_checkpoint_interval',
+      'shuffle_buffer_size',
 
   ])
   multiprocessing.handle_main(lambda _: app.run(main))

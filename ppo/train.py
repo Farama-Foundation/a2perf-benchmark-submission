@@ -15,8 +15,9 @@ def print_subprocess_output(process):
 
 def train():
   mode = os.environ.get('MODE', None)
-  if mode is None:
-    raise ValueError('Mode must be set.')
+  job_type = os.environ.get('JOB_TYPE', None)
+  if job_type is None:
+    raise ValueError('Job type must be set.')
   seed = int(os.environ.get('SEED', -1))
   use_gae = bool(os.environ.get('USE_GAE', None))
   root_dir = os.environ.get('ROOT_DIR', None)
@@ -40,16 +41,35 @@ def train():
   vocab_port = int(os.environ.get('VOCAB_PORT', '50000'))
   difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', -1))
   num_websites = int(os.environ.get('NUM_WEBSITES', -1))
-  port = int(os.environ.get('PORT', '8008'))
-  host = os.environ.get('HOST', 'localhost')
-  replay_buffer_server_address = f'{host}:{port}'
-  variable_container_server_address = f'{host}:{port}'
   debug = bool(os.environ.get('DEBUG', None))
   max_vocab_size = int(os.environ.get('MAX_VOCAB_SIZE', -1))
   embedding_dim = int(os.environ.get('EMBEDDING_DIM', -1))
   latent_dim = int(os.environ.get('LATENT_DIM', -1))
   epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', -1))
   profile_value_dropout = float(os.environ.get('PROFILE_VALUE_DROPOUT', -1))
+
+  # Networking params
+  replay_buffer_server_address = os.environ.get(
+      'REPLAY_BUFFER_SERVER_ADDRESS', None
+  )
+  variable_container_server_address = os.environ.get(
+      'VARIABLE_CONTAINER_SERVER_ADDRESS', None
+  )
+  replay_buffer_server_port = int(
+      os.environ.get('REPLAY_BUFFER_SERVER_PORT', -1))
+  variable_container_server_port = int(
+      os.environ.get('VARIABLE_CONTAINER_SERVER_PORT', -1)
+  )
+  vocabulary_server_address = os.environ.get(
+      'VOCABULARY_SERVER_ADDRESS', None
+  )
+  vocabulary_server_port = int(os.environ.get('VOCABULARY_SERVER_PORT', -1))
+
+  print(f'replay_buffer_server_address: {replay_buffer_server_address}')
+  print(f'replay_buffer_server_port: {replay_buffer_server_port}')
+  print(
+      f'variable_container_server_address: {variable_container_server_address}')
+  print(f'variable_container_server_port: {variable_container_server_port}')
 
   print(f'batch_size: {batch_size}')
   print(f'debug: {debug}')
@@ -71,8 +91,9 @@ def train():
     print(f'motion_file_path: {motion_file_path}')
     print(f'max_vocab_size: {max_vocab_size}')
   elif env_name == 'WebNavigation-v0':
-    print(f'reverb_port: {port}')
-    print(f'vocab_port: {vocab_port}')
+    print(f'vocabulary_server_address: {vocabulary_server_address}')
+    print(f'vocabulary_server_port: {vocabulary_server_port}')
+
     print(f'difficulty_level: {difficulty_level}')
     print(f'num_websites: {num_websites}')
     print(f'embedding_dim: {embedding_dim}')
@@ -84,6 +105,14 @@ def train():
   num_replicas = len(gpus) if gpus else 1
 
   # Parameters for training
+  # Set shuffle buffer size depending on the environment (since max episode lengths  are different)
+  if env_name == 'QuadrupedLocomotion-v0':
+    shuffle_buffer_size = 2048
+  elif env_name == 'WebNavigation-v0':
+    shuffle_buffer_size = 100
+  else:
+    shuffle_buffer_size = -1
+
   num_minibatches = timesteps_per_actorbatch // batch_size
   train_steps_per_iteration = num_minibatches * num_epochs // num_replicas
   num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
@@ -102,7 +131,7 @@ def train():
       eval_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
       int))
   log_interval = np.maximum(1, np.round(
-      log_interval / env_batch_size / timesteps_per_actorbatch * train_steps_per_iteration).astype(
+      log_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
       int))
 
   logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
@@ -116,7 +145,13 @@ def train():
   )
   logging.info(f'converted eval_interval: {eval_interval}')
   logging.info(f'converted log_interval: {log_interval}')
+  logging.info(
+      f'shuffle_buffer_size: {shuffle_buffer_size}'
+  )
   logging.info(f'random seed: {seed}')
+
+  no_gpu_env = os.environ.copy()
+  no_gpu_env['CUDA_VISIBLE_DEVICES'] = '-1'
 
   env_flags = []
   all_processes = []
@@ -127,7 +162,7 @@ def train():
         f'--difficulty_level={difficulty_level}',
     ])
 
-    if mode == 'collect':
+    if job_type == 'collect':
       auth_key = 'secretkey'
       manager_command = [
           'python',
@@ -141,7 +176,7 @@ def train():
           manager_command,
           stdout=subprocess.PIPE,
           stderr=subprocess.STDOUT,
-          env=os.environ.copy(),
+          env=no_gpu_env
       )
       all_processes.append(manager_process)
       threading.Thread(
@@ -153,29 +188,29 @@ def train():
         [f'--env_name={env_name}', f'--motion_file_path={motion_file_path}']
     )
 
-  if mode == 'train':
-    # Launch reverb server
+  if job_type == 'train':
     reverb_command = [
         'python',
         'distributed/ppo_reverb_server.py',
-        f'--port={port}',
+        f'--port={replay_buffer_server_port}',
         f'--root_dir={root_dir}',
         f'--min_table_size_before_sampling={timesteps_per_actorbatch}',
         '--verbosity=2',
     ]
+    logging.info(' '.join(reverb_command))
 
     reverb_process = subprocess.Popen(
         reverb_command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env=os.environ.copy(),
+        env=no_gpu_env
     )
     threading.Thread(
         target=print_subprocess_output, args=(reverb_process,)
     ).start()
     logging.info('Successfully launched reverb server.')
 
-  if mode == 'collect':
+  if job_type == 'collect':
     # Launch collect jobs with domain-specific configurations
     collect_job_commands = [
         [
@@ -186,15 +221,17 @@ def train():
             f'--summary_interval={log_interval}',
             f'--env_batch_size={env_batch_size}',
             f'--max_train_steps={max_train_steps}',
-            f'--replay_buffer_server_address={replay_buffer_server_address}',
-            f'--variable_container_server_address={variable_container_server_address}',
+            f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
+            f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
             f'--task={i}',
-            f'--seed={seed}',
             '--verbosity=2' if i == 0 else '--verbosity=-2',
         ]
         + env_flags
         for i in range(env_batch_size)
     ]
+
+    # Display one of the commands
+    logging.info(' '.join(collect_job_commands[0]))
 
     collect_jobs = []
     for command in collect_job_commands:
@@ -202,26 +239,26 @@ def train():
           command,
           stdout=subprocess.PIPE,
           stderr=subprocess.STDOUT,
-          env=os.environ.copy(),
+          env=no_gpu_env
       )
       collect_jobs.append(process)
       threading.Thread(target=print_subprocess_output, args=(process,)).start()
     all_processes.extend(collect_jobs)
     logging.info('Successfully launched collect jobs.')
 
-  if mode == 'train':
-    # Launch train job
+  if job_type == 'train':
     train_job_command = [
                             'python',
                             'distributed/ppo_train.py',
                             f'--entropy_regularization={entropy_regularization}',
                             f'--num_epochs={num_epochs}',
                             f'--batch_size={batch_size}',
+                            f'--shuffle_buffer_size={shuffle_buffer_size}',
                             f'--debug={debug}',
                             f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
                             f'--sequence_length={adjusted_timesteps_per_actorbatch}',
                             f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-                            f'--replay_buffer_server_address={replay_buffer_server_address}',
+                            f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
                             f'--root_dir={root_dir}',
                             f'--train_checkpoint_interval={train_checkpoint_interval}',
                             f'--max_train_steps={max_train_steps}',
@@ -229,11 +266,14 @@ def train():
                             f'--learning_rate={learning_rate}',
                             f'--log_interval={log_interval}',
                             f'--seed={seed}',
-                            f'--variable_container_server_address={variable_container_server_address}',
+                            f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
                             f'--use_gpu=True',
                             f'--use_gae={use_gae}',
                             f'--use_tpu=False',
                         ] + env_flags
+
+    # Display the command
+    logging.info(' '.join(train_job_command))
 
     train_job = subprocess.Popen(
         train_job_command,
@@ -241,16 +281,22 @@ def train():
         stderr=subprocess.STDOUT,
         env=os.environ.copy(),
     )
+    all_processes.append(train_job)
     threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
     logging.info('Successfully launched train job.')
 
-  # Wait for all_processes to terminate
-  for process in all_processes:
-    process.wait()
-  logging.info('Training complete.')
+  # Monitor the training job and handle its completion
+  while True:
+    try:
+      train_job.wait(timeout=30)
+      break
+    except subprocess.TimeoutExpired:
+      logging.info('Train job still running.')
+      continue
+  logging.info('Train job finished.')
 
   # Reverb server has to be killed manually if we are the train job
-  if mode == 'train':
+  if job_type == 'train':
     reverb_process.terminate()
     logging.info('Successfully terminated reverb server.')
 
