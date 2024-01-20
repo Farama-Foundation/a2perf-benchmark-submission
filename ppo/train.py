@@ -93,7 +93,6 @@ def train():
   elif env_name == 'WebNavigation-v0':
     print(f'vocabulary_server_address: {vocabulary_server_address}')
     print(f'vocabulary_server_port: {vocabulary_server_port}')
-
     print(f'difficulty_level: {difficulty_level}')
     print(f'num_websites: {num_websites}')
     print(f'embedding_dim: {embedding_dim}')
@@ -189,12 +188,13 @@ def train():
     )
 
   if job_type == 'train':
+    min_table_size_before_sampling = np.maximum(1, env_batch_size // 2)
     reverb_command = [
         'python',
         'distributed/ppo_reverb_server.py',
         f'--port={replay_buffer_server_port}',
         f'--root_dir={root_dir}',
-        f'--min_table_size_before_sampling={timesteps_per_actorbatch}',
+        f'--min_table_size_before_sampling={min_table_size_before_sampling}',
         '--verbosity=2',
     ]
     logging.info(' '.join(reverb_command))
@@ -285,20 +285,22 @@ def train():
     threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
     logging.info('Successfully launched train job.')
 
-  # Monitor the training job and handle its completion
-  while True:
-    try:
-      train_job.wait(timeout=30)
-      break
-    except subprocess.TimeoutExpired:
-      logging.info('Train job still running.')
-      continue
-  logging.info('Train job finished.')
-
-  # Reverb server has to be killed manually if we are the train job
   if job_type == 'train':
+    while True:
+      try:
+        train_job.wait(timeout=30)
+        break
+      except subprocess.TimeoutExpired:
+        logging.info('Train job still running.')
+        continue
+    logging.info('Train job finished.')
     reverb_process.terminate()
     logging.info('Successfully terminated reverb server.')
+
+  # Wait for all processes to finish
+  for process in all_processes:
+    process.terminate()
+    logging.info('Successfully terminated process.')
 
 
 def main(_):
