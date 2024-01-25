@@ -60,19 +60,19 @@ def train():
       'VARIABLE_CONTAINER_SERVER_ADDRESS', None
   )
   replay_buffer_server_port = int(
-      os.environ.get('REPLAY_BUFFER_SERVER_PORT', -1))
+      os.environ.get('REPLAY_BUFFER_SERVER_PORT', -1)
+  )
   variable_container_server_port = int(
       os.environ.get('VARIABLE_CONTAINER_SERVER_PORT', -1)
   )
-  vocabulary_server_address = os.environ.get(
-      'VOCABULARY_SERVER_ADDRESS', None
-  )
+  vocabulary_server_address = os.environ.get('VOCABULARY_SERVER_ADDRESS', None)
   vocabulary_server_port = int(os.environ.get('VOCABULARY_SERVER_PORT', -1))
 
   print(f'replay_buffer_server_address: {replay_buffer_server_address}')
   print(f'replay_buffer_server_port: {replay_buffer_server_port}')
   print(
-      f'variable_container_server_address: {variable_container_server_address}')
+      f'variable_container_server_address: {variable_container_server_address}'
+  )
   print(f'variable_container_server_port: {variable_container_server_port}')
 
   print(f'batch_size: {batch_size}')
@@ -93,7 +93,6 @@ def train():
 
   if env_name == 'QuadrupedLocomotion-v0':
     print(f'motion_file_path: {motion_file_path}')
-    print(f'max_vocab_size: {max_vocab_size}')
   elif env_name == 'WebNavigation-v0':
     print(f'vocabulary_server_address: {vocabulary_server_address}')
     print(f'vocabulary_server_port: {vocabulary_server_port}')
@@ -103,6 +102,7 @@ def train():
     print(f'latent_dim: {latent_dim}')
     print(f'epsilon_greedy: {epsilon_greedy}')
     print(f'profile_value_dropout: {profile_value_dropout}')
+    print(f'max_vocab_size: {max_vocab_size}')
 
   gpus = tf.config.list_physical_devices('GPU')
   num_replicas = len(gpus) if gpus else 1
@@ -124,11 +124,12 @@ def train():
     learner_iterations_per_call = 1
     initial_collect_steps = 0
     min_table_size_before_sampling = np.maximum(1, env_batch_size // 2)
-
   else:
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration
     # roughly.
-    learner_iterations_per_call = timesteps_per_actorbatch // batch_size
+    learner_iterations_per_call = np.maximum(
+        1, timesteps_per_actorbatch // batch_size
+    )
     train_steps_per_iteration = learner_iterations_per_call
     shuffle_buffer_size = -1
     initial_collect_steps = adjusted_timesteps_per_actorbatch
@@ -137,34 +138,48 @@ def train():
   num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
   max_train_steps = train_steps_per_iteration * num_iterations
 
-  policy_checkpoint_interval = np.maximum(1, np.round(
-      policy_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int))
-  train_checkpoint_interval = np.maximum(1, np.round(
-      train_checkpoint_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int))
-  eval_interval = np.maximum(1, np.round(
-      eval_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int))
-  log_interval = np.maximum(1, np.round(
-      log_interval / timesteps_per_actorbatch * train_steps_per_iteration).astype(
-      int))
+  policy_checkpoint_interval = np.maximum(
+      1,
+      np.round(
+          policy_checkpoint_interval
+          / timesteps_per_actorbatch
+          * train_steps_per_iteration
+      ).astype(int),
+  )
+  train_checkpoint_interval = np.maximum(
+      1,
+      np.round(
+          train_checkpoint_interval
+          / timesteps_per_actorbatch
+          * train_steps_per_iteration
+      ).astype(int),
+  )
+  eval_interval = np.maximum(
+      1,
+      np.round(
+          eval_interval / timesteps_per_actorbatch * train_steps_per_iteration
+      ).astype(int),
+  )
+  log_interval = np.maximum(
+      1,
+      np.round(
+          log_interval / timesteps_per_actorbatch * train_steps_per_iteration
+      ).astype(int),
+  )
 
-  logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
-  logging.info(f'num_iterations: {num_iterations}')
-  logging.info(f'max_train_steps: {max_train_steps}')
-  logging.info(
+  print(f'train_steps_per_iteration: {train_steps_per_iteration}')
+  print(f'num_iterations: {num_iterations}')
+  print(f'max_train_steps: {max_train_steps}')
+  print(
       f'converted policy_checkpoint_interval: {policy_checkpoint_interval}'
   )
-  logging.info(
+  print(
       f'converted train_checkpoint_interval: {train_checkpoint_interval}'
   )
-  logging.info(f'converted eval_interval: {eval_interval}')
-  logging.info(f'converted log_interval: {log_interval}')
-  logging.info(
-      f'shuffle_buffer_size: {shuffle_buffer_size}'
-  )
-  logging.info(f'random seed: {seed}')
+  print(f'converted eval_interval: {eval_interval}')
+  print(f'converted log_interval: {log_interval}')
+  print(f'shuffle_buffer_size: {shuffle_buffer_size}')
+  print(f'random seed: {seed}')
 
   no_gpu_env = os.environ.copy()
   no_gpu_env['CUDA_VISIBLE_DEVICES'] = '-1'
@@ -192,7 +207,7 @@ def train():
           manager_command,
           stdout=subprocess.PIPE,
           stderr=subprocess.STDOUT,
-          env=no_gpu_env
+          env=no_gpu_env,
       )
       all_processes.append(manager_process)
       threading.Thread(
@@ -221,7 +236,7 @@ def train():
         reverb_command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env=no_gpu_env
+        env=no_gpu_env,
     )
     threading.Thread(
         target=print_subprocess_output, args=(reverb_process,)
@@ -259,7 +274,7 @@ def train():
           command,
           stdout=subprocess.PIPE,
           stderr=subprocess.STDOUT,
-          env=no_gpu_env
+          env=no_gpu_env,
       )
       collect_jobs.append(process)
       threading.Thread(target=print_subprocess_output, args=(process,)).start()
@@ -268,31 +283,31 @@ def train():
 
   if job_type == 'train':
     train_job_command = [
-                            'python',
-                            'distributed/train.py',
-                            f'--entropy_regularization={entropy_regularization}',
-                            f'--num_epochs={num_epochs}',
-                            f'--batch_size={batch_size}',
-                            f'--shuffle_buffer_size={shuffle_buffer_size}',
-                            f'--algorithm={algorithm}',
-                            f'--debug={debug}',
-                            f'--learner_iterations_per_call={learner_iterations_per_call}',
-                            f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
-                            f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-                            f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-                            f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
-                            f'--root_dir={root_dir}',
-                            f'--train_checkpoint_interval={train_checkpoint_interval}',
-                            f'--max_train_steps={max_train_steps}',
-                            f'--env_batch_size={env_batch_size}',
-                            f'--learning_rate={learning_rate}',
-                            f'--log_interval={log_interval}',
-                            f'--seed={seed}',
-                            f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
-                            f'--use_gpu=True',
-                            f'--use_gae={use_gae}',
-                            f'--use_tpu=False',
-                        ] + env_flags
+        'python',
+        'distributed/train.py',
+        f'--entropy_regularization={entropy_regularization}',
+        f'--num_epochs={num_epochs}',
+        f'--batch_size={batch_size}',
+        f'--shuffle_buffer_size={shuffle_buffer_size}',
+        f'--algorithm={algorithm}',
+        f'--debug={debug}',
+        f'--learner_iterations_per_call={learner_iterations_per_call}',
+        f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
+        f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+        f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+        f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
+        f'--root_dir={root_dir}',
+        f'--train_checkpoint_interval={train_checkpoint_interval}',
+        f'--max_train_steps={max_train_steps}',
+        f'--env_batch_size={env_batch_size}',
+        f'--learning_rate={learning_rate}',
+        f'--log_interval={log_interval}',
+        f'--seed={seed}',
+        f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
+        f'--use_gpu=True',
+        f'--use_gae={use_gae}',
+        f'--use_tpu=False',
+    ] + env_flags
 
     # Display the command
     logging.info(' '.join(train_job_command))

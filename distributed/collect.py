@@ -5,9 +5,6 @@ import os
 import time
 from typing import Text
 
-from tf_agents.policies import random_py_policy
-from tf_agents.replay_buffers import reverb_replay_buffer
-
 from a2perf.domains import quadruped_locomotion
 from absl import app
 from absl import flags
@@ -21,6 +18,8 @@ from tf_agents.environments import suite_pybullet
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
 from tf_agents.policies import py_tf_eager_policy
+from tf_agents.policies import random_py_policy
+from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.replay_buffers import reverb_utils
 from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import actor
@@ -277,7 +276,7 @@ def run_collect(
   """Wait for the collect policy to be ready and run collect job."""
   collect_policy_dir = os.path.join(
       root_dir,
-      '../',
+      '../../',  # two levels because collect/<hostname>/ is the root_dir
       learner.POLICY_SAVED_MODEL_DIR,
       learner.COLLECT_POLICY_SAVED_MODEL_DIR,
   )
@@ -300,7 +299,7 @@ def run_collect(
         summary_interval=summary_interval,
         sequence_length=sequence_length,
         suite_load_function=suite_load_fn,
-        initial_collect_steps=initial_collect_steps
+        initial_collect_steps=initial_collect_steps,
     )
   else:
     collect_sequences(
