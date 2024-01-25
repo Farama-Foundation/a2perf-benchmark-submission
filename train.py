@@ -52,7 +52,9 @@ def train():
   adjusted_timesteps_per_actorbatch = np.maximum(
       1, timesteps_per_actorbatch // env_batch_size
   )
+
   # Networking params
+  num_collect_machines = int(os.environ.get('NUM_COLLECT_MACHINES', 1))
   replay_buffer_server_address = os.environ.get(
       'REPLAY_BUFFER_SERVER_ADDRESS', None
   )
@@ -170,12 +172,8 @@ def train():
   print(f'train_steps_per_iteration: {train_steps_per_iteration}')
   print(f'num_iterations: {num_iterations}')
   print(f'max_train_steps: {max_train_steps}')
-  print(
-      f'converted policy_checkpoint_interval: {policy_checkpoint_interval}'
-  )
-  print(
-      f'converted train_checkpoint_interval: {train_checkpoint_interval}'
-  )
+  print(f'converted policy_checkpoint_interval: {policy_checkpoint_interval}')
+  print(f'converted train_checkpoint_interval: {train_checkpoint_interval}')
   print(f'converted eval_interval: {eval_interval}')
   print(f'converted log_interval: {log_interval}')
   print(f'shuffle_buffer_size: {shuffle_buffer_size}')
@@ -245,6 +243,10 @@ def train():
 
   if job_type == 'collect':
     # Launch collect jobs with domain-specific configurations
+    # Note: each collect script runs a single environment, so we adjust
+    # the number of jobs started based on the number of machines
+    num_collect_jobs = env_batch_size // num_collect_machines
+
     collect_job_commands = [
         [
             'python',
@@ -256,13 +258,14 @@ def train():
             f'--env_batch_size={env_batch_size}',
             f'--initial_collect_steps={initial_collect_steps}',
             f'--max_train_steps={max_train_steps}',
+            f'--num_collect_machines={num_collect_machines}',
             f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
             f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
             f'--task={i}',
             '--verbosity=2' if i == 0 else '--verbosity=-2',
         ]
         + env_flags
-        for i in range(env_batch_size)
+        for i in range(num_collect_jobs)
     ]
 
     # Display one of the commands
