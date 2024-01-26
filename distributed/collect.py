@@ -185,6 +185,11 @@ def collect_off_policy(
     logging.info('\tCollection took %.3f seconds', end_time - start_time)
     prev_num_steps_collected = env_step_metric.result()
 
+  # Clean up the environment and replay buffer.
+  del reverb_client
+  collect_env.close()
+  del collect_env
+
 
 @gin.configurable
 def collect_sequences(
@@ -258,6 +263,11 @@ def collect_sequences(
     )
     logging.info('\tCollection took %.3f seconds', end_time - start_time)
     prev_num_steps_collected = env_step_metric.result()
+
+  # Clean up the environment and replay buffer.
+  del reverb_client
+  collect_env.close()
+  del collect_env
 
 
 def run_collect(
