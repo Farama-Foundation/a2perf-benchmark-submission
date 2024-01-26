@@ -119,6 +119,7 @@ def collect_off_policy(
     initial_collect_steps: int,
 ) -> None:
   summary_dir = os.path.join(root_dir, 'summaries', str(task))
+  logging.info('Summary dir: %s', summary_dir)
 
   collect_env = suite_load_function(environment_name)
 
@@ -128,6 +129,7 @@ def collect_off_policy(
       reverb_variable_container.POLICY_KEY: collect_policy.variables(),
       reverb_variable_container.TRAIN_STEP_KEY: train_step,
   }
+
   variable_container = reverb_variable_container.ReverbVariableContainer(
       variable_container_server_address,
       table_names=[reverb_variable_container.DEFAULT_TABLE],
@@ -171,12 +173,13 @@ def collect_off_policy(
 
   # Run the experience collection loop.
   prev_num_steps_collected = 0
-  while train_step.numpy() < max_train_step:
+  while train_step < max_train_step:
     start_time = time.time()
     collect_actor.run()
     end_time = time.time()
     variable_container.update(variables)
-    logging.info('Collecting with policy at step: %d', train_step.numpy())
+    logging.info('Collecting with policy at step: %d out of %d',
+                 train_step.numpy(), max_train_step)
     logging.info('\tCollected %d steps', env_step_metric.result())
     logging.info(
         '\tCollected %d steps this iteration',
@@ -184,6 +187,8 @@ def collect_off_policy(
     )
     logging.info('\tCollection took %.3f seconds', end_time - start_time)
     prev_num_steps_collected = env_step_metric.result()
+
+  logging.info('Done collecting.')
 
   # Clean up the environment and replay buffer.
   del reverb_client
@@ -249,7 +254,7 @@ def collect_sequences(
 
   # Run the experience collection loop.
   prev_num_steps_collected = 0
-  while train_step.numpy() < max_train_step:
+  while train_step < max_train_step:
     start_time = time.time()
     collect_actor.run()
     end_time = time.time()

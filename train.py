@@ -55,6 +55,7 @@ def train():
 
   # Networking params
   num_collect_machines = int(os.environ.get('NUM_COLLECT_MACHINES', 1))
+  num_replicas = int(os.environ.get('NUM_REPLICAS', -1))
   replay_buffer_server_address = os.environ.get(
       'REPLAY_BUFFER_SERVER_ADDRESS', None
   )
@@ -105,9 +106,6 @@ def train():
     print(f'epsilon_greedy: {epsilon_greedy}')
     print(f'profile_value_dropout: {profile_value_dropout}')
     print(f'max_vocab_size: {max_vocab_size}')
-
-  gpus = tf.config.list_physical_devices('GPU')
-  num_replicas = len(gpus) if gpus else 1
 
   # Replicas split the batch size, so scale it
   batch_size *= num_replicas
@@ -284,31 +282,31 @@ def train():
     logging.info('Successfully launched reverb server.')
 
     train_job_command = [
-        'python',
-        'distributed/train.py',
-        f'--entropy_regularization={entropy_regularization}',
-        f'--num_epochs={num_epochs}',
-        f'--batch_size={batch_size}',
-        f'--shuffle_buffer_size={shuffle_buffer_size}',
-        f'--algorithm={algorithm}',
-        f'--debug={debug}',
-        f'--learner_iterations_per_call={learner_iterations_per_call}',
-        f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
-        f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-        f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-        f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
-        f'--root_dir={root_dir}',
-        f'--train_checkpoint_interval={train_checkpoint_interval}',
-        f'--max_train_steps={max_train_steps}',
-        f'--env_batch_size={env_batch_size}',
-        f'--learning_rate={learning_rate}',
-        f'--log_interval={log_interval}',
-        f'--seed={seed}',
-        f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
-        f'--use_gpu=True',
-        f'--use_gae={use_gae}',
-        f'--use_tpu=False',
-    ] + env_flags
+                            'python',
+                            'distributed/train.py',
+                            f'--entropy_regularization={entropy_regularization}',
+                            f'--num_epochs={num_epochs}',
+                            f'--batch_size={batch_size}',
+                            f'--shuffle_buffer_size={shuffle_buffer_size}',
+                            f'--algorithm={algorithm}',
+                            f'--debug={debug}',
+                            f'--learner_iterations_per_call={learner_iterations_per_call}',
+                            f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
+                            f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+                            f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+                            f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
+                            f'--root_dir={root_dir}',
+                            f'--train_checkpoint_interval={train_checkpoint_interval}',
+                            f'--max_train_steps={max_train_steps}',
+                            f'--env_batch_size={env_batch_size}',
+                            f'--learning_rate={learning_rate}',
+                            f'--log_interval={log_interval}',
+                            f'--seed={seed}',
+                            f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
+                            f'--use_gpu=True',
+                            f'--use_gae={use_gae}',
+                            f'--use_tpu=False',
+                        ] + env_flags
 
     # Display the command
     logging.info(' '.join(train_job_command))
