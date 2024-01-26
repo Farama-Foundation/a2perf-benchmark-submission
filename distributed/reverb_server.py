@@ -75,8 +75,10 @@ def run_reverb_server(root_dir):
   logging.info('Signature of experience: \n%s', replay_buffer_signature)
 
   if _ALGORITHM.value == 'ppo':
-    logging.info(f'Replay buffer will not be sampled until '
-                 f'{_MIN_TABLE_SIZE_BEFORE_SAMPLING.value} items are available')
+    logging.info(
+        'Replay buffer will not be sampled until '
+        f'{_MIN_TABLE_SIZE_BEFORE_SAMPLING.value} items are available'
+    )
     tables = [
         # Note that the training table and the normalization table are
         # synchronized and contain identical values. Because the collectors
@@ -91,7 +93,8 @@ def run_reverb_server(root_dir):
             sampler=reverb.selectors.Fifo(),
             remover=reverb.selectors.Fifo(),
             rate_limiter=reverb.rate_limiters.MinSize(
-                _MIN_TABLE_SIZE_BEFORE_SAMPLING.value),
+                _MIN_TABLE_SIZE_BEFORE_SAMPLING.value
+            ),
             max_size=_REPLAY_BUFFER_CAPACITY.value,
             max_times_sampled=1,
             signature=replay_buffer_signature,
@@ -101,7 +104,8 @@ def run_reverb_server(root_dir):
             sampler=reverb.selectors.Fifo(),
             remover=reverb.selectors.Fifo(),
             rate_limiter=reverb.rate_limiters.MinSize(
-                _MIN_TABLE_SIZE_BEFORE_SAMPLING.value),
+                _MIN_TABLE_SIZE_BEFORE_SAMPLING.value
+            ),
             max_size=_REPLAY_BUFFER_CAPACITY.value,
             max_times_sampled=1,
             signature=replay_buffer_signature,
@@ -163,8 +167,11 @@ def main(_):
 
 
 if __name__ == '__main__':
-  flags.mark_flags_as_required(
-      ['root_dir', 'port', 'min_table_size_before_sampling',
-       'replay_buffer_capacity', 'algorithm'
-       ])
+  flags.mark_flags_as_required([
+      'root_dir',
+      'port',
+      'min_table_size_before_sampling',
+      'replay_buffer_capacity',
+      'algorithm',
+  ])
   app.run(main)

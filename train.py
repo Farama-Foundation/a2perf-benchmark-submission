@@ -113,16 +113,9 @@ def train():
   batch_size *= num_replicas
 
   if algorithm == 'ppo':
-    # Set shuffle buffer size depending on the environment (since max episode lengths  are different)
-    if env_name == 'QuadrupedLocomotion-v0':
-      shuffle_buffer_size = 2048
-    elif env_name == 'WebNavigation-v0':
-      shuffle_buffer_size = 100
-    else:
-      shuffle_buffer_size = -1
-
+    shuffle_buffer_size = num_epochs * timesteps_per_actorbatch
     num_minibatches = timesteps_per_actorbatch // batch_size
-    train_steps_per_iteration = num_minibatches * num_epochs // num_replicas
+    train_steps_per_iteration = num_minibatches * num_epochs
     learner_iterations_per_call = 1
     initial_collect_steps = 0
     min_table_size_before_sampling = np.maximum(1, env_batch_size // 2)
@@ -191,7 +184,7 @@ def train():
         f'--difficulty_level={difficulty_level}',
     ])
 
-    if job_type == 'collect':
+    if job_type == 'train':
       auth_key = 'secretkey'
       manager_command = [
           'python',
@@ -217,30 +210,6 @@ def train():
         [f'--env_name={env_name}', f'--motion_file_path={motion_file_path}']
     )
 
-  if job_type == 'train':
-    reverb_command = [
-        'python',
-        'distributed/reverb_server.py',
-        f'--port={replay_buffer_server_port}',
-        f'--root_dir={root_dir}',
-        f'--replay_buffer_capacity={replay_buffer_capacity}',
-        f'--algorithm={algorithm}',
-        f'--min_table_size_before_sampling={min_table_size_before_sampling}',
-        '--verbosity=2',
-    ]
-    logging.info(' '.join(reverb_command))
-
-    reverb_process = subprocess.Popen(
-        reverb_command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=no_gpu_env,
-    )
-    threading.Thread(
-        target=print_subprocess_output, args=(reverb_process,)
-    ).start()
-    logging.info('Successfully launched reverb server.')
-
   if job_type == 'collect':
     # Launch collect jobs with domain-specific configurations
     # Note: each collect script runs a single environment, so we adjust
@@ -258,7 +227,6 @@ def train():
             f'--env_batch_size={env_batch_size}',
             f'--initial_collect_steps={initial_collect_steps}',
             f'--max_train_steps={max_train_steps}',
-            f'--num_collect_machines={num_collect_machines}',
             f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
             f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
             f'--task={i}',
@@ -283,8 +251,30 @@ def train():
       threading.Thread(target=print_subprocess_output, args=(process,)).start()
     all_processes.extend(collect_jobs)
     logging.info('Successfully launched collect jobs.')
+  elif job_type == 'train':
+    reverb_command = [
+        'python',
+        'distributed/reverb_server.py',
+        f'--port={replay_buffer_server_port}',
+        f'--root_dir={root_dir}',
+        f'--replay_buffer_capacity={replay_buffer_capacity}',
+        f'--algorithm={algorithm}',
+        f'--min_table_size_before_sampling={min_table_size_before_sampling}',
+        '--verbosity=2',
+    ]
+    logging.info(' '.join(reverb_command))
 
-  if job_type == 'train':
+    reverb_process = subprocess.Popen(
+        reverb_command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=no_gpu_env,
+    )
+    threading.Thread(
+        target=print_subprocess_output, args=(reverb_process,)
+    ).start()
+    logging.info('Successfully launched reverb server.')
+
     train_job_command = [
         'python',
         'distributed/train.py',
@@ -325,7 +315,6 @@ def train():
     threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
     logging.info('Successfully launched train job.')
 
-  if job_type == 'train':
     while True:
       try:
         train_job.wait(timeout=30)

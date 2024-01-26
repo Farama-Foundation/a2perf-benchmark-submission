@@ -13,8 +13,8 @@ import os
 from typing import Any
 from typing import Union
 
-import numpy as np
 from absl import logging
+import numpy as np
 from tf_agents.policies import policy_loader
 from tf_agents.policies.tf_policy import TFPolicy
 from tf_agents.trajectories import time_step as ts

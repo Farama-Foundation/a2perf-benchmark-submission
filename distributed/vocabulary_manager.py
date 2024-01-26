@@ -7,12 +7,15 @@ from absl import flags
 from absl import logging
 
 # Define flags
-_PORT = flags.DEFINE_integer('port', None,
-                             'Port number for the manager server.')
-_AUTH_KEY = flags.DEFINE_string('auth_key', None,
-                                'Authentication key for the manager server.')
-_MAX_VOCAB_SIZE = flags.DEFINE_integer('max_vocab_size', None,
-                                       'Maximum vocabulary size.')
+_PORT = flags.DEFINE_integer(
+    'port', None, 'Port number for the manager server.'
+)
+_AUTH_KEY = flags.DEFINE_string(
+    'auth_key', None, 'Authentication key for the manager server.'
+)
+_MAX_VOCAB_SIZE = flags.DEFINE_integer(
+    'max_vocab_size', None, 'Maximum vocabulary size.'
+)
 
 
 class VocabularyManager(BaseManager):
@@ -23,6 +26,7 @@ def LockProxy(lock):
   """Create a lock proxy that supports context management."""
 
   class LockProxy:
+
     def acquire(self):
       return lock.acquire()
 
@@ -39,26 +43,45 @@ def LockProxy(lock):
 
 
 def main(_):
-  manager = VocabularyManager(address=('', _PORT.value),
-                              authkey=_AUTH_KEY.value.encode())
+  manager = VocabularyManager(
+      address=('', _PORT.value), authkey=_AUTH_KEY.value.encode()
+  )
 
   general_manager = multiprocessing.Manager()
   _shared_dict = general_manager.dict()
   _shared_lock = multiprocessing.Lock()
 
   # Registering shared dictionary
-  VocabularyManager.register('get_shared_dict', callable=lambda: _shared_dict,
-                             exposed=('__getitem__', '__setitem__',
-                                      '__delitem__', '__len__', '__iter__',
-                                      '__contains__', '__str__', '__repr__',
-                                      'clear', 'copy', 'get', 'items',
-                                      'keys', 'pop', 'popitem', 'setdefault',
-                                      'update', 'values'))
+  VocabularyManager.register(
+      'get_shared_dict',
+      callable=lambda: _shared_dict,
+      exposed=(
+          '__getitem__',
+          '__setitem__',
+          '__delitem__',
+          '__len__',
+          '__iter__',
+          '__contains__',
+          '__str__',
+          '__repr__',
+          'clear',
+          'copy',
+          'get',
+          'items',
+          'keys',
+          'pop',
+          'popitem',
+          'setdefault',
+          'update',
+          'values',
+      ),
+  )
   # Registering shared lock with __enter__ and __exit__ methods exposed
-  VocabularyManager.register('get_shared_lock',
-                             callable=lambda: LockProxy(_shared_lock),
-                             exposed=('__enter__', '__exit__',
-                                      'acquire', 'release'))
+  VocabularyManager.register(
+      'get_shared_lock',
+      callable=lambda: LockProxy(_shared_lock),
+      exposed=('__enter__', '__exit__', 'acquire', 'release'),
+  )
 
   manager.start()
   logging.info(f'Started vocabulary manager server on port {_PORT.value}.')
