@@ -1,7 +1,7 @@
 import os
 import subprocess
 import threading
-
+import time
 from absl import app
 from absl import logging
 import numpy as np
@@ -330,6 +330,12 @@ def train():
         logging.info('Train job still running.')
         continue
     logging.info('Train job finished.')
+
+    # Pause before terminating reverb server so the collect jobs can read the
+    # variable container from the replay buffer
+    logging.info('Pausing before terminating reverb server.')
+    time.sleep(60)
+
     reverb_process.terminate()
     logging.info('Successfully terminated reverb server.')
 

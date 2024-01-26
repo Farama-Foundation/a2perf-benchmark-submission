@@ -236,7 +236,7 @@ def collect_sequences(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(1),
+      metrics=actor.collect_metrics(10),
       summary_interval=summary_interval,
       summary_dir=summary_dir,
       observers=[experience_observer, env_step_metric],
