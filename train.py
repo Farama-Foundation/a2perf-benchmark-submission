@@ -176,7 +176,6 @@ def train():
   no_gpu_env['CUDA_VISIBLE_DEVICES'] = '-1'
 
   env_flags = []
-  all_processes = []
   if env_name == 'WebNavigation-v0':
     env_flags.extend([
         f'--env_name={env_name}',
@@ -200,7 +199,6 @@ def train():
           stderr=subprocess.STDOUT,
           env=no_gpu_env,
       )
-      all_processes.append(manager_process)
       threading.Thread(
           target=print_subprocess_output, args=(manager_process,)
       ).start()
@@ -249,8 +247,18 @@ def train():
       )
       collect_jobs.append(process)
       threading.Thread(target=print_subprocess_output, args=(process,)).start()
-    all_processes.extend(collect_jobs)
     logging.info('Successfully launched collect jobs.')
+
+    while True:
+      try:
+        for process in collect_jobs:
+          process.wait(timeout=30)
+        break
+      except subprocess.TimeoutExpired:
+        logging.info('Collect jobs still running.')
+        continue
+    logging.info('Collect jobs finished.')
+
   elif job_type == 'train':
     reverb_command = [
         'python',
@@ -311,7 +319,6 @@ def train():
         stderr=subprocess.STDOUT,
         env=os.environ.copy(),
     )
-    all_processes.append(train_job)
     threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
     logging.info('Successfully launched train job.')
 
@@ -325,11 +332,6 @@ def train():
     logging.info('Train job finished.')
     reverb_process.terminate()
     logging.info('Successfully terminated reverb server.')
-
-  # Wait for all processes to finish
-  for process in all_processes:
-    process.wait()
-  logging.info('All processes finished.')
 
 
 def main(_):
