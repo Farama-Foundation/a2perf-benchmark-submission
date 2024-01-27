@@ -19,6 +19,7 @@ See README for launch instructions.
 """
 import functools
 import os
+import time
 from typing import Callable
 from typing import Iterable
 from typing import Optional
@@ -38,6 +39,7 @@ from tf_agents.agents.ddpg import critic_network
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.agents.ppo import ppo_clip_agent
 from tf_agents.agents.sac import sac_agent
+from tf_agents.agents.td3 import td3_agent
 from tf_agents.environments import py_environment
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_mujoco
@@ -236,6 +238,49 @@ def _create_value_net(env_name: Text,
     )
   else:
     raise ValueError(f'No network defined for {env_name}')
+
+
+def _create_td3_agent(
+    env_name: Text,
+    train_step: tf.Variable,
+    observation_tensor_spec: types.NestedTensorSpec,
+    action_tensor_spec: types.NestedTensorSpec,
+    time_step_tensor_spec: ts.TimeStep,
+    learning_rate: float,
+    debug_summaries: bool = False,
+    summarize_grads_and_vars: bool = False,
+    gradient_clipping: Optional[float] = None,
+    seed: Optional[int] = None,
+) -> tf_agent.TFAgent:
+  critic_net = _create_critic_net(
+      observation_tensor_spec=observation_tensor_spec,
+      action_tensor_spec=action_tensor_spec,
+      env_name=env_name
+  )
+  actor_net = _create_actor_net(
+      observation_tensor_spec=observation_tensor_spec,
+      action_tensor_spec=action_tensor_spec,
+      seed=seed,
+      env_name=env_name,
+  )
+  return td3_agent.Td3Agent(
+      time_step_tensor_spec,
+      action_tensor_spec,
+      actor_network=actor_net,
+      critic_network=critic_net,
+      actor_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate,
+                                               epsilon=1e-5),
+      critic_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate,
+                                                epsilon=1e-5),
+      target_update_tau=0.005,
+      target_update_period=1,
+      td_errors_loss_fn=tf.math.squared_difference,
+      gamma=0.99,
+      gradient_clipping=gradient_clipping,
+      train_step_counter=train_step,
+      debug_summaries=debug_summaries,
+      summarize_grads_and_vars=summarize_grads_and_vars,
+  )
 
 
 def _create_ppo_agent(
@@ -526,6 +571,7 @@ def train(
 
   # Create the agent.
   with strategy.scope():
+    num_replicas = strategy.num_replicas_in_sync
     train_step = train_utils.create_train_step()
 
     agent = _create_agent(
@@ -608,6 +654,7 @@ def train(
         with strategy.scope():
           return reverb_replay_train.as_dataset(
               sample_batch_size=1,
+              num_steps=sequence_length,
               sequence_preprocess_fn=agent.preprocess_sequence
           ).prefetch(tf.data.experimental.AUTOTUNE)
 
@@ -615,9 +662,10 @@ def train(
         with strategy.scope():
           return reverb_replay_normalization.as_dataset(
               sample_batch_size=1,
+              num_steps=sequence_length,
               sequence_preprocess_fn=agent.preprocess_sequence
           ).prefetch(tf.data.experimental.AUTOTUNE)
-    elif algorithm == 'sac':
+    elif algorithm in ('sac', 'ddqn', 'td3'):
       def experience_dataset_fn():
         with strategy.scope():
           return reverb_replay_train.as_dataset(
@@ -626,6 +674,7 @@ def train(
               num_steps=2).prefetch(tf.data.experimental.AUTOTUNE)
 
       normalization_dataset_fn = None
+
     # Create the learner.
     learning_triggers = [
         save_model_trigger,
@@ -633,9 +682,8 @@ def train(
     ]
 
     # Add an `after_train_step_fn` with metrics on how on-policy the data is.
-    train_steps_per_policy_update = int(
-        learner_iterations_per_call * sequence_length * num_epochs / batch_size
-    )
+    num_minibatches = timesteps_per_actorbatch // batch_size
+    train_steps_per_policy_update = num_minibatches * num_epochs // num_replicas
     logging.info('Train steps per policy update: %d',
                  train_steps_per_policy_update)
     after_train_strategy_step_fn = (
@@ -677,13 +725,13 @@ def train(
       _learner_run_fn()
       variable_container.push(variables)
       logging.info('\tPushed variables to variable container.')
-
       if algorithm == 'ppo':
         reverb_replay_train.clear()
         logging.info('\tCleared training replay buffer.')
 
         reverb_replay_normalization.clear()
         logging.info('\tCleared normalization replay buffer.')
+
   logging.info('Training finished.')
 
 

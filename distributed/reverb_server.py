@@ -13,6 +13,11 @@ from tf_agents.specs import tensor_spec
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 
+_DEBUG = flags.DEFINE_bool(
+    'debug',
+    False,
+    'Whether to enable debug logging.',
+)
 _ALGORITHM = flags.DEFINE_string(
     'algorithm',
     None,
@@ -163,6 +168,9 @@ def main(_):
   absl_handler.setFormatter(PrefixedLogFormatter())
 
   tf.compat.v1.enable_v2_behavior()
+  if _DEBUG.value:
+    logging.set_verbosity(logging.DEBUG)
+
   run_reverb_server(_ROOT_DIR.value)
 
 

@@ -107,16 +107,29 @@ def train():
     print(f'profile_value_dropout: {profile_value_dropout}')
     print(f'max_vocab_size: {max_vocab_size}')
 
-  # Replicas split the batch size, so scale it
-  batch_size *= num_replicas
-
   if algorithm == 'ppo':
+
+    # Shuffle buffer size determines how many samples are gathered from the TF
+    # dataset and shuffled before training. We want to shuffle the entire
+    # `timesteps_per_actorbatch` samples, so we set the shuffle buffer size
+    # to the number of samples gathered in a single iteration.
     shuffle_buffer_size = num_epochs * timesteps_per_actorbatch
+
+    # Before creating minibatches, we unbatch the sequences of length `adjusted_timesteps_per_actorbatch`.
+    # So that means we will have `time_steps_per_actorbatch // batch_size` minibatches per iteration.
     num_minibatches = timesteps_per_actorbatch // batch_size
+
+    # Each minibatch results in one train step, so we have `num_minibatches` train steps per iteration.
     train_steps_per_iteration = num_minibatches * num_epochs
+
+    # Just one learner iteration per call for PPO
     learner_iterations_per_call = 1
+
+    # No initial collect needed for PPO
     initial_collect_steps = 0
-    min_table_size_before_sampling = np.maximum(1, env_batch_size // 2)
+
+    # Each collect worker adds a single sequence of length `adjusted_timesteps_per_actorbatch` to the replay buffer
+    min_table_size_before_sampling = env_batch_size
   else:
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration
     # roughly.
@@ -126,7 +139,7 @@ def train():
     train_steps_per_iteration = learner_iterations_per_call
     shuffle_buffer_size = -1
     initial_collect_steps = adjusted_timesteps_per_actorbatch
-    min_table_size_before_sampling = 1
+    min_table_size_before_sampling = timesteps_per_actorbatch
 
   num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
   max_train_steps = train_steps_per_iteration * num_iterations
@@ -223,6 +236,7 @@ def train():
             f'--env_batch_size={env_batch_size}',
             f'--initial_collect_steps={initial_collect_steps}',
             f'--max_train_steps={max_train_steps}',
+            f'--debug={debug}',
             f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
             f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
             f'--task={i}',

@@ -31,6 +31,12 @@ _DIFFICULTY_LEVEL = flags.DEFINE_integer(
     None,
     'Difficulty level of the environment.',
 )
+_DEBUG = flags.DEFINE_bool(
+    'debug',
+    False,
+    'Whether to run in debug mode.',
+)
+
 _ALGORITHM = flags.DEFINE_string(
     'algorithm',
     None,
@@ -96,6 +102,8 @@ _GIN_FILE = flags.DEFINE_multi_string(
 _GIN_BINDINGS = flags.DEFINE_multi_string(
     'gin_bindings', None, 'Gin binding parameters.'
 )
+
+ACTOR_COLLECT_METRICS_BUFFER_SIZE = 10
 
 
 class PrefixedLogFormatter(logging.PythonFormatter):
@@ -165,7 +173,7 @@ def collect_off_policy(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(10),
+      metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE),
       summary_dir=summary_dir,
       summary_interval=summary_interval,
       observers=[rb_observer, env_step_metric],
@@ -246,7 +254,7 @@ def collect_sequences(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(10),
+      metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE),
       summary_interval=summary_interval,
       summary_dir=summary_dir,
       observers=[experience_observer, env_step_metric],
@@ -302,7 +310,7 @@ def run_collect(
   )
   logging.info('Loaded collect policy from %s', collect_policy_dir)
 
-  if algorithm in ('sac', 'ddqn'):
+  if algorithm in ('sac', 'ddqn', 'td3'):
     collect_off_policy(
         environment_name=environment_name,
         collect_policy=collect_policy,
@@ -337,6 +345,9 @@ def main(_):
   absl_handler.setFormatter(PrefixedLogFormatter())
 
   tf.compat.v1.enable_v2_behavior()
+
+  if _DEBUG.value and _TASK.value == 0:
+    logging.set_verbosity(logging.DEBUG)
 
   gin.parse_config_files_and_bindings(
       _GIN_FILE.value, _GIN_BINDINGS.value, finalize_config=False
