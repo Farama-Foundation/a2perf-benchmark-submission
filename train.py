@@ -55,7 +55,6 @@ def train():
 
   # Networking params
   num_collect_machines = int(os.environ.get('NUM_COLLECT_MACHINES', 1))
-  num_replicas = int(os.environ.get('NUM_REPLICAS', -1))
   replay_buffer_server_address = os.environ.get(
       'REPLAY_BUFFER_SERVER_ADDRESS', None
   )
