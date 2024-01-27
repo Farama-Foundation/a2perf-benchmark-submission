@@ -182,9 +182,6 @@ def train():
   print(f'shuffle_buffer_size: {shuffle_buffer_size}')
   print(f'random seed: {seed}')
 
-  no_gpu_env = os.environ.copy()
-  no_gpu_env['CUDA_VISIBLE_DEVICES'] = '-1'
-
   env_flags = []
   if env_name == 'WebNavigation-v0':
     env_flags.extend([
@@ -207,7 +204,7 @@ def train():
           manager_command,
           stdout=subprocess.PIPE,
           stderr=subprocess.STDOUT,
-          env=no_gpu_env,
+          env=os.environ.copy(),
       )
       threading.Thread(
           target=print_subprocess_output, args=(manager_process,)
@@ -254,7 +251,7 @@ def train():
           command,
           stdout=subprocess.PIPE,
           stderr=subprocess.STDOUT,
-          env=no_gpu_env,
+          env=os.environ.copy(),
       )
       collect_jobs.append(process)
       threading.Thread(target=print_subprocess_output, args=(process,)).start()
@@ -287,7 +284,7 @@ def train():
         reverb_command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env=no_gpu_env,
+        env=os.environ.copy(),
     )
     threading.Thread(
         target=print_subprocess_output, args=(reverb_process,)
