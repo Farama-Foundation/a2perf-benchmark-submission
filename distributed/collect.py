@@ -186,8 +186,11 @@ def collect_off_policy(
     collect_actor.run()
     end_time = time.time()
     variable_container.update(variables)
-    logging.info('Collecting with policy at step: %d out of %d',
-                 train_step.numpy(), max_train_step)
+    logging.info(
+        'Collecting with policy at step: %d out of %d',
+        train_step.numpy(),
+        max_train_step,
+    )
     logging.info('\tCollected %d steps', env_step_metric.result())
     logging.info(
         '\tCollected %d steps this iteration',

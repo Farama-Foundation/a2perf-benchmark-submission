@@ -59,26 +59,32 @@ from tf_agents.trajectories import time_step as ts
 from tf_agents.typing import types
 
 _LEARNER_ITERATIONS_PER_CALL = flags.DEFINE_integer(
-    'learner_iterations_per_call', None,
-    'Number of iterations per learner call.')
+    'learner_iterations_per_call',
+    None,
+    'Number of iterations per learner call.',
+)
 _SHUFFLE_BUFFER_SIZE = flags.DEFINE_integer(
-    'shuffle_buffer_size', None,
-    'Size of the shuffle buffer for the training dataset.'
+    'shuffle_buffer_size',
+    None,
+    'Size of the shuffle buffer for the training dataset.',
 )
 _SEQUENCE_LENGTH = flags.DEFINE_integer(
-    'sequence_length', None,
-    'Length of sequences to sample from the replay buffer.'
+    'sequence_length',
+    None,
+    'Length of sequences to sample from the replay buffer.',
 )
 _SEED = flags.DEFINE_integer('seed', None, 'Random seed.')
 _ROOT_DIR = flags.DEFINE_string(
     'root_dir',
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
-    'Root directory for writing logs/summaries/checkpoints.'
+    'Root directory for writing logs/summaries/checkpoints.',
 )
-_NUM_WEBSITES = flags.DEFINE_integer('num_websites', None,
-                                     'Number of websites to use.')
-_DIFFICULTY_LEVEL = flags.DEFINE_integer('difficulty_level', None,
-                                         'Difficulty of the task.')
+_NUM_WEBSITES = flags.DEFINE_integer(
+    'num_websites', None, 'Number of websites to use.'
+)
+_DIFFICULTY_LEVEL = flags.DEFINE_integer(
+    'difficulty_level', None, 'Difficulty of the task.'
+)
 _DEBUG = flags.DEFINE_bool('debug', None, 'Debug mode')
 _ENV_NAME = flags.DEFINE_string('env_name', None, 'Name of the environment')
 _LOG_INTERVAL = flags.DEFINE_integer('log_interval', None, 'Log interval.')
@@ -89,7 +95,8 @@ _POLICY_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
     'policy_checkpoint_interval', None, 'Policy checkpoint interval.'
 )
 _TIMESTEPS_PER_ACTORBATCH = flags.DEFINE_integer(
-    'timesteps_per_actorbatch', None, 'Number of timesteps per actorbatch.')
+    'timesteps_per_actorbatch', None, 'Number of timesteps per actorbatch.'
+)
 
 _ENV_BATCH_SIZE = flags.DEFINE_integer(
     'env_batch_size', None, 'Number of environments to run in parallel.'
@@ -105,65 +112,78 @@ _USE_TPU = flags.DEFINE_bool('use_tpu', False, 'Whether to use TPU or not.')
 _VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
     'variable_container_server_address',
     None,
-    'Variable container server address.'
+    'Variable container server address.',
 )
 _BATCH_SIZE = flags.DEFINE_integer('batch_size', None, 'Batch size.')
 _NUM_EPOCHS = flags.DEFINE_integer('num_epochs', None, 'Number of epochs.')
-_GIN_FILE = flags.DEFINE_multi_string('gin_file', None,
-                                      'Paths to the gin-config files.')
-_ENTROPY_REGULARIZATION = flags.DEFINE_float('entropy_regularization', None,
-                                             'Entropy regularization.')
-_GIN_BINDINGS = flags.DEFINE_multi_string('gin_bindings', None,
-                                          'Gin binding parameters.')
-_MAX_TRAIN_STEP = flags.DEFINE_integer('max_train_steps', None,
-                                       'Number of iterations.')
+_GIN_FILE = flags.DEFINE_multi_string(
+    'gin_file', None, 'Paths to the gin-config files.'
+)
+_ENTROPY_REGULARIZATION = flags.DEFINE_float(
+    'entropy_regularization', None, 'Entropy regularization.'
+)
+_GIN_BINDINGS = flags.DEFINE_multi_string(
+    'gin_bindings', None, 'Gin binding parameters.'
+)
+_MAX_TRAIN_STEP = flags.DEFINE_integer(
+    'max_train_steps', None, 'Number of iterations.'
+)
 _ALGORITHM = flags.DEFINE_string(
     'algorithm',
     None,
     'Algorithm to use. Must be one of "ppo" or "sac".',
 )
-_GRADIENT_CLIPPING = flags.DEFINE_float('gradient_clipping', None,
-                                        'Gradient clipping.')
-_DEBUG_SUMMARIES = flags.DEFINE_bool('debug_summaries', False,
-                                     'Whether to use debug summaries.')
-_SUMMARIZE_GRADS_AND_VARS = flags.DEFINE_bool('summarize_grads_and_vars', False,
-                                              'Whether to summarize grads and vars.')
+_GRADIENT_CLIPPING = flags.DEFINE_float(
+    'gradient_clipping', None, 'Gradient clipping.'
+)
+_DEBUG_SUMMARIES = flags.DEFINE_bool(
+    'debug_summaries', False, 'Whether to use debug summaries.'
+)
+_SUMMARIZE_GRADS_AND_VARS = flags.DEFINE_bool(
+    'summarize_grads_and_vars', False, 'Whether to summarize grads and vars.'
+)
 _LEARNING_RATE = flags.DEFINE_float('learning_rate', None, 'Learning rate.')
 _USE_GAE = flags.DEFINE_bool('use_gae', None, 'Whether to use GAE or not.')
 FLAGS = flags.FLAGS
 
 
 class PrefixedLogFormatter(logging.PythonFormatter):
+
   def format(self, record):
     original = super(PrefixedLogFormatter, self).format(record)
     return f'Train: {original}'
 
 
-def _create_q_net(env_name: Text,
-    seed: Optional[int] = None, **kwargs
+def _create_q_net(
+    env_name: Text, seed: Optional[int] = None, **kwargs
 ) -> critic_network.CriticNetwork:
   if env_name == 'QuadrupedLocomotion-v0':
     raise ValueError(
-        'DDQN cannot be used for QuadrupedLocomotion due to continuous action space')
+        'DDQN cannot be used for QuadrupedLocomotion due to continuous action'
+        ' space'
+    )
 
   elif env_name == 'WebNavigation-v0':
     max_vocab_size = kwargs.get('max_vocab_size', None)
     latent_dim = kwargs.get('latent_dim', None)
     profile_value_dropout = kwargs.get('profile_value_dropout', None)
     embedding_dim = kwargs.get('embedding_dim', None)
-    return networks.WebLSTMQNetwork(vocab_size=max_vocab_size,
-                                    latent_dim=latent_dim,
-                                    profile_value_dropout=profile_value_dropout,
-                                    embedding_dim=embedding_dim,
-                                    )
+    return networks.WebLSTMQNetwork(
+        vocab_size=max_vocab_size,
+        latent_dim=latent_dim,
+        profile_value_dropout=profile_value_dropout,
+        embedding_dim=embedding_dim,
+    )
   else:
     raise ValueError(f'No network defined for {env_name}')
 
 
-def _create_actor_net(env_name: Text,
+def _create_actor_net(
+    env_name: Text,
     observation_tensor_spec: types.NestedTensorSpec,
     action_tensor_spec: types.NestedTensorSpec,
-    seed: Optional[int] = None, **kwargs
+    seed: Optional[int] = None,
+    **kwargs,
 ) -> actor_distribution_network.ActorDistributionNetwork:
   if env_name == 'QuadrupedLocomotion-v0':
     return actor_distribution_network.ActorDistributionNetwork(
@@ -177,7 +197,8 @@ def _create_actor_net(env_name: Text,
     profile_value_dropout = kwargs.get('profile_value_dropout', None)
     embedding_dim = kwargs.get('embedding_dim', None)
     if not all(
-        [max_vocab_size, latent_dim, profile_value_dropout, embedding_dim]):
+        [max_vocab_size, latent_dim, profile_value_dropout, embedding_dim]
+    ):
       raise ValueError('Missing arguments for WebLSTMActorDistributionNetwork')
     return networks.WebLSTMActorDistributionNetwork(
         input_tensor_spec=observation_tensor_spec,
@@ -187,12 +208,14 @@ def _create_actor_net(env_name: Text,
             latent_dim=latent_dim,
             profile_value_dropout=profile_value_dropout,
             embedding_dim=embedding_dim,
-        ))
+        ),
+    )
   else:
     raise ValueError(f'No network defined for {env_name}')
 
 
-def _create_critic_net(env_name: Text,
+def _create_critic_net(
+    env_name: Text,
     observation_tensor_spec: types.NestedTensorSpec,
     action_tensor_spec: types.NestedTensorSpec,
 ) -> critic_network.CriticNetwork:
@@ -203,14 +226,14 @@ def _create_critic_net(env_name: Text,
     )
   elif env_name == 'WebNavigation-v0':
     raise ValueError(
-        'SAC cannot be used for WebNavigation due to discrete action space')
+        'SAC cannot be used for WebNavigation due to discrete action space'
+    )
   else:
     raise ValueError(f'No network defined for {env_name}')
 
 
-def _create_value_net(env_name: Text,
-    observation_tensor_spec: types.NestedTensorSpec,
-    **kwargs
+def _create_value_net(
+    env_name: Text, observation_tensor_spec: types.NestedTensorSpec, **kwargs
 ) -> value_network.ValueNetwork:
   if env_name == 'QuadrupedLocomotion-v0':
     return value_network.ValueNetwork(
@@ -224,7 +247,8 @@ def _create_value_net(env_name: Text,
     embedding_dim = kwargs.get('embedding_dim', None)
 
     if not all(
-        [max_vocab_size, latent_dim, profile_value_dropout, embedding_dim]):
+        [max_vocab_size, latent_dim, profile_value_dropout, embedding_dim]
+    ):
       raise ValueError('Missing arguments for WebLSTMActorDistributionNetwork')
 
     return networks.WebLSTMValueNetwork(
@@ -255,7 +279,7 @@ def _create_td3_agent(
   critic_net = _create_critic_net(
       observation_tensor_spec=observation_tensor_spec,
       action_tensor_spec=action_tensor_spec,
-      env_name=env_name
+      env_name=env_name,
   )
   actor_net = _create_actor_net(
       observation_tensor_spec=observation_tensor_spec,
@@ -268,10 +292,12 @@ def _create_td3_agent(
       action_tensor_spec,
       actor_network=actor_net,
       critic_network=critic_net,
-      actor_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate,
-                                               epsilon=1e-5),
-      critic_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate,
-                                                epsilon=1e-5),
+      actor_optimizer=tf.keras.optimizers.Adam(
+          learning_rate=learning_rate, epsilon=1e-5
+      ),
+      critic_optimizer=tf.keras.optimizers.Adam(
+          learning_rate=learning_rate, epsilon=1e-5
+      ),
       target_update_tau=0.005,
       target_update_period=1,
       td_errors_loss_fn=tf.math.squared_difference,
@@ -298,17 +324,22 @@ def _create_ppo_agent(
     seed: Optional[int] = None,
 ) -> tf_agent.TFAgent:
   """Creates a PPO agent."""
-  actor_net = _create_actor_net(env_name=env_name,
-                                observation_tensor_spec=observation_tensor_spec,
-                                action_tensor_spec=action_tensor_spec,
-                                seed=seed, )
+  actor_net = _create_actor_net(
+      env_name=env_name,
+      observation_tensor_spec=observation_tensor_spec,
+      action_tensor_spec=action_tensor_spec,
+      seed=seed,
+  )
 
-  value_net = _create_value_net(env_name=env_name,
-                                observation_tensor_spec=observation_tensor_spec,
-                                seed=seed, )
+  value_net = _create_value_net(
+      env_name=env_name,
+      observation_tensor_spec=observation_tensor_spec,
+      seed=seed,
+  )
 
-  optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate,
-                                       epsilon=1e-5)
+  optimizer = tf.keras.optimizers.Adam(
+      learning_rate=learning_rate, epsilon=1e-5
+  )
 
   return ppo_clip_agent.PPOClipAgent(
       action_spec=action_tensor_spec,
@@ -345,20 +376,22 @@ def _create_ddqn_agent(
     summarize_grads_and_vars: bool = False,
     gradient_clipping: Optional[float] = None,
     seed: Optional[int] = None,
-
 ) -> tf_agent.TFAgent:
   """Creates an agent."""
-  q_net = _create_q_net(env_name=env_name,
-                        observation_tensor_spec=observation_tensor_spec,
-                        action_tensor_spec=action_tensor_spec,
-                        seed=seed)
+  q_net = _create_q_net(
+      env_name=env_name,
+      observation_tensor_spec=observation_tensor_spec,
+      action_tensor_spec=action_tensor_spec,
+      seed=seed,
+  )
 
   return dqn_agent.DdqnAgent(
       time_step_spec=time_step_tensor_spec,
       action_spec=action_tensor_spec,
       q_network=q_net,
-      optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate,
-                                         epsilon=1e-5),
+      optimizer=tf.keras.optimizers.Adam(
+          learning_rate=learning_rate, epsilon=1e-5
+      ),
       td_errors_loss_fn=tf.math.squared_difference,
       train_step_counter=train_step,
       epsilon_greedy=epsilon_greedy,
@@ -385,7 +418,7 @@ def _create_sac_agent(
   critic_net = _create_critic_net(
       observation_tensor_spec=observation_tensor_spec,
       action_tensor_spec=action_tensor_spec,
-      env_name=env_name
+      env_name=env_name,
   )
   actor_net = _create_actor_net(
       observation_tensor_spec=observation_tensor_spec,
@@ -398,12 +431,15 @@ def _create_sac_agent(
       action_tensor_spec,
       actor_network=actor_net,
       critic_network=critic_net,
-      actor_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate,
-                                               epsilon=1e-5),
-      critic_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate,
-                                                epsilon=1e-5),
-      alpha_optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate,
-                                               epsilon=1e-5),
+      actor_optimizer=tf.keras.optimizers.Adam(
+          learning_rate=learning_rate, epsilon=1e-5
+      ),
+      critic_optimizer=tf.keras.optimizers.Adam(
+          learning_rate=learning_rate, epsilon=1e-5
+      ),
+      alpha_optimizer=tf.keras.optimizers.Adam(
+          learning_rate=learning_rate, epsilon=1e-5
+      ),
       target_update_tau=0.005,
       target_update_period=1,
       td_errors_loss_fn=tf.math.squared_difference,
@@ -430,7 +466,6 @@ def _create_agent(
     entropy_regularization: float = 0.0,
     epsilon_greedy: float = 0.1,
     use_gae: bool = True,
-
 ) -> tf_agent.TFAgent:
   if algorithm == 'ppo':
     return _create_ppo_agent(
@@ -492,7 +527,8 @@ def _create_learner(
     shuffle_buffer_size: int,
     summary_interval: int,
     triggers: Optional[
-      Iterable[triggers.interval_trigger.IntervalTrigger]] = None,
+        Iterable[triggers.interval_trigger.IntervalTrigger]
+    ] = None,
     strategy: Optional[tf.distribute.Strategy] = None,
     after_train_strategy_step_fn: Optional[Callable[[], None]] = None,
 ) -> Union[learner_lib.Learner, ppo_learner_lib.PPOLearner]:
@@ -553,7 +589,8 @@ def train(
     sequence_length: int = 0,
     timesteps_per_actorbatch: int = 0,
     suite_load_fn: Callable[
-      [Text], py_environment.PyEnvironment] = suite_mujoco.load,
+        [Text], py_environment.PyEnvironment
+    ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
     use_gae: bool = True,
@@ -596,7 +633,9 @@ def train(
     # periodically checkpoints the policy weights.
     saved_model_dir = os.path.join(root_dir, 'policies')
     save_model_trigger = triggers.PolicySavedModelTrigger(
-        saved_model_dir, agent, train_step,
+        saved_model_dir,
+        agent,
+        train_step,
         interval=policy_checkpoint_interval,
         async_saving=False,
         save_greedy_policy=True,
@@ -612,8 +651,9 @@ def train(
         variable_container_server_address,
         table_names=[reverb_variable_container.DEFAULT_TABLE],
     )
-    variable_container.push(values=variables,
-                            table=reverb_variable_container.DEFAULT_TABLE)
+    variable_container.push(
+        values=variables, table=reverb_variable_container.DEFAULT_TABLE
+    )
 
     if algorithm == 'ppo':
 
@@ -650,12 +690,13 @@ def train(
     # collected data.
 
     if algorithm == 'ppo':
+
       def experience_dataset_fn():
         with strategy.scope():
           return reverb_replay_train.as_dataset(
               sample_batch_size=1,
               num_steps=sequence_length,
-              sequence_preprocess_fn=agent.preprocess_sequence
+              sequence_preprocess_fn=agent.preprocess_sequence,
           ).prefetch(tf.data.experimental.AUTOTUNE)
 
       def normalization_dataset_fn():
@@ -663,15 +704,18 @@ def train(
           return reverb_replay_normalization.as_dataset(
               sample_batch_size=1,
               num_steps=sequence_length,
-              sequence_preprocess_fn=agent.preprocess_sequence
+              sequence_preprocess_fn=agent.preprocess_sequence,
           ).prefetch(tf.data.experimental.AUTOTUNE)
+
     elif algorithm in ('sac', 'ddqn', 'td3'):
+
       def experience_dataset_fn():
         with strategy.scope():
           return reverb_replay_train.as_dataset(
               sample_batch_size=batch_size,
               num_parallel_calls=tf.data.experimental.AUTOTUNE,
-              num_steps=2).prefetch(tf.data.experimental.AUTOTUNE)
+              num_steps=2,
+          ).prefetch(tf.data.experimental.AUTOTUNE)
 
       normalization_dataset_fn = None
 
@@ -684,8 +728,9 @@ def train(
     # Add an `after_train_step_fn` with metrics on how on-policy the data is.
     num_minibatches = timesteps_per_actorbatch // batch_size
     train_steps_per_policy_update = num_minibatches * num_epochs // num_replicas
-    logging.info('Train steps per policy update: %d',
-                 train_steps_per_policy_update)
+    logging.info(
+        'Train steps per policy update: %d', train_steps_per_policy_update
+    )
     after_train_strategy_step_fn = (
         train_utils.create_staleness_metrics_after_train_step_fn(
             train_step=train_step,
@@ -712,9 +757,12 @@ def train(
     )
 
     if algorithm == 'ppo':
+
       def _learner_run_fn():
         learner.run()
+
     else:
+
       def _learner_run_fn():
         learner.run(iterations=learner_iterations_per_call)
 
@@ -749,21 +797,25 @@ def main(_):
   absl_handler = logging.get_absl_handler()
   absl_handler.setFormatter(PrefixedLogFormatter())
 
-  gin.parse_config_files_and_bindings(_GIN_FILE.value, _GIN_BINDINGS.value,
-                                      finalize_config=False
-                                      # a2perf environments have more configs to add
-                                      )
-  strategy = strategy_utils.get_strategy(tpu=_USE_TPU.value,
-                                         use_gpu=FLAGS.use_gpu
-                                         # Defined in tensorflow strategies
-                                         )
+  gin.parse_config_files_and_bindings(
+      _GIN_FILE.value,
+      _GIN_BINDINGS.value,
+      finalize_config=False,
+      # a2perf environments have more configs to add
+  )
+  strategy = strategy_utils.get_strategy(
+      tpu=_USE_TPU.value,
+      use_gpu=FLAGS.use_gpu,
+      # Defined in tensorflow strategies
+  )
   # Define the default dictionary for gym_kwargs
   if _ENV_NAME.value == 'QuadrupedLocomotion-v0':
-    default_gym_kwargs = dict(motion_files=[_MOTION_FILE_PATH.value],
-                              num_parallel_envs=_ENV_BATCH_SIZE.value)
+    default_gym_kwargs = dict(
+        motion_files=[_MOTION_FILE_PATH.value],
+        num_parallel_envs=_ENV_BATCH_SIZE.value,
+    )
     suite_load_function = functools.partial(
-        suite_pybullet.load,
-        gym_kwargs=default_gym_kwargs
+        suite_pybullet.load, gym_kwargs=default_gym_kwargs
     )
   elif _ENV_NAME.value == 'WebNavigation-v0':
     default_gym_kwargs = dict(
@@ -773,16 +825,11 @@ def main(_):
         num_websites=_NUM_WEBSITES.value,
         seed=0,
         browser_args=dict(
-            threading=False,
-            chrome_options={
-                '--headless',
-                '--no-sandbox'
-            }
-        )
+            threading=False, chrome_options={'--headless', '--no-sandbox'}
+        ),
     )
     suite_load_function = functools.partial(
-        suite_gym.load,
-        gym_kwargs=default_gym_kwargs
+        suite_gym.load, gym_kwargs=default_gym_kwargs
     )
   else:
     raise ValueError(f'Unknown environment: {_ENV_NAME.value}')

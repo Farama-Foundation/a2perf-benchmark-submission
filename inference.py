@@ -1,11 +1,13 @@
-"""
-This script serves as an example inference script for participants in the A2Perf benchmark for autonomous agents.
-It demonstrates essential steps in the inference process, including loading a policy model, preprocessing observations
-from the environment, and executing inference using the loaded policy.
+"""This script serves as an example inference script for participants in the A2Perf benchmark for autonomous agents.
+
+It demonstrates essential steps in the inference process, including loading a
+policy model, preprocessing observations from the environment, and executing
+inference using the loaded policy.
 
 Functions:
 - load_policy: Loads a policy model based on the environment settings.
-- preprocess_observation: Transforms raw observations from the Gym environment into a format compatible with the policy.
+- preprocess_observation: Transforms raw observations from the Gym environment
+into a format compatible with the policy.
 - infer_once: Conducts a single inference step using the provided policy.
 """
 
@@ -21,8 +23,7 @@ from tf_agents.trajectories import time_step as ts
 
 
 def load_policy(env: Any) -> TFPolicy:
-  """
-  Loads a policy model from the environment's root directory.
+  """Loads a policy model from the environment's root directory.
 
   Args:
       env: The environment for which the policy is to be loaded.
@@ -36,7 +37,8 @@ def load_policy(env: Any) -> TFPolicy:
   root_dir = os.environ.get('ROOT_DIR', None)
   if root_dir is None:
     raise ValueError(
-        'ROOT_DIR environment variable must be set to load the model.')
+        'ROOT_DIR environment variable must be set to load the model.'
+    )
   logging.info('Loading model from %s', root_dir)
 
   saved_model_path = os.path.join(root_dir, 'policies', 'policy')
@@ -46,19 +48,21 @@ def load_policy(env: Any) -> TFPolicy:
   max_checkpoint = sorted(os.listdir(checkpoint_path))[-1]
   logging.info('Loading checkpoint %s', max_checkpoint)
 
-  policy = policy_loader.load(saved_model_path=saved_model_path,
-                              checkpoint_path=os.path.join(checkpoint_path,
-                                                           max_checkpoint), )
+  policy = policy_loader.load(
+      saved_model_path=saved_model_path,
+      checkpoint_path=os.path.join(checkpoint_path, max_checkpoint),
+  )
   logging.info('Successfully loaded policy')
   return policy
 
 
-def preprocess_observation(observation: Union[np.ndarray, list],
+def preprocess_observation(
+    observation: Union[np.ndarray, list],
     reward: float = 0.0,
     discount: float = 1.0,
-    step_type: ts.StepType = ts.StepType.MID) -> ts.TimeStep:
-  """
-  Preprocesses a raw observation from the Gym environment into a TF Agents TimeStep.
+    step_type: ts.StepType = ts.StepType.MID,
+) -> ts.TimeStep:
+  """Preprocesses a raw observation from the Gym environment into a TF Agents TimeStep.
 
   Args:
       observation: Raw observation from the environment.
@@ -79,13 +83,12 @@ def preprocess_observation(observation: Union[np.ndarray, list],
       step_type=step_type,  # Step type as numpy int32
       reward=np.float32(reward),  # Reward as single float32 value
       discount=np.float32(discount),  # Discount as single float32 value
-      observation=observation  # Observation as 1-D array
+      observation=observation,  # Observation as 1-D array
   )
 
 
 def infer_once(policy: TFPolicy, preprocessed_observation: ts.TimeStep) -> Any:
-  """
-  Runs a single inference step using the given policy.
+  """Runs a single inference step using the given policy.
 
   Args:
       policy: The policy to use for inference.
