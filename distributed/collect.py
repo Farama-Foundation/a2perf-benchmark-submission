@@ -3,16 +3,15 @@
 import functools
 import os
 import time
+from multiprocessing.managers import BaseManager
 from typing import Text
 
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains import web_navigation
-from absl import app
-from absl import flags
-from absl import logging
 import gin
 import reverb
 import tensorflow as tf
+from absl import app
+from absl import flags
+from absl import logging
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_pybullet
 from tf_agents.experimental.distributed import reverb_variable_container
@@ -25,6 +24,11 @@ from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
+
+# noinspection PyUnresolvedReferences
+from a2perf.domains import quadruped_locomotion
+# noinspection PyUnresolvedReferences
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 _DIFFICULTY_LEVEL = flags.DEFINE_integer(
     'difficulty_level',
@@ -102,7 +106,14 @@ _GIN_FILE = flags.DEFINE_multi_string(
 _GIN_BINDINGS = flags.DEFINE_multi_string(
     'gin_bindings', None, 'Gin binding parameters.'
 )
-
+_AUTH_KEY = flags.DEFINE_string(
+    'auth_key', None, 'Authentication key for the manager server.'
+)
+_VOCABULARY_SERVER_HOSTNAME = flags.DEFINE_string(
+    'vocabulary_server_hostname', None, 'Vocabulary server hostname.'
+)
+_VOCABULARY_SERVER_PORT = flags.DEFINE_integer(
+    'vocabulary_server_port', None, 'Vocabulary server port.')
 ACTOR_COLLECT_METRICS_BUFFER_SIZE = 10
 
 
@@ -366,7 +377,30 @@ def main(_):
         suite_pybullet.load, gym_kwargs=default_gym_kwargs
     )
   elif _ENV_NAME.value == 'WebNavigation-v0':
+    # Connect to the global vocabulary. This vocabulary is shared across all
+    # collect jobs.
+    class VocabularyManager(BaseManager):
+      pass
+
+    VocabularyManager.register('get_shared_dict')
+    VocabularyManager.register('get_shared_lock')
+    manager = VocabularyManager(
+        address=(
+            _VOCABULARY_SERVER_HOSTNAME.value, _VOCABULARY_SERVER_PORT.value),
+        authkey=_AUTH_KEY.value.encode()
+    )
+    manager.connect()
+
+    shared_dict = manager.get_shared_dict()
+    shared_lock = manager.get_shared_lock()
+
+    global_vocabulary = vocabulary_node.LockedMultiprocessingVocabulary(
+        shared_lock=shared_lock,
+        shared_dict=shared_dict,
+    )
+
     default_gym_kwargs = dict(
+        global_vocabulary=global_vocabulary,
         use_legacy_step=True,
         use_legacy_reset=True,
         difficulty=_DIFFICULTY_LEVEL.value,
@@ -403,6 +437,9 @@ if __name__ == '__main__':
       'env_name',
       'replay_buffer_server_address',
       'variable_container_server_address',
+      'vocabulary_server_hostname',
+      'vocabulary_server_port',
+      'auth_key',
       'sequence_length',
       'env_batch_size',
       'task',

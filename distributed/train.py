@@ -502,7 +502,7 @@ def train(
     sequence_length: int = 0,
     timesteps_per_actorbatch: int = 0,
     suite_load_fn: Callable[
-        [Text], py_environment.PyEnvironment
+      [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
