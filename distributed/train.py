@@ -688,7 +688,6 @@ def train(
           agent=agent,
           experience_dataset_fn=experience_dataset_fn,
           checkpoint_interval=train_checkpoint_interval,
-          shuffle_buffer_size=shuffle_buffer_size,
           summary_interval=log_interval,
           triggers=learning_triggers,
           strategy=strategy,

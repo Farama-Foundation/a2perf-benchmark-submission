@@ -116,7 +116,10 @@ def train():
     # shuffle_buffer_size = num_epochs * timesteps_per_actorbatch
 
     # For faster training, we may also choose to shuffle one epoch at a time.
-    shuffle_buffer_size = timesteps_per_actorbatch
+    # shuffle_buffer_size = timesteps_per_actorbatch
+
+    # Or simply just one batch
+    shuffle_buffer_size = batch_size
 
     # Before creating minibatches, we unbatch the sequences of length `adjusted_timesteps_per_actorbatch`.
     # So that means we will have `time_steps_per_actorbatch // batch_size` minibatches per iteration.
