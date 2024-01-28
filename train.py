@@ -316,6 +316,14 @@ def train():
         f'--use_gpu=True',
         f'--use_gae={use_gae}',
         f'--use_tpu=False',
+        f'--embedding_dim={embedding_dim}',
+        f'--latent_dim={latent_dim}',
+        f'--epsilon_greedy={epsilon_greedy}',
+        f'--profile_value_dropout={profile_value_dropout}',
+        f'--max_vocab_size={max_vocab_size}',
+        f'--num_websites={num_websites}',
+        f'--difficulty_level={difficulty_level}',
+        f'--motion_file_path={motion_file_path}',
     ] + env_flags
 
     # Display the command

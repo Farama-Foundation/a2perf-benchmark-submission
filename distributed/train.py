@@ -19,21 +19,16 @@ See README for launch instructions.
 """
 import functools
 import os
-import time
 from typing import Callable
-from typing import Iterable
 from typing import Optional
 from typing import Text
-from typing import Union
 
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains.web_navigation.gwob.CoDE import networks
-from absl import app
-from absl import flags
-from absl import logging
 import gin
 import numpy as np
 import tensorflow as tf
+from absl import app
+from absl import flags
+from absl import logging
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ddpg import critic_network
 from tf_agents.agents.dqn import dqn_agent
@@ -58,10 +53,31 @@ from tf_agents.train.utils import train_utils
 from tf_agents.trajectories import time_step as ts
 from tf_agents.typing import types
 
+# noinspection PyUnresolvedReferences
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+
+_MAX_VOCAB_SIZE = flags.DEFINE_integer(
+    'max_vocab_size', None, 'Maximum vocabulary size.'
+)
+_LATENT_DIM = flags.DEFINE_integer(
+    'latent_dim', None, 'Latent dimension of the LSTM.'
+)
+_PROFILE_VALUE_DROPOUT = flags.DEFINE_float(
+    'profile_value_dropout', None, 'Profile value dropout.'
+)
+_EMBEDDING_DIM = flags.DEFINE_integer(
+    'embedding_dim', None, 'Embedding dimension of the LSTM.'
+)
+
 _LEARNER_ITERATIONS_PER_CALL = flags.DEFINE_integer(
     'learner_iterations_per_call',
     None,
     'Number of iterations per learner call.',
+)
+
+_EPSILON_GREEDY = flags.DEFINE_float(
+    'epsilon_greedy', None, 'Epsilon greedy value.'
 )
 _SHUFFLE_BUFFER_SIZE = flags.DEFINE_integer(
     'shuffle_buffer_size',
@@ -164,10 +180,10 @@ def _create_q_net(
     )
 
   elif env_name == 'WebNavigation-v0':
-    max_vocab_size = kwargs.get('max_vocab_size', None)
-    latent_dim = kwargs.get('latent_dim', None)
-    profile_value_dropout = kwargs.get('profile_value_dropout', None)
-    embedding_dim = kwargs.get('embedding_dim', None)
+    max_vocab_size = kwargs.get('max_vocab_size')
+    latent_dim = kwargs.get('latent_dim')
+    profile_value_dropout = kwargs.get('profile_value_dropout')
+    embedding_dim = kwargs.get('embedding_dim')
     return networks.WebLSTMQNetwork(
         vocab_size=max_vocab_size,
         latent_dim=latent_dim,
@@ -192,14 +208,11 @@ def _create_actor_net(
         fc_layer_params=(512, 256),
     )
   elif env_name == 'WebNavigation-v0':
-    max_vocab_size = kwargs.get('max_vocab_size', None)
-    latent_dim = kwargs.get('latent_dim', None)
-    profile_value_dropout = kwargs.get('profile_value_dropout', None)
-    embedding_dim = kwargs.get('embedding_dim', None)
-    if not all(
-        [max_vocab_size, latent_dim, profile_value_dropout, embedding_dim]
-    ):
-      raise ValueError('Missing arguments for WebLSTMActorDistributionNetwork')
+    max_vocab_size = kwargs.get('max_vocab_size')
+    latent_dim = kwargs.get('latent_dim')
+    profile_value_dropout = kwargs.get('profile_value_dropout')
+    embedding_dim = kwargs.get('embedding_dim')
+
     return networks.WebLSTMActorDistributionNetwork(
         input_tensor_spec=observation_tensor_spec,
         output_tensor_spec=action_tensor_spec,
@@ -241,15 +254,10 @@ def _create_value_net(
         fc_layer_params=(512, 256),
     )
   elif env_name == 'WebNavigation-v0':
-    max_vocab_size = kwargs.get('max_vocab_size', None)
-    latent_dim = kwargs.get('latent_dim', None)
-    profile_value_dropout = kwargs.get('profile_value_dropout', None)
-    embedding_dim = kwargs.get('embedding_dim', None)
-
-    if not all(
-        [max_vocab_size, latent_dim, profile_value_dropout, embedding_dim]
-    ):
-      raise ValueError('Missing arguments for WebLSTMActorDistributionNetwork')
+    max_vocab_size = kwargs.get('max_vocab_size')
+    latent_dim = kwargs.get('latent_dim')
+    profile_value_dropout = kwargs.get('profile_value_dropout')
+    embedding_dim = kwargs.get('embedding_dim')
 
     return networks.WebLSTMValueNetwork(
         input_tensor_spec=observation_tensor_spec,
@@ -321,6 +329,11 @@ def _create_ppo_agent(
     use_gae: bool,
     debug_summaries: bool,
     summarize_grads_and_vars: bool,
+    # webnav kwargs
+    max_vocab_size: Optional[int] = None,
+    latent_dim: Optional[int] = None,
+    profile_value_dropout: Optional[float] = None,
+    embedding_dim: Optional[int] = None,
     seed: Optional[int] = None,
 ) -> tf_agent.TFAgent:
   """Creates a PPO agent."""
@@ -329,12 +342,20 @@ def _create_ppo_agent(
       observation_tensor_spec=observation_tensor_spec,
       action_tensor_spec=action_tensor_spec,
       seed=seed,
+      max_vocab_size=max_vocab_size,
+      latent_dim=latent_dim,
+      profile_value_dropout=profile_value_dropout,
+      embedding_dim=embedding_dim,
   )
 
   value_net = _create_value_net(
       env_name=env_name,
       observation_tensor_spec=observation_tensor_spec,
       seed=seed,
+      max_vocab_size=max_vocab_size,
+      latent_dim=latent_dim,
+      profile_value_dropout=profile_value_dropout,
+      embedding_dim=embedding_dim,
   )
 
   optimizer = tf.keras.optimizers.Adam(
@@ -352,7 +373,7 @@ def _create_ppo_agent(
       importance_ratio_clipping=0.2,
       normalize_observations=True,
       normalize_rewards=True,
-      num_epochs=1,  # this is a legacy argument and should always be 1
+      num_epochs=1,  # Legacy argument, should always be 1
       optimizer=optimizer,
       summarize_grads_and_vars=summarize_grads_and_vars,
       time_step_spec=time_step_tensor_spec,
@@ -375,6 +396,11 @@ def _create_ddqn_agent(
     debug_summaries: bool = False,
     summarize_grads_and_vars: bool = False,
     gradient_clipping: Optional[float] = None,
+    # webnav kwargs
+    max_vocab_size: Optional[int] = None,
+    latent_dim: Optional[int] = None,
+    profile_value_dropout: Optional[float] = None,
+    embedding_dim: Optional[int] = None,
     seed: Optional[int] = None,
 ) -> tf_agent.TFAgent:
   """Creates an agent."""
@@ -383,6 +409,10 @@ def _create_ddqn_agent(
       observation_tensor_spec=observation_tensor_spec,
       action_tensor_spec=action_tensor_spec,
       seed=seed,
+      max_vocab_size=max_vocab_size,
+      latent_dim=latent_dim,
+      profile_value_dropout=profile_value_dropout,
+      embedding_dim=embedding_dim,
   )
 
   return dqn_agent.DdqnAgent(
@@ -451,121 +481,6 @@ def _create_sac_agent(
   )
 
 
-def _create_agent(
-    env_name: Text,
-    algorithm: Text,
-    train_step: tf.Variable,
-    observation_tensor_spec: types.NestedTensorSpec,
-    action_tensor_spec: types.NestedTensorSpec,
-    time_step_tensor_spec: ts.TimeStep,
-    learning_rate: float,
-    debug_summaries: bool = False,
-    summarize_grads_and_vars: bool = False,
-    gradient_clipping: Optional[float] = None,
-    seed: Optional[int] = None,
-    entropy_regularization: float = 0.0,
-    epsilon_greedy: float = 0.1,
-    use_gae: bool = True,
-) -> tf_agent.TFAgent:
-  if algorithm == 'ppo':
-    return _create_ppo_agent(
-        env_name=env_name,
-        train_step=train_step,
-        observation_tensor_spec=observation_tensor_spec,
-        action_tensor_spec=action_tensor_spec,
-        time_step_tensor_spec=time_step_tensor_spec,
-        learning_rate=learning_rate,
-        entropy_regularization=entropy_regularization,
-        gradient_clipping=gradient_clipping,
-        use_gae=use_gae,
-        debug_summaries=debug_summaries,
-        summarize_grads_and_vars=summarize_grads_and_vars,
-        seed=seed,
-    )
-  elif algorithm == 'sac':
-    return _create_sac_agent(
-        env_name=env_name,
-        train_step=train_step,
-        observation_tensor_spec=observation_tensor_spec,
-        action_tensor_spec=action_tensor_spec,
-        time_step_tensor_spec=time_step_tensor_spec,
-        learning_rate=learning_rate,
-        debug_summaries=debug_summaries,
-        summarize_grads_and_vars=summarize_grads_and_vars,
-        gradient_clipping=gradient_clipping,
-        seed=seed,
-    )
-  elif algorithm == 'ddqn':
-    return _create_ddqn_agent(
-        env_name=env_name,
-        train_step=train_step,
-        observation_tensor_spec=observation_tensor_spec,
-        action_tensor_spec=action_tensor_spec,
-        time_step_tensor_spec=time_step_tensor_spec,
-        epsilon_greedy=epsilon_greedy,
-        learning_rate=learning_rate,
-        debug_summaries=debug_summaries,
-        summarize_grads_and_vars=summarize_grads_and_vars,
-        gradient_clipping=gradient_clipping,
-        seed=seed,
-    )
-  else:
-    raise ValueError(f'Unknown algorithm: {algorithm}')
-
-
-def _create_learner(
-    root_dir: Text,
-    algorithm: Text,
-    train_step: tf.Variable,
-    agent: tf_agent.TFAgent,
-    experience_dataset_fn: Callable[[], tf.data.Dataset],
-    normalization_dataset_fn: Callable[[], tf.data.Dataset],
-    num_samples: int,
-    num_epochs: int,
-    minibatch_size: int,
-    checkpoint_interval: int,
-    shuffle_buffer_size: int,
-    summary_interval: int,
-    triggers: Optional[
-        Iterable[triggers.interval_trigger.IntervalTrigger]
-    ] = None,
-    strategy: Optional[tf.distribute.Strategy] = None,
-    after_train_strategy_step_fn: Optional[Callable[[], None]] = None,
-) -> Union[learner_lib.Learner, ppo_learner_lib.PPOLearner]:
-  """Creates a learner."""
-  if algorithm == 'ppo':
-    return ppo_learner_lib.PPOLearner(
-        root_dir,
-        train_step,
-        agent,
-        experience_dataset_fn=experience_dataset_fn,
-        normalization_dataset_fn=normalization_dataset_fn,
-        num_samples=num_samples,
-        num_epochs=num_epochs,
-        minibatch_size=minibatch_size,
-        checkpoint_interval=checkpoint_interval,
-        shuffle_buffer_size=shuffle_buffer_size,
-        summary_interval=summary_interval,
-        triggers=triggers,
-        strategy=strategy,
-        after_train_strategy_step_fn=after_train_strategy_step_fn,
-    )
-  elif algorithm == 'sac':
-    return learner_lib.Learner(
-        root_dir,
-        train_step,
-        agent,
-        experience_dataset_fn=experience_dataset_fn,
-        checkpoint_interval=checkpoint_interval,
-        summary_interval=summary_interval,
-        triggers=triggers,
-        max_checkpoints_to_keep=1,
-        strategy=strategy,
-    )
-  else:
-    raise ValueError(f'Unknown algorithm: {algorithm}')
-
-
 @gin.configurable
 def train(
     root_dir: Text,
@@ -589,43 +504,71 @@ def train(
     sequence_length: int = 0,
     timesteps_per_actorbatch: int = 0,
     suite_load_fn: Callable[
-        [Text], py_environment.PyEnvironment
+      [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
     use_gae: bool = True,
     env_batch_size: int = 1,
     seed: Optional[int] = None,
+    max_vocab_size: Optional[int] = None,
+    latent_dim: Optional[int] = None,
+    profile_value_dropout: Optional[float] = None,
+    embedding_dim: Optional[int] = None,
 ) -> None:
   """Trains a PPO agent."""
-  logging.info('Sequence length train: %s', sequence_length)
-  logging.info('Timesteps per actorbatch: %s', timesteps_per_actorbatch)
-
   env = suite_load_fn(environment_name)
   observation_tensor_spec, action_tensor_spec, time_step_tensor_spec = (
       spec_utils.get_tensor_specs(env)
   )
+
+  if algorithm == 'ppo':
+    algo_kwargs = {
+        'entropy_regularization': entropy_regularization,
+        'use_gae': use_gae,
+        'learning_rate': learning_rate,
+    }
+    create_agent_fn = _create_ppo_agent
+
+  elif algorithm == 'sac':
+    algo_kwargs = {
+        'learning_rate': learning_rate,
+    }
+    create_agent_fn = _create_sac_agent
+  elif algorithm == 'ddqn':
+    algo_kwargs = {
+        'epsilon_greedy': epsilon_greedy,
+        'learning_rate': learning_rate,
+    }
+    create_agent_fn = _create_ddqn_agent
+  elif algorithm == 'td3':
+    algo_kwargs = {
+        'learning_rate': learning_rate,
+    }
+    create_agent_fn = _create_td3_agent
+  else:
+    raise ValueError(f'Unknown algorithm: {algorithm}')
 
   # Create the agent.
   with strategy.scope():
     num_replicas = strategy.num_replicas_in_sync
     train_step = train_utils.create_train_step()
 
-    agent = _create_agent(
+    agent = create_agent_fn(
         env_name=environment_name,
         train_step=train_step,
         observation_tensor_spec=observation_tensor_spec,
         action_tensor_spec=action_tensor_spec,
         time_step_tensor_spec=time_step_tensor_spec,
-        learning_rate=learning_rate,
-        entropy_regularization=entropy_regularization,
         debug_summaries=debug_summaries,
         summarize_grads_and_vars=summarize_grads_and_vars,
-        use_gae=use_gae,
-        epsilon_greedy=epsilon_greedy,
         gradient_clipping=gradient_clipping,
         seed=seed,
-        algorithm=algorithm,
+        max_vocab_size=max_vocab_size,
+        latent_dim=latent_dim,
+        profile_value_dropout=profile_value_dropout,
+        embedding_dim=embedding_dim,
+        **algo_kwargs
     )
     logging.info('Created agent.')
 
@@ -655,8 +598,13 @@ def train(
         values=variables, table=reverb_variable_container.DEFAULT_TABLE
     )
 
-    if algorithm == 'ppo':
+    # Create the learner.
+    learning_triggers = [
+        save_model_trigger,
+        triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
+    ]
 
+    if algorithm in ('ppo',):
       reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
           agent.collect_data_spec,
           sequence_length=sequence_length,
@@ -669,27 +617,6 @@ def train(
           table_name='normalization_table',
           server_address=replay_buffer_server_address,
       )
-    elif algorithm == 'sac':
-      reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
-          agent.collect_data_spec,
-          sequence_length=2,
-          table_name=reverb_replay_buffer.DEFAULT_TABLE,
-          server_address=replay_buffer_server_address,
-      )
-      reverb_replay_normalization = None
-    else:
-      raise ValueError(f'Unknown algorithm: {algorithm}')
-
-    # Close and delete the environment if it's no longer needed.
-    env.close()
-    del env
-
-    # Initialize the datasets. The normalization and training dataset are kept in
-    # sync (contain the same data). We leverage two tables to perform
-    # deterministic sampling, so that normalization and training use the same
-    # collected data.
-
-    if algorithm == 'ppo':
 
       def experience_dataset_fn():
         with strategy.scope():
@@ -707,7 +634,44 @@ def train(
               sequence_preprocess_fn=agent.preprocess_sequence,
           ).prefetch(tf.data.experimental.AUTOTUNE)
 
+      # Add an `after_train_step_fn` with metrics on how on-policy the data is.
+      num_minibatches = timesteps_per_actorbatch // batch_size
+      train_steps_per_policy_update = num_minibatches * num_epochs // num_replicas
+      logging.info(
+          'Train steps per policy update: %d', train_steps_per_policy_update
+      )
+      after_train_strategy_step_fn = (
+          train_utils.create_staleness_metrics_after_train_step_fn(
+              train_step=train_step,
+              train_steps_per_policy_update=train_steps_per_policy_update,
+          )
+      )
+
+      create_learner_fn = functools.partial(
+          ppo_learner_lib.PPOLearner,
+          root_dir=root_dir,
+          train_step=train_step,
+          agent=agent,
+          experience_dataset_fn=experience_dataset_fn,
+          normalization_dataset_fn=normalization_dataset_fn,
+          num_samples=env_batch_size,
+          num_epochs=num_epochs,
+          minibatch_size=batch_size,
+          checkpoint_interval=train_checkpoint_interval,
+          shuffle_buffer_size=shuffle_buffer_size,
+          summary_interval=log_interval,
+          triggers=learning_triggers,
+          strategy=strategy,
+          after_train_strategy_step_fn=after_train_strategy_step_fn,
+      )
     elif algorithm in ('sac', 'ddqn', 'td3'):
+      reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
+          agent.collect_data_spec,
+          sequence_length=2,
+          table_name=reverb_replay_buffer.DEFAULT_TABLE,
+          server_address=replay_buffer_server_address,
+      )
+      reverb_replay_normalization = None
 
       def experience_dataset_fn():
         with strategy.scope():
@@ -717,52 +681,30 @@ def train(
               num_steps=2,
           ).prefetch(tf.data.experimental.AUTOTUNE)
 
-      normalization_dataset_fn = None
+      create_learner_fn = functools.partial(
+          learner_lib.Learner,
+          root_dir=root_dir,
+          train_step=train_step,
+          agent=agent,
+          experience_dataset_fn=experience_dataset_fn,
+          checkpoint_interval=train_checkpoint_interval,
+          shuffle_buffer_size=shuffle_buffer_size,
+          summary_interval=log_interval,
+          triggers=learning_triggers,
+          strategy=strategy,
+      )
+    else:
+      raise ValueError(f'Unknown algorithm: {algorithm}')
 
-    # Create the learner.
-    learning_triggers = [
-        save_model_trigger,
-        triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
-    ]
+    # Close and delete the environment since we have the spec.
+    env.close()
+    del env
 
-    # Add an `after_train_step_fn` with metrics on how on-policy the data is.
-    num_minibatches = timesteps_per_actorbatch // batch_size
-    train_steps_per_policy_update = num_minibatches * num_epochs // num_replicas
-    logging.info(
-        'Train steps per policy update: %d', train_steps_per_policy_update
-    )
-    after_train_strategy_step_fn = (
-        train_utils.create_staleness_metrics_after_train_step_fn(
-            train_step=train_step,
-            train_steps_per_policy_update=train_steps_per_policy_update,
-        )
-    )
-
-    learner = _create_learner(
-        root_dir=root_dir,
-        algorithm=algorithm,
-        train_step=train_step,
-        agent=agent,
-        experience_dataset_fn=experience_dataset_fn,
-        normalization_dataset_fn=normalization_dataset_fn,
-        num_samples=env_batch_size,
-        num_epochs=num_epochs,
-        minibatch_size=batch_size,
-        checkpoint_interval=train_checkpoint_interval,
-        shuffle_buffer_size=shuffle_buffer_size,
-        summary_interval=log_interval,
-        triggers=learning_triggers,
-        strategy=strategy,
-        after_train_strategy_step_fn=after_train_strategy_step_fn,
-    )
-
+    learner = create_learner_fn()
     if algorithm == 'ppo':
-
       def _learner_run_fn():
         learner.run()
-
     else:
-
       def _learner_run_fn():
         learner.run(iterations=learner_iterations_per_call)
 
@@ -793,20 +735,20 @@ def main(_):
   tf.random.set_seed(_SEED.value)
   np.random.seed(_SEED.value)
 
-  # Add a prefix to our absl logger so we know which collect job this is
   absl_handler = logging.get_absl_handler()
   absl_handler.setFormatter(PrefixedLogFormatter())
 
+  # A2Perf environments may have more configs to add, so don't finalize
   gin.parse_config_files_and_bindings(
       _GIN_FILE.value,
       _GIN_BINDINGS.value,
       finalize_config=False,
-      # a2perf environments have more configs to add
   )
+
+  # FLAGS.use_gpu is defined in tensorflow strategy import
   strategy = strategy_utils.get_strategy(
       tpu=_USE_TPU.value,
       use_gpu=FLAGS.use_gpu,
-      # Defined in tensorflow strategies
   )
   # Define the default dictionary for gym_kwargs
   if _ENV_NAME.value == 'QuadrupedLocomotion-v0':
@@ -861,6 +803,10 @@ def main(_):
       env_batch_size=_ENV_BATCH_SIZE.value,
       seed=_SEED.value,
       algorithm=_ALGORITHM.value,
+      max_vocab_size=_MAX_VOCAB_SIZE.value,
+      latent_dim=_LATENT_DIM.value,
+      profile_value_dropout=_PROFILE_VALUE_DROPOUT.value,
+      embedding_dim=_EMBEDDING_DIM.value,
   )
 
 
