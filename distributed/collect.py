@@ -5,12 +5,14 @@ import os
 import time
 from typing import Text
 
-import gin
-import reverb
-import tensorflow as tf
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains import web_navigation
 from absl import app
 from absl import flags
 from absl import logging
+import gin
+import reverb
+import tensorflow as tf
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_pybullet
 from tf_agents.experimental.distributed import reverb_variable_container
@@ -23,11 +25,6 @@ from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
-
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-# noinspection PyUnresolvedReferences
-from a2perf.domains import web_navigation
 
 _DIFFICULTY_LEVEL = flags.DEFINE_integer(
     'difficulty_level',
@@ -316,7 +313,7 @@ def run_collect(
   )
   logging.info('Loaded collect policy from %s', collect_policy_dir)
 
-  if algorithm in ('sac', 'ddqn', 'td3'):
+  if algorithm in ('sac', 'ddqn', 'td3', 'dqn'):
     collect_off_policy(
         environment_name=environment_name,
         collect_policy=collect_policy,

@@ -23,12 +23,14 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
-import gin
-import numpy as np
-import tensorflow as tf
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains.web_navigation.gwob.CoDE import networks
 from absl import app
 from absl import flags
 from absl import logging
+import gin
+import numpy as np
+import tensorflow as tf
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ddpg import critic_network
 from tf_agents.agents.dqn import dqn_agent
@@ -52,10 +54,6 @@ from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.trajectories import time_step as ts
 from tf_agents.typing import types
-
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains.web_navigation.gwob.CoDE import networks
 
 _MAX_VOCAB_SIZE = flags.DEFINE_integer(
     'max_vocab_size', None, 'Maximum vocabulary size.'
@@ -504,7 +502,7 @@ def train(
     sequence_length: int = 0,
     timesteps_per_actorbatch: int = 0,
     suite_load_fn: Callable[
-      [Text], py_environment.PyEnvironment
+        [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
@@ -568,7 +566,7 @@ def train(
         latent_dim=latent_dim,
         profile_value_dropout=profile_value_dropout,
         embedding_dim=embedding_dim,
-        **algo_kwargs
+        **algo_kwargs,
     )
     logging.info('Created agent.')
 
@@ -636,7 +634,9 @@ def train(
 
       # Add an `after_train_step_fn` with metrics on how on-policy the data is.
       num_minibatches = timesteps_per_actorbatch // batch_size
-      train_steps_per_policy_update = num_minibatches * num_epochs // num_replicas
+      train_steps_per_policy_update = (
+          num_minibatches * num_epochs // num_replicas
+      )
       logging.info(
           'Train steps per policy update: %d', train_steps_per_policy_update
       )
@@ -702,9 +702,12 @@ def train(
 
     learner = create_learner_fn()
     if algorithm == 'ppo':
+
       def _learner_run_fn():
         learner.run()
+
     else:
+
       def _learner_run_fn():
         learner.run(iterations=learner_iterations_per_call)
 
