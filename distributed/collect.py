@@ -116,6 +116,9 @@ _VOCABULARY_SERVER_PORT = flags.DEFINE_integer(
     'vocabulary_server_port', None, 'Vocabulary server port.')
 ACTOR_COLLECT_METRICS_BUFFER_SIZE = 10
 
+MAX_RETRIES = 10
+RETRY_DELAY = 20
+
 
 class PrefixedLogFormatter(logging.PythonFormatter):
 
@@ -360,9 +363,6 @@ def main(_):
 
   tf.compat.v1.enable_v2_behavior()
 
-  if _DEBUG.value and _TASK.value == 0:
-    logging.set_verbosity(logging.DEBUG)
-
   gin.parse_config_files_and_bindings(
       _GIN_FILE.value, _GIN_BINDINGS.value, finalize_config=False
   )
@@ -389,6 +389,27 @@ def main(_):
             _VOCABULARY_SERVER_HOSTNAME.value, _VOCABULARY_SERVER_PORT.value),
         authkey=_AUTH_KEY.value.encode()
     )
+
+    for attempt in range(MAX_RETRIES):
+      try:
+        manager = VocabularyManager(
+            address=(
+                _VOCABULARY_SERVER_HOSTNAME.value,
+                _VOCABULARY_SERVER_PORT.value,
+            ),
+            authkey=_AUTH_KEY.value.encode()
+        )
+        manager.connect()
+        break
+      except ConnectionRefusedError:
+        if attempt < MAX_RETRIES - 1:
+          print(
+              f"Attempt {attempt + 1} failed, retrying in {RETRY_DELAY} seconds...")
+          time.sleep(RETRY_DELAY)
+        else:
+          print("Failed to connect to the manager server.")
+          raise
+
     manager.connect()
 
     shared_dict = manager.get_shared_dict()

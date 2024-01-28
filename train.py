@@ -197,22 +197,22 @@ def train():
     ])
 
     if job_type == 'train':
-      manager_command = [
+      vocab_manager_command = [
           'python',
           'distributed/vocabulary_manager.py',
           f'--port={vocab_port}',
           f'--auth_key={auth_key}',
           f'--max_vocab_size={max_vocab_size}',
-          '--verbosity=2',
+          f'--verbosity={logging.get_verbosity()}',
       ]
-      manager_process = subprocess.Popen(
-          manager_command,
+      vocab_manager_process = subprocess.Popen(
+          vocab_manager_command,
           stdout=subprocess.PIPE,
           stderr=subprocess.STDOUT,
           env=os.environ.copy(),
       )
       threading.Thread(
-          target=print_subprocess_output, args=(manager_process,)
+          target=print_subprocess_output, args=(vocab_manager_process,)
       ).start()
       logging.info('Successfully launched vocab manager server.')
   elif env_name == 'QuadrupedLocomotion-v0':
@@ -244,7 +244,7 @@ def train():
             f'--auth_key={auth_key}',
             f'--vocabulary_server_hostname={vocabulary_server_address}',
             f'--vocabulary_server_port={vocabulary_server_port}',
-            '--verbosity=2' if i == 0 else '--verbosity=-2',
+            f'--verbosity={logging.get_verbosity()}',
         ]
         + env_flags
         for i in range(num_collect_jobs)
@@ -284,7 +284,7 @@ def train():
         f'--replay_buffer_capacity={replay_buffer_capacity}',
         f'--algorithm={algorithm}',
         f'--min_table_size_before_sampling={min_table_size_before_sampling}',
-        '--verbosity=2',
+        f'--verbosity={logging.get_verbosity()}',
     ]
     logging.info(' '.join(reverb_command))
 
@@ -332,6 +332,7 @@ def train():
                             f'--num_websites={num_websites}',
                             f'--difficulty_level={difficulty_level}',
                             f'--motion_file_path={motion_file_path}',
+                            f'--verbosity={logging.get_verbosity()}',
                         ] + env_flags
 
     # Display the command
