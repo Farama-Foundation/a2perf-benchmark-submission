@@ -404,7 +404,7 @@ def main(_):
       except ConnectionRefusedError:
         if attempt < MAX_RETRIES - 1:
           print(
-              f"Attempt {attempt + 1} failed, retrying in {RETRY_DELAY} seconds...")
+              f"Attempt {attempt + 1} failed to connect to the vocab server. Retrying in {RETRY_DELAY} seconds...")
           time.sleep(RETRY_DELAY)
         else:
           print("Failed to connect to the manager server.")
