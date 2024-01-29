@@ -110,9 +110,6 @@ _REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
 _POLICY_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
     'policy_checkpoint_interval', None, 'Policy checkpoint interval.'
 )
-_TIMESTEPS_PER_ACTORBATCH = flags.DEFINE_integer(
-    'timesteps_per_actorbatch', None, 'Number of timesteps per actorbatch.'
-)
 
 _ENV_BATCH_SIZE = flags.DEFINE_integer(
     'env_batch_size', None, 'Number of environments to run in parallel.'
@@ -503,7 +500,6 @@ def train(
     shuffle_buffer_size: int = 0,
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
-    timesteps_per_actorbatch: int = 0,
     suite_load_fn: Callable[
       [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
@@ -605,14 +601,6 @@ def train(
         triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
     ]
 
-    def _get_dataset_options():
-      dataset_options = tf.data.Options()
-      dataset_options.autotune.enabled = True
-
-      # 8GB RAM budget
-      dataset_options.autotune.ram_budget = int(8 * 1e9)
-      return dataset_options
-
     if algorithm in ('ppo',):
       reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
           agent.collect_data_spec,
@@ -628,26 +616,24 @@ def train(
       )
 
       def experience_dataset_fn():
-        with strategy.scope():
-          dataset_options = _get_dataset_options()
-          return reverb_replay_train.as_dataset(
-              sample_batch_size=1,
-              num_steps=sequence_length,
-              sequence_preprocess_fn=agent.preprocess_sequence,
-          ).prefetch(tf.data.AUTOTUNE).with_options(dataset_options)
+        return reverb_replay_train.as_dataset(
+            sample_batch_size=env_batch_size,
+            num_steps=sequence_length,
+            sequence_preprocess_fn=agent.preprocess_sequence,
+            num_parallel_calls=tf.data.AUTOTUNE,
+        ).prefetch(tf.data.AUTOTUNE)
 
       def normalization_dataset_fn():
-        with strategy.scope():
-          dataset_options = _get_dataset_options()
-          return reverb_replay_normalization.as_dataset(
-              sample_batch_size=1,
-              num_steps=sequence_length,
-              sequence_preprocess_fn=agent.preprocess_sequence,
-          ).prefetch(tf.data.AUTOTUNE).with_options(dataset_options)
+        return reverb_replay_train.as_dataset(
+            sample_batch_size=env_batch_size,
+            num_steps=sequence_length,
+            sequence_preprocess_fn=agent.preprocess_sequence,
+            num_parallel_calls=tf.data.AUTOTUNE,
+        ).prefetch(tf.data.AUTOTUNE)
 
       # Add an `after_train_step_fn` with metrics on how on-policy the data is.
       train_steps_per_policy_update = (
-          num_epochs * env_batch_size // num_replicas
+          num_epochs // num_replicas
       )
       logging.info(
           'Train steps per policy update: %d', train_steps_per_policy_update
@@ -666,9 +652,8 @@ def train(
           agent=agent,
           experience_dataset_fn=experience_dataset_fn,
           normalization_dataset_fn=normalization_dataset_fn,
-          num_samples=env_batch_size,
+          num_samples=1,
           num_epochs=num_epochs,
-          # minibatch_size=batch_size,
           checkpoint_interval=train_checkpoint_interval,
           shuffle_buffer_size=shuffle_buffer_size,
           summary_interval=log_interval,
@@ -686,13 +671,11 @@ def train(
       reverb_replay_normalization = None
 
       def experience_dataset_fn():
-        with strategy.scope():
-          dataset_options = _get_dataset_options()
-          return reverb_replay_train.as_dataset(
-              sample_batch_size=batch_size,
-              num_parallel_calls=tf.data.AUTOTUNE,
-              num_steps=2,
-          ).prefetch(tf.data.AUTOTUNE).with_options(dataset_options)
+        return reverb_replay_train.as_dataset(
+            sample_batch_size=batch_size,
+            num_parallel_calls=tf.data.AUTOTUNE,
+            num_steps=2,
+        ).prefetch(tf.data.AUTOTUNE)
 
       create_learner_fn = functools.partial(
           learner_lib.Learner,
@@ -809,7 +792,6 @@ def main(_):
       sequence_length=_SEQUENCE_LENGTH.value,
       suite_load_fn=suite_load_function,
       summarize_grads_and_vars=_SUMMARIZE_GRADS_AND_VARS.value,
-      timesteps_per_actorbatch=_TIMESTEPS_PER_ACTORBATCH.value,
       train_checkpoint_interval=_TRAIN_CHECKPOINT_INTERVAL.value,
       use_gae=_USE_GAE.value,
       batch_size=_BATCH_SIZE.value,
@@ -833,7 +815,6 @@ if __name__ == '__main__':
       'env_batch_size',
       'sequence_length',
       'seed',
-      'timesteps_per_actorbatch',
       'batch_size',
       'debug',
       'num_epochs',

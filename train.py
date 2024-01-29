@@ -110,7 +110,7 @@ def train():
   # Check if the selected algorithm is Proximal Policy Optimization (PPO)
   if algorithm == 'ppo':
     # One train step is performed per parallel environment.
-    train_steps_per_iteration = num_epochs * env_batch_size
+    train_steps_per_iteration = num_epochs
 
     # No shuffling.
     shuffle_buffer_size = -1
@@ -313,7 +313,6 @@ def train():
                             f'--algorithm={algorithm}',
                             f'--debug={debug}',
                             f'--learner_iterations_per_call={learner_iterations_per_call}',
-                            f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
                             f'--sequence_length={adjusted_timesteps_per_actorbatch}',
                             f'--policy_checkpoint_interval={policy_checkpoint_interval}',
                             f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
