@@ -172,6 +172,8 @@ def train():
   print(f'shuffle_buffer_size: {shuffle_buffer_size}')
   print(f'random seed: {seed}')
 
+  all_processes = []
+
   env_flags = []
   if env_name == 'WebNavigation-v0':
     env_flags.extend([
@@ -195,6 +197,7 @@ def train():
           stderr=subprocess.STDOUT,
           env=os.environ.copy(),
       )
+      all_processes.append(vocab_manager_process)
       threading.Thread(
           target=print_subprocess_output, args=(vocab_manager_process,)
       ).start()
@@ -228,7 +231,7 @@ def train():
             f'--auth_key={auth_key}',
             f'--vocabulary_server_hostname={vocabulary_server_address}',
             f'--vocabulary_server_port={vocabulary_server_port}',
-            f'--verbosity={logging.get_verbosity()}',
+            f'--verbosity={"1" if i == 0 else "-1"}',
         ]
         + env_flags
         for i in range(num_collect_jobs)
@@ -245,6 +248,7 @@ def train():
           stderr=subprocess.STDOUT,
           env=os.environ.copy(),
       )
+      all_processes.append(process)
       collect_jobs.append(process)
       threading.Thread(target=print_subprocess_output, args=(process,)).start()
     logging.info('Successfully launched collect jobs.')
@@ -252,7 +256,7 @@ def train():
     while True:
       try:
         for process in collect_jobs:
-          process.wait(timeout=30)
+          process.wait(timeout=10)
         break
       except subprocess.TimeoutExpired:
         logging.info('Collect jobs still running.')
@@ -278,6 +282,7 @@ def train():
         stderr=subprocess.STDOUT,
         env=os.environ.copy(),
     )
+    all_processes.append(reverb_process)
     threading.Thread(
         target=print_subprocess_output, args=(reverb_process,)
     ).start()
@@ -328,25 +333,26 @@ def train():
         stderr=subprocess.STDOUT,
         env=os.environ.copy(),
     )
+    all_processes.append(train_job)
     threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
     logging.info('Successfully launched train job.')
 
     while True:
       try:
-        train_job.wait(timeout=30)
+        train_job.wait(timeout=10)
         break
       except subprocess.TimeoutExpired:
         logging.info('Train job still running.')
         continue
     logging.info('Train job finished.')
 
-    # Pause before terminating reverb server so the collect jobs can read the
-    # variable container from the replay buffer
-    logging.info('Pausing before terminating reverb server.')
-    time.sleep(60)
-
-    reverb_process.terminate()
-    logging.info('Successfully terminated reverb server.')
+  for process in all_processes:
+    process.kill()
+    try:
+      process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+      logging.info('Process killed unsuccessfully.')
+      return
 
 
 def main(_):

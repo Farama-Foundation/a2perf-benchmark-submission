@@ -167,7 +167,6 @@ def main(_):
   absl_handler = logging.get_absl_handler()
   absl_handler.setFormatter(PrefixedLogFormatter())
 
-  tf.compat.v1.enable_v2_behavior()
   if _DEBUG.value:
     logging.set_verbosity(logging.DEBUG)
 
