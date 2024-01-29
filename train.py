@@ -108,25 +108,9 @@ def train():
     print(f'max_vocab_size: {max_vocab_size}')
 
   if algorithm == 'ppo':
-
-    # Shuffle buffer size determines how many samples are gathered from the TF
-    # dataset and shuffled before training. We want to shuffle the entire
-    # `timesteps_per_actorbatch` samples, so we set the shuffle buffer size
-    # to the number of samples gathered in a single iteration.
-    # shuffle_buffer_size = num_epochs * timesteps_per_actorbatch
-
-    # For faster training, we may also choose to shuffle one epoch at a time.
-    # shuffle_buffer_size = timesteps_per_actorbatch
-
-    # Or simply just one batch
-    shuffle_buffer_size = batch_size
-
-    # Before creating minibatches, we unbatch the sequences of length `adjusted_timesteps_per_actorbatch`.
-    # So that means we will have `time_steps_per_actorbatch // batch_size` minibatches per iteration.
-    num_minibatches = timesteps_per_actorbatch // batch_size
-
-    # Each minibatch results in one train step, so we have `num_minibatches` train steps per iteration.
-    train_steps_per_iteration = num_minibatches * num_epochs
+    # All data is collected in a single batch for PPO
+    train_steps_per_iteration = num_epochs * env_batch_size
+    shuffle_buffer_size = -1
 
     # Just one learner iteration per call for PPO
     learner_iterations_per_call = 1

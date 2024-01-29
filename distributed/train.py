@@ -23,6 +23,8 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
+import psutil
+
 from a2perf.domains import quadruped_locomotion
 from a2perf.domains.web_navigation.gwob.CoDE import networks
 from absl import app
@@ -603,6 +605,11 @@ def train(
         triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
     ]
 
+    # Create TF dataset options to use with replay buffers.
+    dataset_options = tf.data.Options()
+    dataset_options.autotune.enabled = True
+    dataset_options.autotune.ram_budget = psutil.virtual_memory().available // 2
+
     if algorithm in ('ppo',):
       reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
           agent.collect_data_spec,
@@ -623,7 +630,7 @@ def train(
               sample_batch_size=1,
               num_steps=sequence_length,
               sequence_preprocess_fn=agent.preprocess_sequence,
-          ).prefetch(tf.data.experimental.AUTOTUNE)
+          ).prefetch(tf.data.AUTOTUNE).with_options(dataset_options)
 
       def normalization_dataset_fn():
         with strategy.scope():
@@ -631,12 +638,11 @@ def train(
               sample_batch_size=1,
               num_steps=sequence_length,
               sequence_preprocess_fn=agent.preprocess_sequence,
-          ).prefetch(tf.data.experimental.AUTOTUNE)
+          ).prefetch(tf.data.AUTOTUNE).with_options(dataset_options)
 
       # Add an `after_train_step_fn` with metrics on how on-policy the data is.
-      num_minibatches = timesteps_per_actorbatch // batch_size
       train_steps_per_policy_update = (
-          num_minibatches * num_epochs // num_replicas
+          num_epochs * env_batch_size // num_replicas
       )
       logging.info(
           'Train steps per policy update: %d', train_steps_per_policy_update
@@ -657,7 +663,7 @@ def train(
           normalization_dataset_fn=normalization_dataset_fn,
           num_samples=env_batch_size,
           num_epochs=num_epochs,
-          minibatch_size=batch_size,
+          # minibatch_size=batch_size,
           checkpoint_interval=train_checkpoint_interval,
           shuffle_buffer_size=shuffle_buffer_size,
           summary_interval=log_interval,
@@ -678,9 +684,9 @@ def train(
         with strategy.scope():
           return reverb_replay_train.as_dataset(
               sample_batch_size=batch_size,
-              num_parallel_calls=tf.data.experimental.AUTOTUNE,
+              num_parallel_calls=tf.data.AUTOTUNE,
               num_steps=2,
-          ).prefetch(tf.data.experimental.AUTOTUNE)
+          ).prefetch(tf.data.AUTOTUNE).with_options(dataset_options)
 
       create_learner_fn = functools.partial(
           learner_lib.Learner,
@@ -729,8 +735,6 @@ def train(
 
 
 def main(_):
-  tf.compat.v1.enable_v2_behavior()
-
   if _DEBUG.value:
     logging.set_verbosity(logging.DEBUG)
 
@@ -763,6 +767,7 @@ def main(_):
         suite_pybullet.load, gym_kwargs=default_gym_kwargs
     )
   elif _ENV_NAME.value == 'WebNavigation-v0':
+    # Set the budget for TF data autotuning
     default_gym_kwargs = dict(
         use_legacy_step=True,
         use_legacy_reset=True,
