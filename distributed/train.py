@@ -440,6 +440,7 @@ def _create_sac_agent(
     summarize_grads_and_vars: bool = False,
     gradient_clipping: Optional[float] = None,
     seed: Optional[int] = None,
+    **kwargs,
 ) -> tf_agent.TFAgent:
   """Creates an agent."""
 
