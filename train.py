@@ -107,18 +107,33 @@ def train():
     print(f'profile_value_dropout: {profile_value_dropout}')
     print(f'max_vocab_size: {max_vocab_size}')
 
+  # Check if the selected algorithm is Proximal Policy Optimization (PPO)
   if algorithm == 'ppo':
-    # All data is collected in a single batch for PPO
+    # One train step is performed per parallel environment.
     train_steps_per_iteration = num_epochs * env_batch_size
+
+    # No shuffling.
     shuffle_buffer_size = -1
 
-    # Just one learner iteration per call for PPO
+    # Only a single iteration is performed per call to the learner. We set the
+    # `num_samples` argument to `env_batch_size` to ensure that the learner
+    # processes all the data collected by the actors in a single call.
     learner_iterations_per_call = 1
 
-    # No initial collect needed for PPO
+    # No need to collect data initially in PPO.
     initial_collect_steps = 0
 
-    min_table_size_before_sampling = 1
+    # Wait for the replay buffer to have enough data to sample from.
+    # Each collect actor collects `timesteps_per_actorbatch / env_batch_size`
+    # timesteps per iteration.
+    min_table_size_before_sampling = env_batch_size
+
+    # We want to exhaust `timesteps_per_actorbatch` samples each iteration roughly.
+    num_iterations = np.maximum(
+        1,
+        total_env_steps // timesteps_per_actorbatch
+    )
+    max_train_steps = train_steps_per_iteration * num_iterations
   else:
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration
     # roughly.
@@ -130,8 +145,8 @@ def train():
     initial_collect_steps = adjusted_timesteps_per_actorbatch
     min_table_size_before_sampling = timesteps_per_actorbatch
 
-  num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
-  max_train_steps = train_steps_per_iteration * num_iterations
+    num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
+    max_train_steps = train_steps_per_iteration * num_iterations
 
   policy_checkpoint_interval = np.maximum(
       1,

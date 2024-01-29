@@ -605,10 +605,13 @@ def train(
         triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
     ]
 
-    # Create TF dataset options to use with replay buffers.
-    dataset_options = tf.data.Options()
-    dataset_options.autotune.enabled = True
-    dataset_options.autotune.ram_budget = psutil.virtual_memory().available // 2
+    def _get_dataset_options():
+      dataset_options = tf.data.Options()
+      dataset_options.autotune.enabled = True
+
+      # 8GB RAM budget
+      dataset_options.autotune.ram_budget = int(8 * 1e9)
+      return dataset_options
 
     if algorithm in ('ppo',):
       reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
@@ -626,6 +629,7 @@ def train(
 
       def experience_dataset_fn():
         with strategy.scope():
+          dataset_options = _get_dataset_options()
           return reverb_replay_train.as_dataset(
               sample_batch_size=1,
               num_steps=sequence_length,
@@ -634,6 +638,7 @@ def train(
 
       def normalization_dataset_fn():
         with strategy.scope():
+          dataset_options = _get_dataset_options()
           return reverb_replay_normalization.as_dataset(
               sample_batch_size=1,
               num_steps=sequence_length,
@@ -682,6 +687,7 @@ def train(
 
       def experience_dataset_fn():
         with strategy.scope():
+          dataset_options = _get_dataset_options()
           return reverb_replay_train.as_dataset(
               sample_batch_size=batch_size,
               num_parallel_calls=tf.data.AUTOTUNE,
