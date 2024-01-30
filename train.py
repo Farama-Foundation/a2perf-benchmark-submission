@@ -109,11 +109,12 @@ def train():
 
   # Check if the selected algorithm is Proximal Policy Optimization (PPO)
   if algorithm == 'ppo':
-    # One train step is performed per parallel environment.
-    train_steps_per_iteration = num_epochs
+    # One step per minibatch. There are `timesteps_per_actorbatch` timesteps
+    # per iteration, then multiplied by the number of epochs.
+    train_steps_per_iteration = timesteps_per_actorbatch // batch_size * num_epochs
 
-    # No shuffling.
-    shuffle_buffer_size = -1
+    # Shuffle buffer should contain samples from a single collect iteration.
+    shuffle_buffer_size = timesteps_per_actorbatch
 
     # Only a single iteration is performed per call to the learner. We set the
     # `num_samples` argument to `env_batch_size` to ensure that the learner
@@ -133,7 +134,6 @@ def train():
         1,
         total_env_steps // timesteps_per_actorbatch
     )
-    max_train_steps = train_steps_per_iteration * num_iterations
   else:
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration
     # roughly.
@@ -146,7 +146,8 @@ def train():
     min_table_size_before_sampling = timesteps_per_actorbatch
 
     num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
-    max_train_steps = train_steps_per_iteration * num_iterations
+
+  max_train_steps = train_steps_per_iteration * num_iterations
 
   policy_checkpoint_interval = np.maximum(
       1,

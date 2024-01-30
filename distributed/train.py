@@ -602,6 +602,8 @@ def train(
     ]
 
     if algorithm in ('ppo',):
+      # More replicas results in fewer train steps per epoch.
+      max_train_step //= num_replicas
       reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
           agent.collect_data_spec,
           sequence_length=sequence_length,
@@ -632,8 +634,9 @@ def train(
         ).prefetch(tf.data.AUTOTUNE)
 
       # Add an `after_train_step_fn` with metrics on how on-policy the data is.
+      timesteps_per_actorbatch = env_batch_size * sequence_length
       train_steps_per_policy_update = (
-          num_epochs // num_replicas
+          timesteps_per_actorbatch * num_epochs // num_replicas // batch_size
       )
       logging.info(
           'Train steps per policy update: %d', train_steps_per_policy_update
@@ -656,6 +659,7 @@ def train(
           num_epochs=num_epochs,
           checkpoint_interval=train_checkpoint_interval,
           shuffle_buffer_size=shuffle_buffer_size,
+          minibatch_size=batch_size,
           summary_interval=log_interval,
           triggers=learning_triggers,
           strategy=strategy,
