@@ -284,6 +284,7 @@ def _create_td3_agent(
     summarize_grads_and_vars: bool = False,
     gradient_clipping: Optional[float] = None,
     seed: Optional[int] = None,
+    **kwargs,
 ) -> tf_agent.TFAgent:
   critic_net = _create_critic_net(
       observation_tensor_spec=observation_tensor_spec,
