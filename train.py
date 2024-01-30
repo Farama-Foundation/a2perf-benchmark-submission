@@ -127,11 +127,6 @@ def train():
     # No need to collect data initially in PPO.
     initial_collect_steps = 0
 
-    # Wait for the replay buffer to have enough data to sample from.
-    # Each collect actor collects `timesteps_per_actorbatch / env_batch_size`
-    # timesteps per iteration.
-    min_table_size_before_sampling = env_batch_size
-
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration roughly.
     num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
   else:
@@ -143,10 +138,10 @@ def train():
     train_steps_per_iteration = learner_iterations_per_call
     shuffle_buffer_size = -1
     initial_collect_steps = adjusted_timesteps_per_actorbatch
-    min_table_size_before_sampling = timesteps_per_actorbatch
 
     num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
 
+  min_table_size_before_sampling = 1
   max_train_steps = train_steps_per_iteration * num_iterations
 
   policy_checkpoint_interval = np.maximum(
