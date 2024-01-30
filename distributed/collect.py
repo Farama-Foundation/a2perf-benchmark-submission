@@ -1,17 +1,19 @@
 """Sample collection Job using a variable container for policy updates."""
 
 import functools
+from multiprocessing.managers import BaseManager
 import os
 import time
-from multiprocessing.managers import BaseManager
 from typing import Text
 
-import gin
-import reverb
-import tensorflow as tf
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 from absl import app
 from absl import flags
 from absl import logging
+import gin
+import reverb
+import tensorflow as tf
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_pybullet
 from tf_agents.experimental.distributed import reverb_variable_container
@@ -24,11 +26,6 @@ from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
-
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-# noinspection PyUnresolvedReferences
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 _DIFFICULTY_LEVEL = flags.DEFINE_integer(
     'difficulty_level',
@@ -113,7 +110,8 @@ _VOCABULARY_SERVER_HOSTNAME = flags.DEFINE_string(
     'vocabulary_server_hostname', None, 'Vocabulary server hostname.'
 )
 _VOCABULARY_SERVER_PORT = flags.DEFINE_integer(
-    'vocabulary_server_port', None, 'Vocabulary server port.')
+    'vocabulary_server_port', None, 'Vocabulary server port.'
+)
 ACTOR_COLLECT_METRICS_BUFFER_SIZE = 10
 
 MAX_RETRIES = 10
@@ -188,7 +186,7 @@ def collect_off_policy(
       train_step,
       steps_per_run=sequence_length,
       metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE),
-      summary_dir=summary_dir,
+      summary_dir=summary_dir if task == 0 else None,
       summary_interval=summary_interval,
       observers=[rb_observer, env_step_metric],
   )
@@ -384,8 +382,10 @@ def main(_):
     VocabularyManager.register('get_shared_lock')
     manager = VocabularyManager(
         address=(
-            _VOCABULARY_SERVER_HOSTNAME.value, _VOCABULARY_SERVER_PORT.value),
-        authkey=_AUTH_KEY.value.encode()
+            _VOCABULARY_SERVER_HOSTNAME.value,
+            _VOCABULARY_SERVER_PORT.value,
+        ),
+        authkey=_AUTH_KEY.value.encode(),
     )
 
     for attempt in range(MAX_RETRIES):
@@ -395,17 +395,19 @@ def main(_):
                 _VOCABULARY_SERVER_HOSTNAME.value,
                 _VOCABULARY_SERVER_PORT.value,
             ),
-            authkey=_AUTH_KEY.value.encode()
+            authkey=_AUTH_KEY.value.encode(),
         )
         manager.connect()
         break
       except ConnectionRefusedError:
         if attempt < MAX_RETRIES - 1:
           print(
-              f"Attempt {attempt + 1} failed to connect to the vocab server. Retrying in {RETRY_DELAY} seconds...")
+              f'Attempt {attempt + 1} failed to connect to the vocab server.'
+              f' Retrying in {RETRY_DELAY} seconds...'
+          )
           time.sleep(RETRY_DELAY)
         else:
-          print("Failed to connect to the manager server.")
+          print('Failed to connect to the manager server.')
           raise
 
     manager.connect()

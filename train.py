@@ -29,6 +29,7 @@ def train():
   total_env_steps = int(os.environ.get('TOTAL_ENV_STEPS', -1))
   eval_interval = int(os.environ.get('EVAL_INTERVAL', -1))
   entropy_regularization = float(os.environ.get('ENTROPY_REGULARIZATION', -1))
+  exploration_noise_std = float(os.environ.get('EXPLORATION_NOISE_STD', -1))
   train_checkpoint_interval = int(
       os.environ.get('TRAIN_CHECKPOINT_INTERVAL', -1)
   )
@@ -303,6 +304,7 @@ def train():
         'python',
         'distributed/train.py',
         f'--entropy_regularization={entropy_regularization}',
+        f'--exploration_noise_std={exploration_noise_std}',
         f'--num_epochs={num_epochs}',
         f'--batch_size={batch_size}',
         f'--shuffle_buffer_size={shuffle_buffer_size}',

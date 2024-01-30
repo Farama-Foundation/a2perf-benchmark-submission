@@ -23,8 +23,6 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
-import psutil
-
 from a2perf.domains import quadruped_locomotion
 from a2perf.domains.web_navigation.gwob.CoDE import networks
 from absl import app
@@ -32,6 +30,7 @@ from absl import flags
 from absl import logging
 import gin
 import numpy as np
+import psutil
 import tensorflow as tf
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ddpg import critic_network
@@ -79,6 +78,10 @@ _LEARNER_ITERATIONS_PER_CALL = flags.DEFINE_integer(
 _EPSILON_GREEDY = flags.DEFINE_float(
     'epsilon_greedy', None, 'Epsilon greedy value.'
 )
+_EXPLORATION_NOISE_STD = flags.DEFINE_float(
+    'exploration_noise_std', None, 'Exploration noise std.'
+)
+
 _SHUFFLE_BUFFER_SIZE = flags.DEFINE_integer(
     'shuffle_buffer_size',
     None,
@@ -276,6 +279,7 @@ def _create_td3_agent(
     action_tensor_spec: types.NestedTensorSpec,
     time_step_tensor_spec: ts.TimeStep,
     learning_rate: float,
+    exploration_noise_std: float,
     debug_summaries: bool = False,
     summarize_grads_and_vars: bool = False,
     gradient_clipping: Optional[float] = None,
@@ -311,6 +315,7 @@ def _create_td3_agent(
       train_step_counter=train_step,
       debug_summaries=debug_summaries,
       summarize_grads_and_vars=summarize_grads_and_vars,
+      exploration_noise_std=exploration_noise_std,
   )
 
 
@@ -489,6 +494,7 @@ def train(
     variable_container_server_address: Text,
     debug_summaries: bool = False,
     entropy_regularization: float = 0.0,
+    exploration_noise_std: float = 0.1,
     epsilon_greedy: float = 0.1,
     gradient_clipping: Optional[float] = None,
     learner_iterations_per_call: int = 1,
@@ -501,7 +507,7 @@ def train(
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
-      [Text], py_environment.PyEnvironment
+        [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
@@ -541,6 +547,7 @@ def train(
   elif algorithm == 'td3':
     algo_kwargs = {
         'learning_rate': learning_rate,
+        'exploration_noise_std': exploration_noise_std,
     }
     create_agent_fn = _create_td3_agent
   else:
@@ -801,6 +808,7 @@ def main(_):
       batch_size=_BATCH_SIZE.value,
       shuffle_buffer_size=_SHUFFLE_BUFFER_SIZE.value,
       env_batch_size=_ENV_BATCH_SIZE.value,
+      exploration_noise_std=_EXPLORATION_NOISE_STD.value,
       seed=_SEED.value,
       algorithm=_ALGORITHM.value,
       max_vocab_size=_MAX_VOCAB_SIZE.value,
