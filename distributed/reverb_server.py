@@ -125,7 +125,7 @@ def run_reverb_server(root_dir):
             signature=variable_container_signature,
         ),
     ]
-  elif _ALGORITHM.value in ('sac', 'ddqn', 'td3', 'dqn'):
+  elif _ALGORITHM.value in ('sac', 'ddqn', 'td3', 'dqn', 'ddpg'):
     tables = [
         reverb.Table(  # Replay buffer storing experience.
             name=reverb_replay_buffer.DEFAULT_TABLE,

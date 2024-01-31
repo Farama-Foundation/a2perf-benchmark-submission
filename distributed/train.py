@@ -34,6 +34,9 @@ import psutil
 import tensorflow as tf
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ddpg import critic_network
+from tf_agents.agents.ddpg import actor_network
+from tf_agents.agents.ddpg import ddpg_agent
+
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.agents.ppo import ppo_clip_agent
 from tf_agents.agents.sac import sac_agent
@@ -200,12 +203,14 @@ def _create_actor_net(
     action_tensor_spec: types.NestedTensorSpec,
     seed: Optional[int] = None,
     **kwargs,
-) -> actor_distribution_network.ActorDistributionNetwork:
+) -> actor_network.ActorNetwork:
   if env_name == 'QuadrupedLocomotion-v0':
-    return actor_distribution_network.ActorDistributionNetwork(
+
+    return actor_network.ActorNetwork(
         observation_tensor_spec,
         action_tensor_spec,
         fc_layer_params=(512, 256),
+
     )
   elif env_name == 'WebNavigation-v0':
     max_vocab_size = kwargs.get('max_vocab_size')
@@ -270,6 +275,53 @@ def _create_value_net(
     )
   else:
     raise ValueError(f'No network defined for {env_name}')
+
+
+def _create_ddpg_agent(
+    env_name: Text,
+    train_step: tf.Variable,
+    observation_tensor_spec: types.NestedTensorSpec,
+    action_tensor_spec: types.NestedTensorSpec,
+    time_step_tensor_spec: ts.TimeStep,
+    learning_rate: float,
+    debug_summaries: bool = False,
+    summarize_grads_and_vars: bool = False,
+    gradient_clipping: Optional[float] = None,
+    seed: Optional[int] = None,
+    **kwargs,
+) -> tf_agent.TFAgent:
+  critic_net = _create_critic_net(
+      observation_tensor_spec=observation_tensor_spec,
+      action_tensor_spec=action_tensor_spec,
+      env_name=env_name,
+  )
+  actor_net = _create_actor_net(
+      observation_tensor_spec=observation_tensor_spec,
+      action_tensor_spec=action_tensor_spec,
+      seed=seed,
+      env_name=env_name,
+  )
+
+  return ddpg_agent.DdpgAgent(
+      time_step_tensor_spec,
+      action_tensor_spec,
+      actor_network=actor_net,
+      critic_network=critic_net,
+      actor_optimizer=tf.keras.optimizers.Adam(
+          learning_rate=learning_rate, epsilon=1e-5
+      ),
+      critic_optimizer=tf.keras.optimizers.Adam(
+          learning_rate=learning_rate, epsilon=1e-5
+      ),
+      target_update_tau=0.005,
+      target_update_period=1,
+      td_errors_loss_fn=tf.math.squared_difference,
+      gamma=0.99,
+      gradient_clipping=gradient_clipping,
+      train_step_counter=train_step,
+      debug_summaries=debug_summaries,
+      summarize_grads_and_vars=summarize_grads_and_vars,
+  )
 
 
 def _create_td3_agent(
@@ -508,7 +560,7 @@ def train(
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
-        [Text], py_environment.PyEnvironment
+      [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
@@ -551,6 +603,11 @@ def train(
         'exploration_noise_std': exploration_noise_std,
     }
     create_agent_fn = _create_td3_agent
+  elif algorithm == 'ddpg':
+    algo_kwargs = {
+        'learning_rate': learning_rate,
+    }
+    create_agent_fn = _create_ddpg_agent
   else:
     raise ValueError(f'Unknown algorithm: {algorithm}')
 
@@ -673,7 +730,7 @@ def train(
           strategy=strategy,
           after_train_strategy_step_fn=after_train_strategy_step_fn,
       )
-    elif algorithm in ('sac', 'ddqn', 'td3'):
+    elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg'):
       reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
           agent.collect_data_spec,
           sequence_length=2,

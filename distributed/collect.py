@@ -325,7 +325,7 @@ def run_collect(
   )
   logging.info('Loaded collect policy from %s', collect_policy_dir)
 
-  if algorithm in ('sac', 'ddqn', 'td3', 'dqn'):
+  if algorithm in ('sac', 'ddqn', 'td3', 'dqn', 'ddpg'):
     collect_off_policy(
         environment_name=environment_name,
         collect_policy=collect_policy,
