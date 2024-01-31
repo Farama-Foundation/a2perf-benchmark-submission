@@ -8,7 +8,7 @@ from absl import logging
 import numpy as np
 
 
-PROCESS_WAIT_INTERVAL = 300  # 5 minutes
+PROCESS_WAIT_INTERVAL = 120  # 2 minutes
 
 
 def print_subprocess_output(process):
@@ -364,6 +364,10 @@ def train():
         logging.info('Train job still running.')
         continue
     logging.info('Train job finished.')
+
+    # Wait before killing the reverb server so the collect jobs
+    # can read the final train step.
+    time.sleep(PROCESS_WAIT_INTERVAL)
 
   for process in all_processes:
     process.kill()
