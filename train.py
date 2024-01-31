@@ -8,6 +8,9 @@ from absl import logging
 import numpy as np
 
 
+PROCESS_WAIT_INTERVAL = 300  # 5 minutes
+
+
 def print_subprocess_output(process):
   for line in iter(process.stdout.readline, b''):
     print(line.decode(), end='')
@@ -272,7 +275,7 @@ def train():
     while True:
       try:
         for process in collect_jobs:
-          process.wait(timeout=10)
+          process.wait(timeout=PROCESS_WAIT_INTERVAL)
         break
       except subprocess.TimeoutExpired:
         logging.info('Collect jobs still running.')
@@ -355,7 +358,7 @@ def train():
 
     while True:
       try:
-        train_job.wait(timeout=10)
+        train_job.wait(timeout=PROCESS_WAIT_INTERVAL)
         break
       except subprocess.TimeoutExpired:
         logging.info('Train job still running.')
