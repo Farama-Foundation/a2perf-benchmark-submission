@@ -271,7 +271,7 @@ def collect_sequences(
       steps_per_run=sequence_length,
       metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE),
       summary_interval=summary_interval,
-      summary_dir=summary_dir,
+      summary_dir=summary_dir if task == 0 else None,
       observers=[experience_observer, env_step_metric],
   )
 
