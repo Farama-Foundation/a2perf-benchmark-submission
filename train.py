@@ -223,7 +223,11 @@ def train():
     # Launch collect jobs with domain-specific configurations
     # Note: each collect script runs a single environment, so we adjust
     # the number of jobs started based on the number of machines
-    num_collect_jobs = env_batch_size // num_collect_machines
+    # take the ceiling to ensure we have enough jobs to cover the
+    # requested number of environments
+    num_collect_jobs = np.ceil(env_batch_size / num_collect_machines).astype(
+        int
+    )
 
     collect_job_commands = [
         [

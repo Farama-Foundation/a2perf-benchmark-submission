@@ -33,10 +33,9 @@ import numpy as np
 import psutil
 import tensorflow as tf
 from tf_agents.agents import tf_agent
-from tf_agents.agents.ddpg import critic_network
 from tf_agents.agents.ddpg import actor_network
+from tf_agents.agents.ddpg import critic_network
 from tf_agents.agents.ddpg import ddpg_agent
-
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.agents.ppo import ppo_clip_agent
 from tf_agents.agents.sac import sac_agent
@@ -205,12 +204,43 @@ def _create_actor_net(
     **kwargs,
 ) -> actor_network.ActorNetwork:
   if env_name == 'QuadrupedLocomotion-v0':
-
     return actor_network.ActorNetwork(
         observation_tensor_spec,
         action_tensor_spec,
         fc_layer_params=(512, 256),
+    )
+  elif env_name == 'WebNavigation-v0':
+    max_vocab_size = kwargs.get('max_vocab_size')
+    latent_dim = kwargs.get('latent_dim')
+    profile_value_dropout = kwargs.get('profile_value_dropout')
+    embedding_dim = kwargs.get('embedding_dim')
 
+    return networks.WebLSTMActorNetwork(
+        input_tensor_spec=observation_tensor_spec,
+        output_tensor_spec=action_tensor_spec,
+        lstm_kwargs=dict(
+            vocab_size=max_vocab_size,
+            latent_dim=latent_dim,
+            profile_value_dropout=profile_value_dropout,
+            embedding_dim=embedding_dim,
+        ),
+    )
+  else:
+    raise ValueError(f'No network defined for {env_name}')
+
+
+def _create_actor_distribution_net(
+    env_name: Text,
+    observation_tensor_spec: types.NestedTensorSpec,
+    action_tensor_spec: types.NestedTensorSpec,
+    seed: Optional[int] = None,
+    **kwargs,
+) -> actor_distribution_network.ActorDistributionNetwork:
+  if env_name == 'QuadrupedLocomotion-v0':
+    return actor_distribution_network.ActorDistributionNetwork(
+        observation_tensor_spec,
+        action_tensor_spec,
+        fc_layer_params=(512, 256),
     )
   elif env_name == 'WebNavigation-v0':
     max_vocab_size = kwargs.get('max_vocab_size')
@@ -392,7 +422,7 @@ def _create_ppo_agent(
     seed: Optional[int] = None,
 ) -> tf_agent.TFAgent:
   """Creates a PPO agent."""
-  actor_net = _create_actor_net(
+  actor_net = _create_actor_distribution_net(
       env_name=env_name,
       observation_tensor_spec=observation_tensor_spec,
       action_tensor_spec=action_tensor_spec,
@@ -506,7 +536,7 @@ def _create_sac_agent(
       action_tensor_spec=action_tensor_spec,
       env_name=env_name,
   )
-  actor_net = _create_actor_net(
+  actor_net = _create_actor_distribution_net(
       observation_tensor_spec=observation_tensor_spec,
       action_tensor_spec=action_tensor_spec,
       seed=seed,
@@ -560,7 +590,7 @@ def train(
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
-      [Text], py_environment.PyEnvironment
+        [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
