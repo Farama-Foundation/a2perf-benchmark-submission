@@ -269,7 +269,8 @@ def train():
       )
       all_processes.append(process)
       collect_jobs.append(process)
-      threading.Thread(target=print_subprocess_output, args=(process,)).start()
+    threading.Thread(target=print_subprocess_output, args=(collect_jobs[0],)).start(
+    )
     logging.info('Successfully launched collect jobs.')
 
     while True:
