@@ -17,12 +17,10 @@
 import os
 import time
 
-from absl import logging
-from circuit_training.learning import agent
-from circuit_training.learning import learner as learner_lib
 import gin
 import reverb
 import tensorflow as tf
+from absl import logging
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.networks import network
 from tf_agents.replay_buffers import reverb_replay_buffer
@@ -31,6 +29,9 @@ from tf_agents.train import triggers
 from tf_agents.train.utils import train_utils
 from tf_agents.typing import types
 from tf_agents.utils import common
+
+from . import agent
+from . import learner as learner_lib
 
 
 @gin.configurable(allowlist=['shuffle_buffer_episode_len'])
@@ -373,9 +374,9 @@ def train(
     for reverb_replay_train in reverb_replay_trains:
       reverb_replay_train.clear()
     with (
-        learner.train_summary_writer.as_default(),
-        common.soft_device_placement(),
-        tf.summary.record_if(lambda: True),
+      learner.train_summary_writer.as_default(),
+      common.soft_device_placement(),
+      tf.summary.record_if(lambda: True),
     ):
       with tf.name_scope('RunTime/'):
         tf.summary.scalar(

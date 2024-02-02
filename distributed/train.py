@@ -23,15 +23,12 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains.web_navigation.gwob.CoDE import networks
+import gin
+import numpy as np
+import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
-import gin
-import numpy as np
-import psutil
-import tensorflow as tf
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ddpg import actor_network
 from tf_agents.agents.ddpg import critic_network
@@ -58,6 +55,23 @@ from tf_agents.train.utils import train_utils
 from tf_agents.trajectories import time_step as ts
 from tf_agents.typing import types
 
+# noinspection PyUnresolvedReferences
+from a2perf.domains import circuit_training
+# noinspection PyUnresolvedReferences
+from a2perf.domains import quadruped_locomotion
+# noinspection PyUnresolvedReferences
+from a2perf.domains import web_navigation
+from a2perf.domains.web_navigation.gwob.CoDE import networks
+from .circuit_training.learning import static_feature_cache
+from .circuit_training.learning.agent import create_circuit_ppo_agent
+from .circuit_training.model.create_models_lib import create_models_fn
+
+_NETLIST_PATH = flags.DEFINE_string(
+    'netlist_path', None, 'Path to the netlist file.'
+)
+_INIT_PLACEMENT_PATH = flags.DEFINE_string(
+    'init_placement_path', None, 'Path to the initial placement file.'
+)
 _MAX_VOCAB_SIZE = flags.DEFINE_integer(
     'max_vocab_size', None, 'Maximum vocabulary size.'
 )
@@ -89,6 +103,7 @@ _SHUFFLE_BUFFER_SIZE = flags.DEFINE_integer(
     None,
     'Size of the shuffle buffer for the training dataset.',
 )
+
 _SEQUENCE_LENGTH = flags.DEFINE_integer(
     'sequence_length',
     None,
@@ -170,6 +185,14 @@ class PrefixedLogFormatter(logging.PythonFormatter):
   def format(self, record):
     original = super(PrefixedLogFormatter, self).format(record)
     return f'Train: {original}'
+
+
+def _normalize_advantages(advantages, axes=(0), variance_epsilon=1e-8):
+  adv_mean, adv_var = tf.nn.moments(x=advantages, axes=axes, keepdims=True)
+  normalized_advantages = (advantages - adv_mean) / (
+      tf.sqrt(adv_var) + variance_epsilon
+  )
+  return normalized_advantages
 
 
 def _create_q_net(
@@ -590,7 +613,7 @@ def train(
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
-        [Text], py_environment.PyEnvironment
+      [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
@@ -602,7 +625,6 @@ def train(
     profile_value_dropout: Optional[float] = None,
     embedding_dim: Optional[int] = None,
 ) -> None:
-  """Trains a PPO agent."""
   env = suite_load_fn(environment_name)
   observation_tensor_spec, action_tensor_spec, time_step_tensor_spec = (
       spec_utils.get_tensor_specs(env)
@@ -614,7 +636,26 @@ def train(
         'use_gae': use_gae,
         'learning_rate': learning_rate,
     }
-    create_agent_fn = _create_ppo_agent
+
+    if environment_name == 'CircuitTraining-v0':
+      static_features = env.wrapped_env().get_static_obs()
+      cache = static_feature_cache.StaticFeatureCache()
+      cache.add_static_feature(static_features)
+
+      actor_net, value_net = create_models_fn(
+          rl_architecture='generalization',
+          observation_tensor_spec=observation_tensor_spec,
+          action_tensor_spec=action_tensor_spec,
+          static_features=cache.get_all_static_features(),
+          use_model_tpu=False,
+      )
+
+      create_agent_fn = functools.partial(create_circuit_ppo_agent,
+                                          actor_net=actor_net,
+                                          value_net=value_net,
+                                          strategy=strategy, )
+    else:
+      create_agent_fn = _create_ppo_agent
 
   elif algorithm == 'sac':
     algo_kwargs = {
@@ -846,7 +887,15 @@ def main(_):
       use_gpu=FLAGS.use_gpu,
   )
   # Define the default dictionary for gym_kwargs
-  if _ENV_NAME.value == 'QuadrupedLocomotion-v0':
+  if _ENV_NAME.value == 'CircuitTraining-v0':
+    default_gym_kwargs = dict(
+        netlist_file=_NETLIST_PATH.value,
+        init_placement=_INIT_PLACEMENT_PATH.value,
+    )
+    suite_load_function = functools.partial(
+        suite_gym.load, gym_kwargs=default_gym_kwargs
+    )
+  elif _ENV_NAME.value == 'QuadrupedLocomotion-v0':
     default_gym_kwargs = dict(
         motion_files=[_MOTION_FILE_PATH.value],
         num_parallel_envs=_ENV_BATCH_SIZE.value,
@@ -903,6 +952,7 @@ def main(_):
       latent_dim=_LATENT_DIM.value,
       profile_value_dropout=_PROFILE_VALUE_DROPOUT.value,
       embedding_dim=_EMBEDDING_DIM.value,
+      epsilon_greedy=_EPSILON_GREEDY.value,
   )
 
 

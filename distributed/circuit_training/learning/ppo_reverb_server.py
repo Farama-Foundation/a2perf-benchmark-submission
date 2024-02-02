@@ -18,7 +18,8 @@ import os
 
 from absl import app
 from absl import flags
-from circuit_training.learning import ppo_reverb_server_lib
+
+from . import ppo_reverb_server_lib
 
 flags.DEFINE_string(
     'root_dir',

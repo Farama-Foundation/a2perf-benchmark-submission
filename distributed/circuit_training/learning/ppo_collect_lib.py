@@ -15,13 +15,14 @@
 """Library for PPO collect job."""
 import os
 import time
-from typing import Any, Callable, Optional
-from absl import logging
-from circuit_training.learning import agent
-from circuit_training.learning import static_feature_cache
+from typing import Any
+from typing import Callable
+from typing import Optional
+
 import gin
 import reverb
 import tensorflow as tf
+from absl import logging
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.policies import py_tf_eager_policy
 from tf_agents.replay_buffers import reverb_utils
@@ -31,6 +32,8 @@ from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
+from . import agent
+from . import static_feature_cache
 
 # If we have not collected in this many seconds, run another episode. This
 # prevents the training loop from being stuck when using a collector

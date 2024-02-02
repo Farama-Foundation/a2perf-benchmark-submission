@@ -17,22 +17,24 @@
 import functools
 import os
 import random
-from typing import Dict, Optional
+from typing import Dict
+from typing import Optional
 
-from absl import app
-from absl import flags
-from absl import logging
-from circuit_training.environment import environment
-from circuit_training.learning import static_feature_cache
-from circuit_training.learning import train_ppo_lib
-from circuit_training.model import create_models_lib
 import gin
 import numpy as np
 import tensorflow as tf
+from absl import app
+from absl import flags
+from absl import logging
+from a2perf.domains.circuit_training.circuit_training.environment import environment
+from ..model import create_models_lib
 from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import learner
 from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import strategy_utils
+
+from . import static_feature_cache
+from . import train_ppo_lib
 
 _GIN_FILE = flags.DEFINE_multi_string(
     'gin_file', None, 'Paths to the gin-config files.'

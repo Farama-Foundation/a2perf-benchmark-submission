@@ -16,7 +16,7 @@
 
 from typing import Dict, Optional, Text
 
-from circuit_training.model import model_lib
+from . import model_lib
 import gin
 import numpy as np
 import tensorflow as tf

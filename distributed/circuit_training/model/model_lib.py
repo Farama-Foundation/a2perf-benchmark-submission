@@ -14,13 +14,17 @@
 # limitations under the License.
 """New circuittraining Model for generalization."""
 import sys
-from typing import Callable, Optional, Union
+from typing import Callable
+from typing import Optional
+from typing import Union
 
-from circuit_training.environment import observation_config as observation_config_lib
 import gin
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
+
+from a2perf.domains.circuit_training.circuit_training.environment import \
+  observation_config as observation_config_lib
 
 
 # Reimplements internal function
@@ -72,7 +76,7 @@ class CircuitTrainingModel(tf.keras.layers.Layer):
       self,
       all_static_features: Optional[dict[str, np.ndarray]] = None,
       observation_config: Optional[
-          observation_config_lib.ObservationConfig
+        observation_config_lib.ObservationConfig
       ] = None,
       num_gcn_layers: int = 3,
       edge_fc_layers: int = 1,
@@ -440,7 +444,8 @@ class CircuitTrainingModel(tf.keras.layers.Layer):
   ) -> tuple[dict[str, tf.Tensor], tf.Tensor]:
     # Netlist metadata.
     netlist_metadata_inputs = [
-        self._get_static_input(key, inputs)  # pytype: disable=wrong-arg-types  # always-use-return-annotations
+        self._get_static_input(key, inputs)
+        # pytype: disable=wrong-arg-types  # always-use-return-annotations
         for key in observation_config_lib.NETLIST_METADATA
     ]
 
@@ -541,9 +546,9 @@ class CircuitTrainingModel(tf.keras.layers.Layer):
           sparse_adj_weight=sparse_adj_weight,
       )
       h_edges = (
-          self._edge_fc_list[i](h_edges_i_j, training=training)
-          + self._edge_fc_list[i](h_edges_j_i, training=training)
-      ) / 2.0
+                    self._edge_fc_list[i](h_edges_i_j, training=training)
+                    + self._edge_fc_list[i](h_edges_j_i, training=training)
+                ) / 2.0
       h_nodes_new = self.scatter_to_nodes(h_edges, sparse_adj_i, sparse_adj_j)
       # Skip connection.
       h_nodes = h_nodes_new + h_nodes
@@ -803,9 +808,9 @@ class CircuitTrainingTPUModel(CircuitTrainingModel):
       h_edges_j_i = tf.where(mask, h_edges_21, tf.zeros_like(h_edges_21))
 
       h_edges = (
-          self._edge_fc_list[i](h_edges_i_j, training=training)
-          + self._edge_fc_list[i](h_edges_j_i, training=training)
-      ) / 2.0
+                    self._edge_fc_list[i](h_edges_i_j, training=training)
+                    + self._edge_fc_list[i](h_edges_j_i, training=training)
+                ) / 2.0
 
       h_node = tf.zeros_like(h_nodes)
       num_lattents = h_edges.shape[2]

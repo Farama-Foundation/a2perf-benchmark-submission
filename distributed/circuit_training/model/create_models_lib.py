@@ -15,8 +15,8 @@
 """Utils for creating models."""
 from typing import Any, Dict
 
-from circuit_training.model import fully_connected_model_lib
-from circuit_training.model import model
+from . import fully_connected_model_lib
+from . import model
 import numpy as np
 from tf_agents.typing import types
 

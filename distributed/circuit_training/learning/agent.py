@@ -14,11 +14,13 @@
 # limitations under the License.
 """circuit training agent definition and utility functions."""
 
-from typing import Optional, Text, Tuple
+from typing import Optional
+from typing import Text
+from typing import Tuple
 
-from absl import logging
 import gin
 import tensorflow as tf
+from absl import logging
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ppo import ppo_agent
 from tf_agents.agents.ppo import ppo_utils
@@ -77,7 +79,9 @@ class CircuitPPOAgent(ppo_agent.PPOAgent):
       aggregate_losses_across_replicas: bool = True,
       report_loss_scaling_factor: float = 1.0,
       value_warmup_steps: int = 0,
+      use_gae: bool = False,
       name: Optional[Text] = 'PPOClipAgent',
+      **kwargs
   ):
     """Creates a PPO Agent implementing the clipped probability ratios.
 
@@ -149,6 +153,7 @@ class CircuitPPOAgent(ppo_agent.PPOAgent):
         normalize_rewards=False,
         normalize_observations=False,
         update_normalizers_in_train=False,
+        use_gae=use_gae,
         name=name,
     )
     self._value_warmup_steps = value_warmup_steps
@@ -378,7 +383,7 @@ class CircuitPPOAgent(ppo_agent.PPOAgent):
     # Reconstruct per-timestep policy distribution from stored distribution
     #   parameters.
     old_action_distribution_parameters = processed_experience.policy_info[
-        'dist_params'
+      'dist_params'
     ]
 
     old_actions_distribution = ppo_utils.distribution_from_spec(
@@ -446,7 +451,8 @@ class CircuitPPOAgent(ppo_agent.PPOAgent):
     # Set finetune value only state in networks.
     finetune_value_only = self.train_step_counter < self._value_warmup_steps
     if self._value_warmup_steps:
-      self._collect_policy._value_network.set_finetune_value_only(  # pylint: disable=protected-access
+      self._collect_policy._value_network.set_finetune_value_only(
+          # pylint: disable=protected-access
           finetune_value_only
       )
 
@@ -522,31 +528,31 @@ class CircuitPPOAgent(ppo_agent.PPOAgent):
       tf.compat.v2.summary.scalar(
           name='policy_gradient_loss',
           data=loss_info.extra.policy_gradient_loss
-          * self._report_loss_scaling_factor,
+               * self._report_loss_scaling_factor,
           step=self.train_step_counter,
       )
       tf.compat.v2.summary.scalar(
           name='value_estimation_loss',
           data=loss_info.extra.value_estimation_loss
-          * self._report_loss_scaling_factor,
+               * self._report_loss_scaling_factor,
           step=self.train_step_counter,
       )
       tf.compat.v2.summary.scalar(
           name='l2_regularization_loss',
           data=loss_info.extra.l2_regularization_loss
-          * self._report_loss_scaling_factor,
+               * self._report_loss_scaling_factor,
           step=self.train_step_counter,
       )
       tf.compat.v2.summary.scalar(
           name='entropy_regularization_loss',
           data=loss_info.extra.entropy_regularization_loss
-          * self._report_loss_scaling_factor,
+               * self._report_loss_scaling_factor,
           step=self.train_step_counter,
       )
       tf.compat.v2.summary.scalar(
           name='kl_penalty_loss',
           data=loss_info.extra.kl_penalty_loss
-          * self._report_loss_scaling_factor,
+               * self._report_loss_scaling_factor,
           step=self.train_step_counter,
       )
       tf.compat.v2.summary.scalar(

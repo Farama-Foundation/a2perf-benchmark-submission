@@ -18,13 +18,15 @@ import collections
 import os
 import statistics
 import time
-from typing import Any, Callable, List, Optional, Text
+from typing import Any
+from typing import Callable
+from typing import List
+from typing import Optional
+from typing import Text
 
-from absl import logging
-from circuit_training.learning import agent
-from circuit_training.learning import static_feature_cache
 import numpy as np
 import tensorflow as tf
+from absl import logging
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metric
 from tf_agents.metrics import py_metrics
@@ -38,6 +40,9 @@ from tf_agents.train.utils import train_utils
 from tf_agents.trajectories import time_step as ts
 from tf_agents.trajectories import trajectory
 from tf_agents.utils import common
+
+from . import agent
+from . import static_feature_cache
 
 
 class PlacementImage(py_metric.PyStepMetric):
@@ -65,8 +70,10 @@ class PlacementImage(py_metric.PyStepMetric):
   def result(self) -> np.ndarray:
     macro_locations = np.zeros((self._num_rows * self._num_cols,))
     macro_locations[self._locations] = (
-        np.arange(1, len(self._locations) + 1, dtype=np.float32)
-    ) / len(self._locations)
+                                           np.arange(1,
+                                                     len(self._locations) + 1,
+                                                     dtype=np.float32)
+                                       ) / len(self._locations)
     return np.reshape(macro_locations, (1, self._num_rows, self._num_cols, 1))
 
   def reset(self) -> None:
@@ -241,14 +248,15 @@ def evaluate(
           root_dir, learner.TRAIN_DIR, summary_subdir, 'eval'
       ),
       metrics=[
-          py_metrics.NumberOfEpisodes(),
-          py_metrics.EnvironmentSteps(),
-          py_metrics.AverageReturnMetric(
-              name='eval_episode_return', buffer_size=1
-          ),
-          py_metrics.AverageEpisodeLengthMetric(buffer_size=1),
-      ]
-      + [InfoMetric(env, info_metric) for info_metric in info_metric_names],
+                  py_metrics.NumberOfEpisodes(),
+                  py_metrics.EnvironmentSteps(),
+                  py_metrics.AverageReturnMetric(
+                      name='eval_episode_return', buffer_size=1
+                  ),
+                  py_metrics.AverageEpisodeLengthMetric(buffer_size=1),
+              ]
+              + [InfoMetric(env, info_metric) for info_metric in
+                 info_metric_names],
       image_metrics=image_metrics,
       name='performance',
   )

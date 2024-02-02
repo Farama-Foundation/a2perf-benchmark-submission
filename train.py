@@ -102,7 +102,6 @@ def train():
   if env_name == 'CircuitTraining-v0':
     print(f'netlist_path: {netlist_path}')
     print(f'init_placement_path: {init_placement_path}')
-    return  # for now we don't want to run this
   elif env_name == 'QuadrupedLocomotion-v0':
     print(f'motion_file_path: {motion_file_path}')
   elif env_name == 'WebNavigation-v0':
@@ -226,6 +225,16 @@ def train():
     env_flags.extend(
         [f'--env_name={env_name}', f'--motion_file_path={motion_file_path}']
     )
+  elif env_name == 'CircuitTraining-v0':
+    env_flags.extend(
+        [
+            f'--env_name={env_name}',
+            f'--netlist_path={netlist_path}',
+            f'--init_placement_path={init_placement_path}',
+        ]
+    )
+  else:
+    raise ValueError(f'Unsupported environment: {env_name}')
 
   if job_type == 'collect':
     # Launch collect jobs with domain-specific configurations
@@ -293,7 +302,9 @@ def train():
     reverb_command = [
         'python',
         'distributed/reverb_server.py',
+        f'--environment_name={env_name}',
         f'--port={replay_buffer_server_port}',
+        '--num_netlists=1',
         f'--root_dir={root_dir}',
         f'--replay_buffer_capacity={replay_buffer_capacity}',
         f'--algorithm={algorithm}',
@@ -316,7 +327,8 @@ def train():
 
     train_job_command = [
                             'python',
-                            'distributed/train.py',
+                            '-m',
+                            'distributed.train',
                             f'--entropy_regularization={entropy_regularization}',
                             f'--exploration_noise_std={exploration_noise_std}',
                             f'--num_epochs={num_epochs}',
