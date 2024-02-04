@@ -41,6 +41,7 @@ def train():
   log_interval = int(os.environ.get('LOG_INTERVAL', -1))
   learning_rate = float(os.environ.get('LEARNING_RATE', -1))
   timesteps_per_actorbatch = int(os.environ.get('TIMESTEPS_PER_ACTORBATCH', -1))
+  max_sequence_length = int(os.environ.get('MAX_SEQUENCE_LENGTH', -1))
   env_name = os.environ.get('ENV_NAME', None)
   netlist_path = os.environ.get('NETLIST_PATH', None)
   init_placement_path = os.environ.get('INIT_PLACEMENT_PATH', None)
@@ -57,6 +58,7 @@ def train():
   adjusted_timesteps_per_actorbatch = np.maximum(
       1, timesteps_per_actorbatch // env_batch_size
   )
+  std_cell_placer_mode = os.environ.get('STD_CELL_PLACER_MODE', None)
 
   # Networking params
   num_collect_machines = int(os.environ.get('NUM_COLLECT_MACHINES', 1))
@@ -102,6 +104,8 @@ def train():
   if env_name == 'CircuitTraining-v0':
     print(f'netlist_path: {netlist_path}')
     print(f'init_placement_path: {init_placement_path}')
+    print(f'max_sequence_length: {max_sequence_length}')
+    print(f'std_cell_placer_mode: {std_cell_placer_mode}')
   elif env_name == 'QuadrupedLocomotion-v0':
     print(f'motion_file_path: {motion_file_path}')
   elif env_name == 'WebNavigation-v0':
@@ -228,9 +232,9 @@ def train():
   elif env_name == 'CircuitTraining-v0':
     env_flags.extend(
         [
-            f'--max_sequence_length=134',
+            f'--max_sequence_length={max_sequence_length}',
             f'--netlist_index=0',
-            f'--std_cell_placer_mode=dreamplace',
+            f'--std_cell_placer_mode={std_cell_placer_mode}',
             f'--netlist_file={netlist_path}',
             f'--init_placement={init_placement_path}',
         ]

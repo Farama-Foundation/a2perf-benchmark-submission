@@ -342,7 +342,6 @@ def main(_):
         suite_gym.load,
         gym_kwargs=gym_kwargs,
         env_wrappers=[wrappers.ActionClipWrapper],
-
     )
     env = create_env_fn('CircuitTraining-v0')
     observation_tensor_spec, action_tensor_spec, time_step_tensor_spec = (
