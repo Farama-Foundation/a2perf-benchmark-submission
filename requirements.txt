@@ -1,3 +1,5 @@
+--extra-index-url https://pypi.nvidia.com
 dm-sonnet
-tensorflow
+tensorflow[and-cuda]
 tf-agents[reverb]
+numpy==1.23.5

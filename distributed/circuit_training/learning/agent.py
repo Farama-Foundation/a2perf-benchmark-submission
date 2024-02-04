@@ -619,6 +619,8 @@ def create_circuit_ppo_agent(
     strategy: tf.distribute.Strategy,
     optimizer: Optional[types.Optimizer] = None,
     aggregate_losses_across_replicas: bool = True,
+    entropy_regularization: float = 0.01,
+    use_gae: bool = False,
     **kwargs
 ) -> CircuitPPOAgent:
   """Creates a PPO agent."""
@@ -637,5 +639,7 @@ def create_circuit_ppo_agent(
       train_step_counter=train_step,
       aggregate_losses_across_replicas=aggregate_losses_across_replicas,
       report_loss_scaling_factor=report_loss_scaling_factor,
+      entropy_regularization=entropy_regularization,
+      use_gae=use_gae,
       **kwargs
   )

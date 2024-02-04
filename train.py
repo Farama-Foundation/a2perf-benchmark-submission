@@ -228,9 +228,11 @@ def train():
   elif env_name == 'CircuitTraining-v0':
     env_flags.extend(
         [
-            f'--env_name={env_name}',
-            f'--netlist_path={netlist_path}',
-            f'--init_placement_path={init_placement_path}',
+            f'--max_sequence_length=134',
+            f'--netlist_index=0',
+            f'--std_cell_placer_mode=dreamplace',
+            f'--netlist_file={netlist_path}',
+            f'--init_placement={init_placement_path}',
         ]
     )
   else:
@@ -245,30 +247,43 @@ def train():
     num_collect_jobs = np.ceil(env_batch_size / num_collect_machines).astype(
         int
     )
-
-    collect_job_commands = [
-        [
-            'python',
-            'distributed/collect.py',
-            f'--algorithm={algorithm}',
-            f'--root_dir={root_dir}',
-            f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-            f'--summary_interval={log_interval}',
-            f'--env_batch_size={env_batch_size}',
-            f'--initial_collect_steps={initial_collect_steps}',
-            f'--max_train_steps={max_train_steps}',
-            f'--debug={debug}',
-            f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
-            f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
-            f'--task={i}',
-            f'--auth_key={auth_key}',
-            f'--vocabulary_server_hostname={vocabulary_server_address}',
-            f'--vocabulary_server_port={vocabulary_server_port}',
-            f'--verbosity={"1" if i == 0 else "-1"}',
-        ]
-        + env_flags
-        for i in range(num_collect_jobs)
-    ]
+    if env_name == 'CircuitTraining-v0':
+      collect_job_commands = [['python', '-m',
+                               'distributed.circuit_training.learning.ppo_collect',
+                               f'--root_dir={root_dir}',
+                               f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
+                               f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
+                               f'--task_id={i}',
+                               f'--global_seed={seed}',
+                               f'--verbosity={"1" if i == 0 else "-1"}',
+                               ]
+                              + env_flags
+                              for i in range(num_collect_jobs)
+                              ]
+    else:
+      collect_job_commands = [
+          [
+              'python',
+              'distributed/collect.py',
+              f'--algorithm={algorithm}',
+              f'--root_dir={root_dir}',
+              f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+              f'--summary_interval={log_interval}',
+              f'--env_batch_size={env_batch_size}',
+              f'--initial_collect_steps={initial_collect_steps}',
+              f'--max_train_steps={max_train_steps}',
+              f'--debug={debug}',
+              f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
+              f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
+              f'--task={i}',
+              f'--auth_key={auth_key}',
+              f'--vocabulary_server_hostname={vocabulary_server_address}',
+              f'--vocabulary_server_port={vocabulary_server_port}',
+              f'--verbosity={"1" if i == 0 else "-1"}',
+          ]
+          + env_flags
+          for i in range(num_collect_jobs)
+      ]
 
     # Display one of the commands
     logging.info(' '.join(collect_job_commands[0]))
@@ -325,42 +340,63 @@ def train():
     ).start()
     logging.info('Successfully launched reverb server.')
 
-    train_job_command = [
-                            'python',
-                            '-m',
-                            'distributed.train',
-                            f'--entropy_regularization={entropy_regularization}',
-                            f'--exploration_noise_std={exploration_noise_std}',
-                            f'--num_epochs={num_epochs}',
-                            f'--batch_size={batch_size}',
-                            f'--shuffle_buffer_size={shuffle_buffer_size}',
-                            f'--algorithm={algorithm}',
-                            f'--debug={debug}',
-                            f'--learner_iterations_per_call={learner_iterations_per_call}',
-                            f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-                            f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-                            f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
-                            f'--root_dir={root_dir}',
-                            f'--train_checkpoint_interval={train_checkpoint_interval}',
-                            f'--max_train_steps={max_train_steps}',
-                            f'--env_batch_size={env_batch_size}',
-                            f'--learning_rate={learning_rate}',
-                            f'--log_interval={log_interval}',
-                            f'--seed={seed}',
-                            f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
-                            f'--use_gpu=True',
-                            f'--use_gae={use_gae}',
-                            f'--use_tpu=False',
-                            f'--embedding_dim={embedding_dim}',
-                            f'--latent_dim={latent_dim}',
-                            f'--epsilon_greedy={epsilon_greedy}',
-                            f'--profile_value_dropout={profile_value_dropout}',
-                            f'--max_vocab_size={max_vocab_size}',
-                            f'--num_websites={num_websites}',
-                            f'--difficulty_level={difficulty_level}',
-                            f'--motion_file_path={motion_file_path}',
-                            f'--verbosity={logging.get_verbosity()}',
-                        ] + env_flags
+    if env_name == 'CircuitTraining-v0':
+      train_job_command = ['python', '-m',
+                           'distributed.circuit_training.learning.train_ppo',
+                           f'--entropy_regularization={entropy_regularization}',
+                           f'--use_gae={use_gae}',
+                           f'--netlist_file={netlist_path}',
+                           f'--init_placement={init_placement_path}',
+                           f'--std_cell_placer_mode=dreamplace',
+                           f'--root_dir={root_dir}',
+                           f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
+                           f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
+                           f'--sequence_length=134',
+                           f'--summary_interval={log_interval}',
+                           f'--use_gpu=True',
+                           f'--global_seed={seed}',
+                           # Only use these if you have a pretrained policy to bootstrap from
+                           # f'--policy_saved_model_dir={root_dir}/policies/policy',
+                           # f'--policy_checkpoint_dir={root_dir}/policies/checkpoints',
+                           ]
+
+    else:
+      train_job_command = [
+                              'python',
+                              '-m',
+                              'distributed.train',
+                              f'--entropy_regularization={entropy_regularization}',
+                              f'--exploration_noise_std={exploration_noise_std}',
+                              f'--num_epochs={num_epochs}',
+                              f'--batch_size={batch_size}',
+                              f'--shuffle_buffer_size={shuffle_buffer_size}',
+                              f'--algorithm={algorithm}',
+                              f'--debug={debug}',
+                              f'--learner_iterations_per_call={learner_iterations_per_call}',
+                              f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+                              f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+                              f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
+                              f'--root_dir={root_dir}',
+                              f'--train_checkpoint_interval={train_checkpoint_interval}',
+                              f'--max_train_steps={max_train_steps}',
+                              f'--env_batch_size={env_batch_size}',
+                              f'--learning_rate={learning_rate}',
+                              f'--log_interval={log_interval}',
+                              f'--seed={seed}',
+                              f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
+                              f'--use_gpu=True',
+                              f'--use_gae={use_gae}',
+                              f'--use_tpu=False',
+                              f'--embedding_dim={embedding_dim}',
+                              f'--latent_dim={latent_dim}',
+                              f'--epsilon_greedy={epsilon_greedy}',
+                              f'--profile_value_dropout={profile_value_dropout}',
+                              f'--max_vocab_size={max_vocab_size}',
+                              f'--num_websites={num_websites}',
+                              f'--difficulty_level={difficulty_level}',
+                              f'--motion_file_path={motion_file_path}',
+                              f'--verbosity={logging.get_verbosity()}',
+                          ] + env_flags
 
     # Display the command
     logging.info(' '.join(train_job_command))

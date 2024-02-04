@@ -54,6 +54,7 @@ from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.trajectories import time_step as ts
 from tf_agents.typing import types
+from tf_agents.utils import common
 
 # noinspection PyUnresolvedReferences
 from a2perf.domains import circuit_training
@@ -62,16 +63,7 @@ from a2perf.domains import quadruped_locomotion
 # noinspection PyUnresolvedReferences
 from a2perf.domains import web_navigation
 from a2perf.domains.web_navigation.gwob.CoDE import networks
-from .circuit_training.learning import static_feature_cache
-from .circuit_training.learning.agent import create_circuit_ppo_agent
-from .circuit_training.model.create_models_lib import create_models_fn
 
-_NETLIST_PATH = flags.DEFINE_string(
-    'netlist_path', None, 'Path to the netlist file.'
-)
-_INIT_PLACEMENT_PATH = flags.DEFINE_string(
-    'init_placement_path', None, 'Path to the initial placement file.'
-)
 _MAX_VOCAB_SIZE = flags.DEFINE_integer(
     'max_vocab_size', None, 'Maximum vocabulary size.'
 )
@@ -185,14 +177,6 @@ class PrefixedLogFormatter(logging.PythonFormatter):
   def format(self, record):
     original = super(PrefixedLogFormatter, self).format(record)
     return f'Train: {original}'
-
-
-def _normalize_advantages(advantages, axes=(0), variance_epsilon=1e-8):
-  adv_mean, adv_var = tf.nn.moments(x=advantages, axes=axes, keepdims=True)
-  normalized_advantages = (advantages - adv_mean) / (
-      tf.sqrt(adv_var) + variance_epsilon
-  )
-  return normalized_advantages
 
 
 def _create_q_net(
@@ -637,25 +621,7 @@ def train(
         'learning_rate': learning_rate,
     }
 
-    if environment_name == 'CircuitTraining-v0':
-      static_features = env.wrapped_env().get_static_obs()
-      cache = static_feature_cache.StaticFeatureCache()
-      cache.add_static_feature(static_features)
-
-      actor_net, value_net = create_models_fn(
-          rl_architecture='generalization',
-          observation_tensor_spec=observation_tensor_spec,
-          action_tensor_spec=action_tensor_spec,
-          static_features=cache.get_all_static_features(),
-          use_model_tpu=False,
-      )
-
-      create_agent_fn = functools.partial(create_circuit_ppo_agent,
-                                          actor_net=actor_net,
-                                          value_net=value_net,
-                                          strategy=strategy, )
-    else:
-      create_agent_fn = _create_ppo_agent
+    create_agent_fn = _create_ppo_agent
 
   elif algorithm == 'sac':
     algo_kwargs = {
@@ -718,11 +684,11 @@ def train(
         save_collect_policy=True,
     )
 
-    # Create the variable container.
     variables = {
         reverb_variable_container.POLICY_KEY: agent.collect_policy.variables(),
         reverb_variable_container.TRAIN_STEP_KEY: train_step,
     }
+
     variable_container = reverb_variable_container.ReverbVariableContainer(
         variable_container_server_address,
         table_names=[reverb_variable_container.DEFAULT_TABLE],
@@ -886,16 +852,7 @@ def main(_):
       tpu=_USE_TPU.value,
       use_gpu=FLAGS.use_gpu,
   )
-  # Define the default dictionary for gym_kwargs
-  if _ENV_NAME.value == 'CircuitTraining-v0':
-    default_gym_kwargs = dict(
-        netlist_file=_NETLIST_PATH.value,
-        init_placement=_INIT_PLACEMENT_PATH.value,
-    )
-    suite_load_function = functools.partial(
-        suite_gym.load, gym_kwargs=default_gym_kwargs
-    )
-  elif _ENV_NAME.value == 'QuadrupedLocomotion-v0':
+  if _ENV_NAME.value == 'QuadrupedLocomotion-v0':
     default_gym_kwargs = dict(
         motion_files=[_MOTION_FILE_PATH.value],
         num_parallel_envs=_ENV_BATCH_SIZE.value,

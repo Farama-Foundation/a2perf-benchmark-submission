@@ -26,15 +26,18 @@ import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
-from a2perf.domains.circuit_training.circuit_training.environment import environment
-from ..model import create_models_lib
+from tf_agents.environments import suite_gym
+from tf_agents.environments import wrappers
 from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import learner
 from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import strategy_utils
 
+# noinspection PyUnresolvedReferences
+from a2perf.domains import circuit_training
 from . import static_feature_cache
 from . import train_ppo_lib
+from ..model import create_models_lib
 
 _GIN_FILE = flags.DEFINE_multi_string(
     'gin_file', None, 'Paths to the gin-config files.'
@@ -89,6 +92,21 @@ _POLICY_SAVED_MODEL_DIR = flags.DEFINE_string(
 )
 _POLICY_CHECKPOINT_DIR = flags.DEFINE_string(
     'policy_checkpoint_dir', None, 'If set, load the pretrained policy model.'
+)
+_ENTROPY_REGULARIZATION = flags.DEFINE_float(
+    'entropy_regularization',
+    0.0,
+    'Entropy regularization coefficient for the policy.',
+)
+_USE_GAE = flags.DEFINE_boolean(
+    'use_gae',
+    False,
+    'If set, use Generalized Advantage Estimation (GAE) for value estimation.',
+)
+_SUMMARY_INTERVAL = flags.DEFINE_integer(
+    'summary_interval',
+    200,
+    'The interval to write summaries. Only used if summary_dir is set.',
 )
 
 FLAGS = flags.FLAGS
@@ -288,7 +306,8 @@ def try_load_checkpoint(
 
 def main(_):
   gin.parse_config_files_and_bindings(
-      _GIN_FILE.value, _GIN_BINDINGS.value, skip_unknown=True
+      _GIN_FILE.value, _GIN_BINDINGS.value, skip_unknown=True,
+      finalize_config=False
   )
 
   logging.info('global seed=%d', _GLOBAL_SEED.value)
@@ -296,8 +315,8 @@ def main(_):
   random.seed(_GLOBAL_SEED.value)
   tf.random.set_seed(_GLOBAL_SEED.value)
 
-  root_dir = os.path.join(_ROOT_DIR.value, str(_GLOBAL_SEED.value))
-
+  # root_dir = os.path.join(_ROOT_DIR.value, str(_GLOBAL_SEED.value))
+  root_dir = _ROOT_DIR.value
   strategy = strategy_utils.get_strategy(
       strategy_utils.TPU.value, strategy_utils.USE_GPU.value
   )
@@ -312,20 +331,28 @@ def main(_):
   for netlist_index, (netlist_file, init_placement) in enumerate(
       zip(_NETLIST_FILE.value, _INIT_PLACEMENT.value)
   ):
-    create_env_fn = functools.partial(
-        environment.create_circuit_environment,
+    gym_kwargs = dict(
         netlist_file=netlist_file,
         init_placement=init_placement,
         global_seed=_GLOBAL_SEED.value,
         std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
-        netlist_index=netlist_index,
+        netlist_index=netlist_index
     )
-    env = create_env_fn()
+    create_env_fn = functools.partial(
+        suite_gym.load,
+        gym_kwargs=gym_kwargs,
+        env_wrappers=[wrappers.ActionClipWrapper],
+
+    )
+    env = create_env_fn('CircuitTraining-v0')
     observation_tensor_spec, action_tensor_spec, time_step_tensor_spec = (
         spec_utils.get_tensor_specs(env)
     )
     static_features = env.wrapped_env().get_static_obs()
     cache.add_static_feature(static_features)
+
+    env.close()
+    del env
 
   with strategy.scope():
     actor_net, value_net = create_models_lib.create_models_fn(
@@ -360,6 +387,9 @@ def main(_):
       value_net=value_net,
       init_train_step=init_train_step,
       num_netlists=len(_NETLIST_FILE.value),
+      entropy_regularization=_ENTROPY_REGULARIZATION.value,
+      use_gae=_USE_GAE.value,
+      summary_interval=_SUMMARY_INTERVAL.value,
   )
 
 

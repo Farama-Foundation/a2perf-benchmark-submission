@@ -168,6 +168,9 @@ def train(
     init_learning_rate: float = 0.004,
     num_netlists: int = 1,
     debug_summaries: bool = False,
+    summary_interval: int = 200,
+    entropy_regularization: float = 0.0,
+    use_gae: bool = False,
 ) -> None:
   """Trains a PPO agent.
 
@@ -248,6 +251,8 @@ def train(
         value_net=value_net,
         strategy=strategy,
         optimizer=optimizer,
+        entropy_regularization=entropy_regularization,
+        use_gae=use_gae,
     )
     tf_agent.initialize()
 
@@ -327,7 +332,7 @@ def train(
   # Create the learner.
   learning_triggers = [
       save_model_trigger,
-      triggers.StepPerSecondLogTrigger(train_step, interval=200),
+      triggers.StepPerSecondLogTrigger(train_step, interval=summary_interval),
   ]
 
   def per_sequence_fn(sample):
@@ -354,6 +359,7 @@ def train(
 
   # Run the training loop.
   for i in range(init_iteration, num_iterations):
+
     step_val = train_step.numpy()
     logging.info('Training. Iteration: %d', i)
     start_time = time.time()

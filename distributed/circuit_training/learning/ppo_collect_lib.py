@@ -21,19 +21,16 @@ from typing import Optional
 
 import gin
 import reverb
-import tensorflow as tf
 from absl import logging
 from tf_agents.experimental.distributed import reverb_variable_container
-from tf_agents.policies import py_tf_eager_policy
 from tf_agents.replay_buffers import reverb_utils
 from tf_agents.train import actor
 from tf_agents.train import learner
-from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
-from . import agent
-from . import static_feature_cache
+# noinspection PyUnresolvedReferences
+from a2perf.domains import circuit_training
 
 # If we have not collected in this many seconds, run another episode. This
 # prevents the training loop from being stuck when using a collector
@@ -51,47 +48,34 @@ def collect(
     variable_container_server_address: str,
     create_env_fn: Callable[..., Any],
     max_sequence_length: int,
-    create_models_fn: Callable[..., Any],
-    rl_architecture: str = 'generalization',
     summary_subdir: str = '',
     write_summaries_task_threshold: int = 1,
     netlist_index: int = 0,
     max_episodes_per_model: Optional[int] = None,
 ):
   """Collects experience using a policy updated after every episode."""
-  # Create the environment.
   train_step = train_utils.create_train_step()
-  env = create_env_fn(train_step=train_step)
-  observation_tensor_spec, action_tensor_spec, time_step_tensor_spec = (
-      spec_utils.get_tensor_specs(env)
-  )
-  static_features = env.wrapped_env().get_static_obs()
-  cache = static_feature_cache.StaticFeatureCache()
-  cache.add_static_feature(static_features)
+  collect_env = create_env_fn(
+      'CircuitTraining-v0')
 
-  actor_net, value_net = create_models_fn(
-      rl_architecture,
-      observation_tensor_spec,
-      action_tensor_spec,
-      cache.get_all_static_features(),
+  """Wait for the collect policy to be ready and run collect job."""
+  collect_policy_dir = os.path.join(
+      root_dir,
+      '../../',  # two levels because collect/<hostname>/ is the root_dir
+      learner.POLICY_SAVED_MODEL_DIR,
+      learner.COLLECT_POLICY_SAVED_MODEL_DIR,
   )
+  logging.info('Looking for collect policy in %s', collect_policy_dir)
 
-  tf_agent = agent.create_circuit_ppo_agent(
-      train_step,
-      action_tensor_spec,
-      time_step_tensor_spec,
-      actor_net,
-      value_net,
-      tf.distribute.get_strategy(),
+  collect_policy = train_utils.wait_for_policy(
+      collect_policy_dir, load_specs_from_pbtxt=True
   )
-
-  policy = tf_agent.collect_policy
-  tf_policy = py_tf_eager_policy.PyTFEagerPolicy(tf_agent.collect_policy)
+  logging.info('Loaded collect policy from %s', collect_policy_dir)
 
   # Create the variable container.
   model_id = common.create_variable('model_id')
   variables = {
-      reverb_variable_container.POLICY_KEY: policy.variables(),
+      reverb_variable_container.POLICY_KEY: collect_policy.variables(),
       reverb_variable_container.TRAIN_STEP_KEY: train_step,
       'model_id': model_id,
   }
@@ -122,8 +106,8 @@ def collect(
 
   # Create the collect actor.
   collect_actor = actor.Actor(
-      env,
-      tf_policy,
+      collect_env,
+      collect_policy,
       train_step,
       episodes_per_run=1,
       summary_dir=summary_dir,

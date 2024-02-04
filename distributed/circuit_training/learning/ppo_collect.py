@@ -20,12 +20,11 @@ import os
 import gin
 from absl import app
 from absl import flags
+from tf_agents.environments import suite_gym
+from tf_agents.environments import wrappers
 from tf_agents.system import system_multiprocessing as multiprocessing
 
-from a2perf.domains.circuit_training.circuit_training.environment import \
-  environment
 from . import ppo_collect_lib
-from ..model import create_models_lib
 
 _GIN_FILE = flags.DEFINE_multi_string(
     'gin_file', None, 'Paths to the gin-config files.'
@@ -33,8 +32,9 @@ _GIN_FILE = flags.DEFINE_multi_string(
 _GIN_BINDINGS = flags.DEFINE_multi_string(
     'gin_bindings', [], 'Gin binding parameters.'
 )
-flags.DEFINE_string('netlist_file', '', 'File path to the netlist file.')
-flags.DEFINE_string(
+_NETLIST_FILE = flags.DEFINE_string('netlist_file', '',
+                                    'File path to the netlist file.')
+_INIT_PLACEMENT = flags.DEFINE_string(
     'init_placement', '', 'File path to the init placement file.'
 )
 _STD_CELL_PLACER_MODE = flags.DEFINE_string(
@@ -46,28 +46,29 @@ _STD_CELL_PLACER_MODE = flags.DEFINE_string(
         'algorithm).'
     ),
 )
-flags.DEFINE_string(
+_ROOT_DIR = flags.DEFINE_string(
     'root_dir',
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
     'Root directory for writing logs/summaries/checkpoints.',
 )
-flags.DEFINE_string(
+_REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
     'replay_buffer_server_address', None, 'Replay buffer server address.'
 )
-flags.DEFINE_string(
+_VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
     'variable_container_server_address',
     None,
     'Variable container server address.',
 )
-flags.DEFINE_integer(
+
+_TASK_ID = flags.DEFINE_integer(
     'task_id', 0, 'Identifier of the collect task. Must be unique in a job.'
 )
-flags.DEFINE_integer(
+_MAX_SEQUENCE_LENGTH = flags.DEFINE_integer(
     'max_sequence_length',
     134,
     'The sequence length for Reverb replay buffer. Depends on the environment.',
 )
-flags.DEFINE_integer(
+_GLOBAL_SEED = flags.DEFINE_integer(
     'global_seed',
     111,
     'Used in env and weight initialization, does not impact action sampling.',
@@ -76,33 +77,35 @@ _NETLIST_INDEX = flags.DEFINE_integer(
     'netlist_index', 0, 'Index of the netlist in the agent policy model.'
 )
 
-FLAGS = flags.FLAGS
-
 
 def main(_):
   gin.parse_config_files_and_bindings(
-      _GIN_FILE.value, _GIN_BINDINGS.value, skip_unknown=True
+      _GIN_FILE.value, _GIN_BINDINGS.value, skip_unknown=True,
+      finalize_config=False
   )
-  root_dir = os.path.join(FLAGS.root_dir, str(FLAGS.global_seed))
+  root_dir = _ROOT_DIR.value
 
-  create_env_fn = functools.partial(
-      environment.create_circuit_environment,
-      netlist_file=FLAGS.netlist_file,
-      init_placement=FLAGS.init_placement,
-      global_seed=FLAGS.global_seed,
+  gym_kwargs = dict(
+      netlist_file=_NETLIST_FILE.value,
+      init_placement=_INIT_PLACEMENT.value,
+      global_seed=_GLOBAL_SEED.value,
       std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
-      netlist_index=0,
+      netlist_index=_NETLIST_INDEX.value,
+  )
+  create_env_fn = functools.partial(
+      suite_gym.load,
+      gym_kwargs=gym_kwargs,
+      env_wrappers=[wrappers.ActionClipWrapper],
+
   )
 
   ppo_collect_lib.collect(
-      task=FLAGS.task_id,
+      task=_TASK_ID.value,
       root_dir=root_dir,
-      replay_buffer_server_address=FLAGS.replay_buffer_server_address,
-      variable_container_server_address=FLAGS.variable_container_server_address,
+      replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
+      variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
       create_env_fn=create_env_fn,
-      create_models_fn=create_models_lib.create_models_fn,
-      max_sequence_length=FLAGS.max_sequence_length,
-      rl_architecture='generalization',
+      max_sequence_length=_MAX_SEQUENCE_LENGTH.value,
       netlist_index=_NETLIST_INDEX.value,
   )
 
