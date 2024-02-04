@@ -26,9 +26,14 @@ from tf_agents.system import system_multiprocessing as multiprocessing
 
 from . import ppo_collect_lib
 
+_DEBUG = flags.DEFINE_bool('debug', False, 'Debug mode.')
 _GIN_FILE = flags.DEFINE_multi_string(
     'gin_file', None, 'Paths to the gin-config files.'
 )
+_INITIAL_COLLECT_STEPS = flags.DEFINE_integer(
+    'initial_collect_steps', 1000, 'Initial number of steps to collect.'
+)
+
 _GIN_BINDINGS = flags.DEFINE_multi_string(
     'gin_bindings', [], 'Gin binding parameters.'
 )
@@ -54,6 +59,10 @@ _ROOT_DIR = flags.DEFINE_string(
 _REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
     'replay_buffer_server_address', None, 'Replay buffer server address.'
 )
+_SUMMARY_INTERVAL = flags.DEFINE_integer(
+    'summary_interval', 100, 'Interval for writing summaries.'
+)
+
 _VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
     'variable_container_server_address',
     None,

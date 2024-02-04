@@ -118,9 +118,11 @@ def train():
     print(f'epsilon_greedy: {epsilon_greedy}')
     print(f'profile_value_dropout: {profile_value_dropout}')
     print(f'max_vocab_size: {max_vocab_size}')
+  else:
+    raise ValueError(f'Unsupported environment: {env_name}')
 
   # Check if the selected algorithm is Proximal Policy Optimization (PPO)
-  if algorithm == 'ppo':
+  if algorithm in ('ppo',):
     # One step per minibatch. There are `timesteps_per_actorbatch` timesteps
     # per iteration, then multiplied by the number of epochs.
     train_steps_per_iteration = (
@@ -141,7 +143,7 @@ def train():
 
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration roughly.
     num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
-  else:
+  elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg', 'dqn'):
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration
     # roughly.
     learner_iterations_per_call = np.maximum(
@@ -152,6 +154,8 @@ def train():
     initial_collect_steps = adjusted_timesteps_per_actorbatch
 
     num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
+  else:
+    raise ValueError(f'Unsupported algorithm: {algorithm}')
 
   min_table_size_before_sampling = 1
   max_train_steps = train_steps_per_iteration * num_iterations
@@ -258,9 +262,14 @@ def train():
                                f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
                                f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
                                f'--task_id={i}',
+                               f'--debug={debug}',
                                f'--global_seed={seed}',
                                f'--verbosity={"1" if i == 0 else "-1"}',
+                               f'--summary_interval={log_interval}',
+                               f'--initial_collect_steps={initial_collect_steps}',
+
                                ]
+
                               + env_flags
                               for i in range(num_collect_jobs)
                               ]
@@ -355,10 +364,25 @@ def train():
                            f'--root_dir={root_dir}',
                            f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
                            f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
-                           f'--sequence_length=134',
+                           f'--sequence_length={max_sequence_length}',
+                           f'--std_cell_placer_mode={std_cell_placer_mode}',
                            f'--summary_interval={log_interval}',
                            f'--use_gpu=True',
                            f'--global_seed={seed}',
+                           f'--num_epochs={num_epochs}',
+                           f'--batch_size={batch_size}',
+                           f'--shuffle_buffer_size={shuffle_buffer_size}',
+                           f'--algorithm={algorithm}',
+                           f'--debug={debug}',
+                           f'--epsilon_greedy={epsilon_greedy}',
+                           f'--train_checkpoint_interval={train_checkpoint_interval}',
+                           f'--max_train_steps={max_train_steps}',
+                           f'--env_batch_size={env_batch_size}',
+                           f'--learning_rate={learning_rate}',
+                           f'--summary_interval={log_interval}',
+                           f'--algorithm={algorithm}',
+                           f'--debug={debug}',
+                           f'--learner_iterations_per_call={learner_iterations_per_call}',
                            # Only use these if you have a pretrained policy to bootstrap from
                            # f'--policy_saved_model_dir={root_dir}/policies/policy',
                            # f'--policy_checkpoint_dir={root_dir}/policies/checkpoints',
