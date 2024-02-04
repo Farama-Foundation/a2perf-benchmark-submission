@@ -365,7 +365,6 @@ def main(_):
   random.seed(_GLOBAL_SEED.value)
   tf.random.set_seed(_GLOBAL_SEED.value)
 
-  # root_dir = os.path.join(_ROOT_DIR.value, str(_GLOBAL_SEED.value))
   root_dir = _ROOT_DIR.value
   strategy = strategy_utils.get_strategy(
       strategy_utils.TPU.value, strategy_utils.USE_GPU.value
@@ -446,6 +445,8 @@ def main(_):
       )
     elif _ALGORITHM.value == 'ddqn':
       raise NotImplementedError('DDQN is not supported yet.')
+    else:
+      raise ValueError(f'Algorithm {_ALGORITHM.value} is not supported.')
 
 
 if __name__ == '__main__':
