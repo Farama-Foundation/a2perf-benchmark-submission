@@ -13,6 +13,7 @@ from absl import flags
 from absl import logging
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_pybullet
+from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
 from tf_agents.policies import py_tf_eager_policy
@@ -142,8 +143,8 @@ def collect_off_policy(
   summary_dir = os.path.join(root_dir, 'summaries', str(task))
   logging.info('Summary dir: %s', summary_dir)
 
-  collect_env = suite_load_function(environment_name)
-
+  collect_env = suite_load_function(environment_name,
+                                    env_wrappers=[wrappers.ActionClipWrapper], )
   # Create the variable container.
   train_step = train_utils.create_train_step()
   variables = {
@@ -186,7 +187,8 @@ def collect_off_policy(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE),
+      metrics=actor.collect_metrics(
+          ACTOR_COLLECT_METRICS_BUFFER_SIZE) if task == 0 else [],
       summary_dir=summary_dir if task == 0 else None,
       summary_interval=summary_interval,
       observers=[rb_observer, env_step_metric],
@@ -237,8 +239,8 @@ def collect_sequences(
   logging.info('Sequence length collect: %s', sequence_length)
   summary_dir = os.path.join(root_dir, 'summaries', str(task))
 
-  collect_env = suite_load_function(environment_name)
-
+  collect_env = suite_load_function(environment_name,
+                                    env_wrappers=[wrappers.ActionClipWrapper], )
   # Create the variable container.
   train_step = train_utils.create_train_step()
   variables = {
@@ -270,7 +272,8 @@ def collect_sequences(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE),
+      metrics=actor.collect_metrics(
+          ACTOR_COLLECT_METRICS_BUFFER_SIZE) if task == 0 else [],
       summary_interval=summary_interval,
       summary_dir=summary_dir if task == 0 else None,
       observers=[experience_observer, env_step_metric],

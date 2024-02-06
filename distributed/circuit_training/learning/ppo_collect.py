@@ -51,6 +51,10 @@ _STD_CELL_PLACER_MODE = flags.DEFINE_string(
         'algorithm).'
     ),
 )
+_MAX_TRAIN_STEPS = flags.DEFINE_integer(
+    'max_train_steps', 1000000, 'Maximum number of training steps.'
+)
+
 _ROOT_DIR = flags.DEFINE_string(
     'root_dir',
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
@@ -116,6 +120,8 @@ def main(_):
       create_env_fn=create_env_fn,
       max_sequence_length=_MAX_SEQUENCE_LENGTH.value,
       netlist_index=_NETLIST_INDEX.value,
+      max_train_steps=_MAX_TRAIN_STEPS.value,
+      summary_interval=_SUMMARY_INTERVAL.value,
   )
 
 

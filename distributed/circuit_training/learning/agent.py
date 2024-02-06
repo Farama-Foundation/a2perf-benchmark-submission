@@ -621,6 +621,8 @@ def create_circuit_ppo_agent(
     aggregate_losses_across_replicas: bool = True,
     entropy_regularization: float = 0.01,
     use_gae: bool = False,
+    learning_rate: float = 1e-3,
+    max_train_steps: int = 1_000_000,
     **kwargs
 ) -> CircuitPPOAgent:
   """Creates a PPO agent."""
@@ -629,6 +631,14 @@ def create_circuit_ppo_agent(
     report_loss_scaling_factor = strategy.num_replicas_in_sync
   else:
     report_loss_scaling_factor = 1.0
+
+  lr = tf.keras.optimizers.schedules.CosineDecay(
+      initial_learning_rate=learning_rate,
+      decay_steps=max_train_steps,
+      alpha=0.1,
+  )
+
+  optimizer = tf.keras.optimizers.Adam(learning_rate=lr, epsilon=1e-5)
 
   return CircuitPPOAgent(
       time_step_tensor_spec,

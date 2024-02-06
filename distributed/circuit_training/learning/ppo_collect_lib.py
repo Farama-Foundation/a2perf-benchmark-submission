@@ -23,12 +23,15 @@ import gin
 import reverb
 from absl import logging
 from tf_agents.experimental.distributed import reverb_variable_container
+from tf_agents.metrics import py_metrics
 from tf_agents.replay_buffers import reverb_utils
 from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
+from a2perf.a2perf_benchmark_submission.distributed.collect import \
+  ACTOR_COLLECT_METRICS_BUFFER_SIZE
 # noinspection PyUnresolvedReferences
 from a2perf.domains import circuit_training
 
@@ -47,11 +50,12 @@ def collect(
     replay_buffer_server_address: str,
     variable_container_server_address: str,
     create_env_fn: Callable[..., Any],
-    max_sequence_length: int,
-    summary_subdir: str = '',
-    write_summaries_task_threshold: int = 1,
+    sequence_length: int,
+    summary_dir: Optional[str] = None,
     netlist_index: int = 0,
     max_episodes_per_model: Optional[int] = None,
+    max_train_steps: Optional[int] = None,
+    summary_interval: Optional[int] = None,
 ):
   """Collects experience using a policy updated after every episode."""
   train_step = train_utils.create_train_step()
@@ -86,40 +90,36 @@ def collect(
   variable_container.update(variables)
 
   # Create the replay buffer observer for collect jobs.
+  env_step_metric = py_metrics.EnvironmentSteps()
   observers = [
-      reverb_utils.ReverbAddEpisodeObserver(
+      reverb_utils.ReverbTrajectorySequenceObserver(
           reverb.Client(replay_buffer_server_address),
-          table_name=[f'training_table_{netlist_index}'],
-          max_sequence_length=max_sequence_length,
+          table_name=f'training_table_{netlist_index}',
+          sequence_length=sequence_length,
+          stride_length=sequence_length,
           priority=model_id,
-      )
+      ),
+      env_step_metric,
   ]
-
-  # Write metrics only if the task ID of the current job is below the limit.
-  summary_dir = None
-  metrics = []
-  if task < write_summaries_task_threshold:
-    summary_dir = os.path.join(
-        root_dir, learner.TRAIN_DIR, summary_subdir, str(task)
-    )
-    metrics = actor.collect_metrics(1)
 
   # Create the collect actor.
   collect_actor = actor.Actor(
       collect_env,
       collect_policy,
       train_step,
-      episodes_per_run=1,
-      summary_dir=summary_dir,
-      summary_interval=200,
-      metrics=metrics,
+      steps_per_run=sequence_length,
+      metrics=actor.collect_metrics(
+          ACTOR_COLLECT_METRICS_BUFFER_SIZE) if task == 0 else [],
+      summary_dir=summary_dir if task == 0 else None,
+      summary_interval=summary_interval,
       observers=observers,
   )
 
+  # Run the experience collection loop.
   model_to_num_episodes = {}
   last_collection_ts = 0
-  # Run the experience collection loop.
-  while True:
+  prev_num_steps_collected = 0
+  while train_step < max_train_steps:
     if model_id.numpy() not in model_to_num_episodes:
       model_to_num_episodes[model_id.numpy()] = 0
 
@@ -130,15 +130,22 @@ def collect(
     ):
       logging.info('Collecting at model_id: %d', model_id.numpy())
       last_collection_ts = time.time()
+      start_time = time.time()
       collect_actor.run()
-
+      end_time = time.time()
       # Clear old models.
       for k in list(model_to_num_episodes):
         if k != model_id.numpy():
           del model_to_num_episodes[k]
 
       model_to_num_episodes[model_id.numpy()] += 1
-
+      logging.info('\tCollection took %.3f seconds', end_time - start_time)
     variable_container.update(variables)
-    logging.info('Current step: %d', train_step.numpy())
-    logging.info('Current model_id: %d', model_id.numpy())
+    logging.info('Collecting with policy at step: %d', train_step.numpy())
+    logging.info('\tMax train step: %d', max_train_steps)
+    logging.info('\tCollected %d steps', env_step_metric.result())
+    logging.info(
+        '\tCollected %d steps this iteration',
+        env_step_metric.result() - prev_num_steps_collected,
+    )
+    prev_num_steps_collected = env_step_metric.result()

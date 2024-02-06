@@ -54,13 +54,6 @@ _MIN_TABLE_SIZE_BEFORE_SAMPLING = flags.DEFINE_integer(
 )
 
 
-class PrefixedLogFormatter(logging.PythonFormatter):
-
-  def format(self, record):
-    original = super(PrefixedLogFormatter, self).format(record)
-    return f'Reverb Server: {original}'
-
-
 def run_reverb_server(root_dir):
   """Start the server after the initial policy becomes available."""
   # Wait for the collect policy to become available, then load it.
@@ -263,10 +256,6 @@ def run_circuit_training_reverb_server(root_dir):
 
 
 def main(_):
-  # Add a prefix to our absl logger so we know which collect job this is
-  absl_handler = logging.get_absl_handler()
-  absl_handler.setFormatter(PrefixedLogFormatter())
-
   if _DEBUG.value:
     logging.set_verbosity(logging.DEBUG)
 

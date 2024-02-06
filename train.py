@@ -125,13 +125,13 @@ def train():
   if algorithm in ('ppo',):
     # One step per minibatch. There are `timesteps_per_actorbatch` timesteps
     # per iteration, then multiplied by the number of epochs.
-    train_steps_per_iteration = (
-        timesteps_per_actorbatch // batch_size * num_epochs
+    train_steps_per_iteration = int(
+        timesteps_per_actorbatch / batch_size * num_epochs
     )
 
     # Shuffle buffer just needs to be enough to uncorrelate samples within a
-    # single sequence.
-    shuffle_buffer_size = adjusted_timesteps_per_actorbatch
+    # single actorbatch
+    shuffle_buffer_size = timesteps_per_actorbatch
 
     # Only a single iteration is performed per call to the learner. We set the
     # `num_samples` argument to `env_batch_size` to ensure that the learner
@@ -142,13 +142,15 @@ def train():
     initial_collect_steps = 0
 
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration roughly.
-    num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
+    num_iterations = np.maximum(1,
+                                total_env_steps / timesteps_per_actorbatch).astype(
+        int)
   elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg', 'dqn'):
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration
     # roughly.
     learner_iterations_per_call = np.maximum(
-        1, timesteps_per_actorbatch // batch_size
-    )
+        1, timesteps_per_actorbatch / batch_size
+    ).astype(int)
     train_steps_per_iteration = learner_iterations_per_call
     shuffle_buffer_size = -1
     initial_collect_steps = adjusted_timesteps_per_actorbatch
@@ -264,10 +266,12 @@ def train():
                                f'--task_id={i}',
                                f'--debug={debug}',
                                f'--global_seed={seed}',
+                               f'--max_train_steps={max_train_steps}',
                                f'--verbosity={"1" if i == 0 else "-1"}',
                                f'--summary_interval={log_interval}',
                                f'--initial_collect_steps={initial_collect_steps}',
-
+                               f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+                               f'--initial_collect_steps={initial_collect_steps}',
                                ]
 
                               + env_flags
@@ -376,12 +380,12 @@ def train():
                            f'--debug={debug}',
                            f'--epsilon_greedy={epsilon_greedy}',
                            f'--train_checkpoint_interval={train_checkpoint_interval}',
-                           f'--max_train_steps={max_train_steps}',
                            f'--env_batch_size={env_batch_size}',
                            f'--learning_rate={learning_rate}',
                            f'--summary_interval={log_interval}',
                            f'--algorithm={algorithm}',
                            f'--debug={debug}',
+                           f'--max_train_steps={max_train_steps}',
                            f'--learner_iterations_per_call={learner_iterations_per_call}',
                            # Only use these if you have a pretrained policy to bootstrap from
                            # f'--policy_saved_model_dir={root_dir}/policies/policy',
