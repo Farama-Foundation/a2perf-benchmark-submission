@@ -41,7 +41,6 @@ def train():
   log_interval = int(os.environ.get('LOG_INTERVAL', -1))
   learning_rate = float(os.environ.get('LEARNING_RATE', -1))
   timesteps_per_actorbatch = int(os.environ.get('TIMESTEPS_PER_ACTORBATCH', -1))
-  max_sequence_length = int(os.environ.get('MAX_SEQUENCE_LENGTH', -1))
   env_name = os.environ.get('ENV_NAME', None)
   netlist_path = os.environ.get('NETLIST_PATH', None)
   init_placement_path = os.environ.get('INIT_PLACEMENT_PATH', None)
@@ -104,7 +103,6 @@ def train():
   if env_name == 'CircuitTraining-v0':
     print(f'netlist_path: {netlist_path}')
     print(f'init_placement_path: {init_placement_path}')
-    print(f'max_sequence_length: {max_sequence_length}')
     print(f'std_cell_placer_mode: {std_cell_placer_mode}')
   elif env_name == 'QuadrupedLocomotion-v0':
     print(f'motion_file_path: {motion_file_path}')
@@ -154,11 +152,13 @@ def train():
     train_steps_per_iteration = learner_iterations_per_call
     shuffle_buffer_size = -1
     initial_collect_steps = adjusted_timesteps_per_actorbatch
-
     num_iterations = np.maximum(1, total_env_steps // timesteps_per_actorbatch)
   else:
     raise ValueError(f'Unsupported algorithm: {algorithm}')
-
+  if train_steps_per_iteration < 1:
+    raise ValueError(
+        f'train_steps_per_iteration must be at least 1, got {train_steps_per_iteration}'
+    )
   min_table_size_before_sampling = 1
   max_train_steps = train_steps_per_iteration * num_iterations
 
@@ -238,7 +238,6 @@ def train():
   elif env_name == 'CircuitTraining-v0':
     env_flags.extend(
         [
-            f'--max_sequence_length={max_sequence_length}',
             f'--netlist_index=0',
             f'--std_cell_placer_mode={std_cell_placer_mode}',
             f'--netlist_file={netlist_path}',
@@ -368,7 +367,7 @@ def train():
                            f'--root_dir={root_dir}',
                            f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
                            f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
-                           f'--sequence_length={max_sequence_length}',
+                           f'--sequence_length={adjusted_timesteps_per_actorbatch}',
                            f'--std_cell_placer_mode={std_cell_placer_mode}',
                            f'--summary_interval={log_interval}',
                            f'--use_gpu=True',
@@ -380,6 +379,7 @@ def train():
                            f'--debug={debug}',
                            f'--epsilon_greedy={epsilon_greedy}',
                            f'--train_checkpoint_interval={train_checkpoint_interval}',
+                           f'--policy_checkpoint_interval={policy_checkpoint_interval}',
                            f'--env_batch_size={env_batch_size}',
                            f'--learning_rate={learning_rate}',
                            f'--summary_interval={log_interval}',

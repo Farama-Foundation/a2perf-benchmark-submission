@@ -38,7 +38,6 @@ _SequenceFnType = Callable[[_SequenceParamsType], _SequenceParamsType]
     allowlist=[
         'checkpoint_interval',
         'summary_interval',
-        'allow_variable_length_episodes',
     ]
 )
 class CircuittrainingPPOLearner(object):
@@ -67,11 +66,14 @@ class CircuittrainingPPOLearner(object):
       minibatch_size: int,
       shuffle_buffer_size: int,
       num_epochs: int,
+      timesteps_per_actorbatch: int,
       triggers: Optional[List[interval_trigger.IntervalTrigger]] = None,
       strategy: Optional[tf.distribute.Strategy] = None,
       per_sequence_fn: Optional[_SequenceFnType] = None,
       checkpoint_interval: int = 100000,
       summary_interval: int = 200,
+      allow_variable_length_episodes: bool = False,
+      sequence_length: int = 100,
   ) -> None:
     """Initializes a CircuittrainingPPOLearner instance.
 
@@ -127,6 +129,7 @@ class CircuittrainingPPOLearner(object):
     """
 
     self._strategy = strategy or tf.distribute.get_strategy()
+    self._allow_variable_length_episodes = allow_variable_length_episodes
     self._agent = agent
     self._minibatch_size = minibatch_size
     self._shuffle_buffer_size = shuffle_buffer_size
@@ -137,7 +140,7 @@ class CircuittrainingPPOLearner(object):
     # the on policyness of the algorithm.
     self._model_id = model_id
     self._per_sequence_fn = per_sequence_fn
-
+    self._sequence_length = sequence_length
     self._generic_learner = learner.Learner(
         root_dir,
         train_step,
@@ -151,7 +154,7 @@ class CircuittrainingPPOLearner(object):
     )
 
     self.num_replicas = self._strategy.num_replicas_in_sync
-    self._num_samples = self._num_episodes_per_iteration * self._sequence_length
+    self._num_samples = timesteps_per_actorbatch
     self._create_datasets()
     self._steps_per_iter = self._get_train_steps_per_iteration()
     logging.info('train steps per iteration: %d', self._steps_per_iter)

@@ -39,6 +39,9 @@ from . import static_feature_cache
 from . import train_ppo_lib
 from ..model import create_models_lib
 
+_POLICY_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
+    'policy_checkpoint_interval', None, 'Policy checkpoint interval.'
+)
 _NUM_EPOCHS = flags.DEFINE_integer(
     'num_epochs',
     100,
@@ -79,7 +82,7 @@ _TRAIN_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
 )
 _MAX_TRAIN_STEPS = flags.DEFINE_integer(
     'max_train_steps',
-    100000,
+    0,
     'The maximum number of training steps for the policy.',
 )
 _ENV_BATCH_SIZE = flags.DEFINE_integer(
@@ -360,6 +363,10 @@ def main(_):
       finalize_config=False
   )
 
+  if _DEBUG.value:
+    tf.config.run_functions_eagerly(True)
+    # tf.data.experimental.enable_debug_mode()
+
   logging.info('global seed=%d', _GLOBAL_SEED.value)
   np.random.seed(_GLOBAL_SEED.value)
   random.seed(_GLOBAL_SEED.value)
@@ -427,6 +434,7 @@ def main(_):
       train_ppo_lib.train(
           root_dir=root_dir,
           strategy=strategy,
+          debug_summaries=_DEBUG.value,
           per_replica_batch_size=_BATCH_SIZE.value,
           replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDR.value,
           variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDR.value,
@@ -435,13 +443,16 @@ def main(_):
           sequence_length=_SEQUENCE_LENGTH.value,
           actor_net=actor_net,
           value_net=value_net,
-          init_train_step=init_train_step,
           num_netlists=len(_NETLIST_FILE.value),
           entropy_regularization=_ENTROPY_REGULARIZATION.value,
           use_gae=_USE_GAE.value,
           init_learning_rate=_LEARNING_RATE.value,
           num_epochs=_NUM_EPOCHS.value,
           summary_interval=_SUMMARY_INTERVAL.value,
+          shuffle_buffer_size=_SHUFFLE_BUFFER_SIZE.value,
+          policy_checkpoint_interval=_POLICY_CHECKPOINT_INTERVAL.value,
+          max_train_steps=_MAX_TRAIN_STEPS.value,
+          timesteps_per_actorbatch=_SEQUENCE_LENGTH.value * _ENV_BATCH_SIZE.value,
       )
     elif _ALGORITHM.value == 'ddqn':
       raise NotImplementedError('DDQN is not supported yet.')

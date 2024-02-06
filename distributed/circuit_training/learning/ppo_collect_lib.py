@@ -30,8 +30,6 @@ from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
-from a2perf.a2perf_benchmark_submission.distributed.collect import \
-  ACTOR_COLLECT_METRICS_BUFFER_SIZE
 # noinspection PyUnresolvedReferences
 from a2perf.domains import circuit_training
 
@@ -40,10 +38,10 @@ from a2perf.domains import circuit_training
 # max_episodes_per_model limit, since various workers (including the Reverb
 # server) can be preempted.
 COLLECT_AT_LEAST_EVERY_SECONDS = 10 * 60
+ACTOR_COLLECT_METRICS_BUFFER_SIZE = 10
 
 
-@gin.configurable(allowlist=['write_summaries_task_threshold',
-                             'max_episodes_per_model'])
+@gin.configurable(allowlist=['max_timesteps_per_model'])
 def collect(
     task: int,
     root_dir: str,
@@ -53,7 +51,7 @@ def collect(
     sequence_length: int,
     summary_dir: Optional[str] = None,
     netlist_index: int = 0,
-    max_episodes_per_model: Optional[int] = None,
+    max_timesteps_per_model: Optional[int] = None,
     max_train_steps: Optional[int] = None,
     summary_interval: Optional[int] = None,
 ):
@@ -116,16 +114,16 @@ def collect(
   )
 
   # Run the experience collection loop.
-  model_to_num_episodes = {}
+  model_to_num_timesteps = {}
   last_collection_ts = 0
   prev_num_steps_collected = 0
   while train_step < max_train_steps:
-    if model_id.numpy() not in model_to_num_episodes:
-      model_to_num_episodes[model_id.numpy()] = 0
+    if model_id.numpy() not in model_to_num_timesteps:
+      model_to_num_timesteps[model_id.numpy()] = 0
 
     if (
-        max_episodes_per_model is None
-        or model_to_num_episodes[model_id.numpy()] < max_episodes_per_model
+        max_timesteps_per_model is None
+        or model_to_num_timesteps[model_id.numpy()] < max_timesteps_per_model
         or time.time() - last_collection_ts > COLLECT_AT_LEAST_EVERY_SECONDS
     ):
       logging.info('Collecting at model_id: %d', model_id.numpy())
@@ -134,11 +132,11 @@ def collect(
       collect_actor.run()
       end_time = time.time()
       # Clear old models.
-      for k in list(model_to_num_episodes):
+      for k in list(model_to_num_timesteps):
         if k != model_id.numpy():
-          del model_to_num_episodes[k]
+          del model_to_num_timesteps[k]
 
-      model_to_num_episodes[model_id.numpy()] += 1
+      model_to_num_timesteps[model_id.numpy()] += 1
       logging.info('\tCollection took %.3f seconds', end_time - start_time)
     variable_container.update(variables)
     logging.info('Collecting with policy at step: %d', train_step.numpy())

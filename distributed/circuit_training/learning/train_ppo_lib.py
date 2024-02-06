@@ -24,7 +24,6 @@ from absl import logging
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.networks import network
 from tf_agents.replay_buffers import reverb_replay_buffer
-from tf_agents.train import learner as actor_learner
 from tf_agents.train import triggers
 from tf_agents.train.utils import train_utils
 from tf_agents.typing import types
@@ -38,8 +37,6 @@ from . import learner as learner_lib
     allowlist=[
         'per_replica_batch_size',
         'num_epochs',
-        'num_iterations',
-        'num_episodes_per_iteration',
         'init_learning_rate',
     ]
 )
@@ -51,14 +48,12 @@ def train(
     action_tensor_spec: types.NestedTensorSpec,
     time_step_tensor_spec: types.NestedTensorSpec,
     sequence_length: int,
-    # each element of the dataset is a sequence of length `sequence_length`.
     actor_net: network.Network,
     value_net: network.Network,
-    init_train_step: int = 0,
     per_replica_batch_size: int = 128,
     num_epochs: int = 4,
     max_train_steps: int = 1_000_000,
-    num_episodes_per_iteration: int = 256,
+    timesteps_per_actorbatch: int = 256,
     init_learning_rate: float = 0.004,
     num_netlists: int = 1,
     debug_summaries: bool = False,
@@ -66,6 +61,8 @@ def train(
     entropy_regularization: float = 0.0,
     use_gae: bool = False,
     shuffle_buffer_size: int = -1,
+    policy_checkpoint_interval: int = 1000,
+
 ) -> None:
   """Trains a PPO agent.
 
@@ -127,8 +124,7 @@ def train(
       saved_model_dir,
       tf_agent,
       train_step,
-      start=-num_episodes_per_iteration,
-      interval=num_episodes_per_iteration,
+      interval=policy_checkpoint_interval,
       async_saving=False,
       save_collect_policy=True,
       save_greedy_policy=True,
@@ -220,6 +216,8 @@ def train(
       strategy=strategy,
       num_epochs=num_epochs,
       per_sequence_fn=per_sequence_fn,
+      sequence_length=sequence_length,
+      timesteps_per_actorbatch=timesteps_per_actorbatch,
   )
 
   # Run the training loop.ation, num_iterations):

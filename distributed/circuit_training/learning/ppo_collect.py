@@ -76,10 +76,8 @@ _VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
 _TASK_ID = flags.DEFINE_integer(
     'task_id', 0, 'Identifier of the collect task. Must be unique in a job.'
 )
-_MAX_SEQUENCE_LENGTH = flags.DEFINE_integer(
-    'max_sequence_length',
-    134,
-    'The sequence length for Reverb replay buffer. Depends on the environment.',
+_SEQUENCE_LENGTH = flags.DEFINE_integer(
+    'sequence_length', 100, 'Length of the sequence to collect.'
 )
 _GLOBAL_SEED = flags.DEFINE_integer(
     'global_seed',
@@ -118,7 +116,7 @@ def main(_):
       replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
       variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
       create_env_fn=create_env_fn,
-      max_sequence_length=_MAX_SEQUENCE_LENGTH.value,
+      sequence_length=_SEQUENCE_LENGTH.value,
       netlist_index=_NETLIST_INDEX.value,
       max_train_steps=_MAX_TRAIN_STEPS.value,
       summary_interval=_SUMMARY_INTERVAL.value,
