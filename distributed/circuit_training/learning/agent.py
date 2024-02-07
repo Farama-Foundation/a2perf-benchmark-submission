@@ -18,9 +18,9 @@ from typing import Optional
 from typing import Text
 from typing import Tuple
 
+from absl import logging
 import gin
 import tensorflow as tf
-from absl import logging
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ppo import ppo_agent
 from tf_agents.agents.ppo import ppo_utils

@@ -15,10 +15,11 @@
 """Utils for creating models."""
 from typing import Any, Dict
 
-from . import fully_connected_model_lib
-from . import model
 import numpy as np
 from tf_agents.typing import types
+
+from . import fully_connected_model_lib
+from . import model
 
 
 def create_models_fn(

@@ -20,12 +20,13 @@ import random
 from typing import Dict
 from typing import Optional
 
-import gin
-import numpy as np
-import tensorflow as tf
+from a2perf.domains import circuit_training
 from absl import app
 from absl import flags
 from absl import logging
+import gin
+import numpy as np
+import tensorflow as tf
 from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
 from tf_agents.system import system_multiprocessing as multiprocessing
@@ -33,11 +34,9 @@ from tf_agents.train import learner
 from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import strategy_utils
 
-# noinspection PyUnresolvedReferences
-from a2perf.domains import circuit_training
+from ..model import create_models_lib
 from . import static_feature_cache
 from . import train_ppo_lib
-from ..model import create_models_lib
 
 _POLICY_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
     'policy_checkpoint_interval', None, 'Policy checkpoint interval.'

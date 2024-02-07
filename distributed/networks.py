@@ -1,13 +1,12 @@
 from typing import Optional
 from typing import Text
 
+from a2perf.domains.web_navigation.gwob.CoDE import networks as web_networks
 from tf_agents.agents.ddpg import actor_network
 from tf_agents.agents.ddpg import critic_network
 from tf_agents.networks import actor_distribution_network
 from tf_agents.networks import value_network
 from tf_agents.typing import types
-
-from a2perf.domains.web_navigation.gwob.CoDE import networks as web_networks
 
 
 def _create_critic_net(

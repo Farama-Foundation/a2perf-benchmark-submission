@@ -17,10 +17,10 @@
 import os
 import time
 
+from absl import logging
 import gin
 import reverb
 import tensorflow as tf
-from absl import logging
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.networks import network
 from tf_agents.replay_buffers import reverb_replay_buffer

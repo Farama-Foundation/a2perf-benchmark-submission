@@ -16,7 +16,6 @@
 
 from typing import Dict, Optional, Text
 
-from . import model_lib
 import gin
 import numpy as np
 import tensorflow as tf
@@ -26,6 +25,8 @@ from tf_agents.specs import distribution_spec
 from tf_agents.specs import tensor_spec
 from tf_agents.typing import types
 from tf_agents.utils import nest_utils
+
+from . import model_lib
 
 
 @gin.configurable(module='circuittraining.models')

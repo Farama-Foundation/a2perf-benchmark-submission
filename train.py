@@ -3,9 +3,9 @@ import subprocess
 import threading
 import time
 
-import numpy as np
 from absl import app
 from absl import logging
+import numpy as np
 
 PROCESS_WAIT_INTERVAL = 120  # 2 minutes
 
@@ -140,9 +140,9 @@ def train():
     initial_collect_steps = 0
 
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration roughly.
-    num_iterations = np.maximum(1,
-                                total_env_steps / timesteps_per_actorbatch).astype(
-        int)
+    num_iterations = np.maximum(
+        1, total_env_steps / timesteps_per_actorbatch
+    ).astype(int)
   elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg', 'dqn'):
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration
     # roughly.
@@ -157,7 +157,8 @@ def train():
     raise ValueError(f'Unsupported algorithm: {algorithm}')
   if train_steps_per_iteration < 1:
     raise ValueError(
-        f'train_steps_per_iteration must be at least 1, got {train_steps_per_iteration}'
+        'train_steps_per_iteration must be at least 1, got'
+        f' {train_steps_per_iteration}'
     )
   min_table_size_before_sampling = 1
   max_train_steps = train_steps_per_iteration * num_iterations
@@ -236,14 +237,12 @@ def train():
         [f'--env_name={env_name}', f'--motion_file_path={motion_file_path}']
     )
   elif env_name == 'CircuitTraining-v0':
-    env_flags.extend(
-        [
-            f'--netlist_index=0',
-            f'--std_cell_placer_mode={std_cell_placer_mode}',
-            f'--netlist_file={netlist_path}',
-            f'--init_placement={init_placement_path}',
-        ]
-    )
+    env_flags.extend([
+        f'--netlist_index=0',
+        f'--std_cell_placer_mode={std_cell_placer_mode}',
+        f'--netlist_file={netlist_path}',
+        f'--init_placement={init_placement_path}',
+    ])
   else:
     raise ValueError(f'Unsupported environment: {env_name}')
 
@@ -257,25 +256,27 @@ def train():
         int
     )
     if env_name == 'CircuitTraining-v0':
-      collect_job_commands = [['python', '-m',
-                               'distributed.circuit_training.learning.ppo_collect',
-                               f'--root_dir={root_dir}',
-                               f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
-                               f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
-                               f'--task_id={i}',
-                               f'--debug={debug}',
-                               f'--global_seed={seed}',
-                               f'--max_train_steps={max_train_steps}',
-                               f'--verbosity={"1" if i == 0 else "-1"}',
-                               f'--summary_interval={log_interval}',
-                               f'--initial_collect_steps={initial_collect_steps}',
-                               f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-                               f'--initial_collect_steps={initial_collect_steps}',
-                               ]
-
-                              + env_flags
-                              for i in range(num_collect_jobs)
-                              ]
+      collect_job_commands = [
+          [
+              'python',
+              '-m',
+              'distributed.circuit_training.learning.ppo_collect',
+              f'--root_dir={root_dir}',
+              f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
+              f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
+              f'--task_id={i}',
+              f'--debug={debug}',
+              f'--global_seed={seed}',
+              f'--max_train_steps={max_train_steps}',
+              f'--verbosity={"1" if i == 0 else "-1"}',
+              f'--summary_interval={log_interval}',
+              f'--initial_collect_steps={initial_collect_steps}',
+              f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+              f'--initial_collect_steps={initial_collect_steps}',
+          ]
+          + env_flags
+          for i in range(num_collect_jobs)
+      ]
     else:
       collect_job_commands = [
           [
@@ -314,9 +315,9 @@ def train():
       )
       all_processes.append(process)
       collect_jobs.append(process)
-    threading.Thread(target=print_subprocess_output,
-                     args=(collect_jobs[0],)).start(
-    )
+    threading.Thread(
+        target=print_subprocess_output, args=(collect_jobs[0],)
+    ).start()
     logging.info('Successfully launched collect jobs.')
 
     while True:
@@ -357,78 +358,80 @@ def train():
     logging.info('Successfully launched reverb server.')
 
     if env_name == 'CircuitTraining-v0':
-      train_job_command = ['python', '-m',
-                           'distributed.circuit_training.learning.train_ppo',
-                           f'--entropy_regularization={entropy_regularization}',
-                           f'--use_gae={use_gae}',
-                           f'--netlist_file={netlist_path}',
-                           f'--init_placement={init_placement_path}',
-                           f'--std_cell_placer_mode=dreamplace',
-                           f'--root_dir={root_dir}',
-                           f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
-                           f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
-                           f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-                           f'--std_cell_placer_mode={std_cell_placer_mode}',
-                           f'--summary_interval={log_interval}',
-                           f'--use_gpu=True',
-                           f'--global_seed={seed}',
-                           f'--num_epochs={num_epochs}',
-                           f'--batch_size={batch_size}',
-                           f'--shuffle_buffer_size={shuffle_buffer_size}',
-                           f'--algorithm={algorithm}',
-                           f'--debug={debug}',
-                           f'--epsilon_greedy={epsilon_greedy}',
-                           f'--train_checkpoint_interval={train_checkpoint_interval}',
-                           f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-                           f'--env_batch_size={env_batch_size}',
-                           f'--learning_rate={learning_rate}',
-                           f'--summary_interval={log_interval}',
-                           f'--algorithm={algorithm}',
-                           f'--debug={debug}',
-                           f'--max_train_steps={max_train_steps}',
-                           f'--learner_iterations_per_call={learner_iterations_per_call}',
-                           # Only use these if you have a pretrained policy to bootstrap from
-                           # f'--policy_saved_model_dir={root_dir}/policies/policy',
-                           # f'--policy_checkpoint_dir={root_dir}/policies/checkpoints',
-                           ]
+      train_job_command = [
+          'python',
+          '-m',
+          'distributed.circuit_training.learning.train_ppo',
+          f'--entropy_regularization={entropy_regularization}',
+          f'--use_gae={use_gae}',
+          f'--netlist_file={netlist_path}',
+          f'--init_placement={init_placement_path}',
+          f'--std_cell_placer_mode=dreamplace',
+          f'--root_dir={root_dir}',
+          f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
+          f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
+          f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+          f'--std_cell_placer_mode={std_cell_placer_mode}',
+          f'--summary_interval={log_interval}',
+          f'--use_gpu=True',
+          f'--global_seed={seed}',
+          f'--num_epochs={num_epochs}',
+          f'--batch_size={batch_size}',
+          f'--shuffle_buffer_size={shuffle_buffer_size}',
+          f'--algorithm={algorithm}',
+          f'--debug={debug}',
+          f'--epsilon_greedy={epsilon_greedy}',
+          f'--train_checkpoint_interval={train_checkpoint_interval}',
+          f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+          f'--env_batch_size={env_batch_size}',
+          f'--learning_rate={learning_rate}',
+          f'--summary_interval={log_interval}',
+          f'--algorithm={algorithm}',
+          f'--debug={debug}',
+          f'--max_train_steps={max_train_steps}',
+          f'--learner_iterations_per_call={learner_iterations_per_call}',
+          # Only use these if you have a pretrained policy to bootstrap from
+          # f'--policy_saved_model_dir={root_dir}/policies/policy',
+          # f'--policy_checkpoint_dir={root_dir}/policies/checkpoints',
+      ]
 
     else:
       train_job_command = [
-                              'python',
-                              '-m',
-                              'distributed.train',
-                              f'--entropy_regularization={entropy_regularization}',
-                              f'--exploration_noise_std={exploration_noise_std}',
-                              f'--num_epochs={num_epochs}',
-                              f'--batch_size={batch_size}',
-                              f'--shuffle_buffer_size={shuffle_buffer_size}',
-                              f'--algorithm={algorithm}',
-                              f'--debug={debug}',
-                              f'--learner_iterations_per_call={learner_iterations_per_call}',
-                              f'--sequence_length={adjusted_timesteps_per_actorbatch}',
-                              f'--policy_checkpoint_interval={policy_checkpoint_interval}',
-                              f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
-                              f'--root_dir={root_dir}',
-                              f'--train_checkpoint_interval={train_checkpoint_interval}',
-                              f'--max_train_steps={max_train_steps}',
-                              f'--env_batch_size={env_batch_size}',
-                              f'--learning_rate={learning_rate}',
-                              f'--log_interval={log_interval}',
-                              f'--seed={seed}',
-                              f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
-                              f'--use_gpu=True',
-                              f'--use_gae={use_gae}',
-                              f'--use_tpu=False',
-                              f'--embedding_dim={embedding_dim}',
-                              f'--latent_dim={latent_dim}',
-                              f'--epsilon_greedy={epsilon_greedy}',
-                              f'--profile_value_dropout={profile_value_dropout}',
-                              f'--max_vocab_size={max_vocab_size}',
-                              f'--num_websites={num_websites}',
-                              f'--difficulty_level={difficulty_level}',
-                              f'--motion_file_path={motion_file_path}',
-                              f'--verbosity={logging.get_verbosity()}',
-                          ] + env_flags
+          'python',
+          '-m',
+          'distributed.train',
+          f'--entropy_regularization={entropy_regularization}',
+          f'--exploration_noise_std={exploration_noise_std}',
+          f'--num_epochs={num_epochs}',
+          f'--batch_size={batch_size}',
+          f'--shuffle_buffer_size={shuffle_buffer_size}',
+          f'--algorithm={algorithm}',
+          f'--debug={debug}',
+          f'--learner_iterations_per_call={learner_iterations_per_call}',
+          f'--sequence_length={adjusted_timesteps_per_actorbatch}',
+          f'--policy_checkpoint_interval={policy_checkpoint_interval}',
+          f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
+          f'--root_dir={root_dir}',
+          f'--train_checkpoint_interval={train_checkpoint_interval}',
+          f'--max_train_steps={max_train_steps}',
+          f'--env_batch_size={env_batch_size}',
+          f'--learning_rate={learning_rate}',
+          f'--log_interval={log_interval}',
+          f'--seed={seed}',
+          f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
+          f'--use_gpu=True',
+          f'--use_gae={use_gae}',
+          f'--use_tpu=False',
+          f'--embedding_dim={embedding_dim}',
+          f'--latent_dim={latent_dim}',
+          f'--epsilon_greedy={epsilon_greedy}',
+          f'--profile_value_dropout={profile_value_dropout}',
+          f'--max_vocab_size={max_vocab_size}',
+          f'--num_websites={num_websites}',
+          f'--difficulty_level={difficulty_level}',
+          f'--motion_file_path={motion_file_path}',
+          f'--verbosity={logging.get_verbosity()}',
+      ] + env_flags
 
     # Display the command
     logging.info(' '.join(train_job_command))

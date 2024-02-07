@@ -16,8 +16,8 @@
 
 from typing import Dict
 
-import numpy as np
 from a2perf.domains.circuit_training.circuit_training.environment import observation_config
+import numpy as np
 
 
 class StaticFeatureCache:

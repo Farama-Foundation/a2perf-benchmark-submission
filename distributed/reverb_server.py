@@ -2,11 +2,11 @@
 
 import os
 
-import reverb
-import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
+import reverb
+import tensorflow as tf
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.policies import py_tf_eager_policy
 from tf_agents.replay_buffers import reverb_replay_buffer
@@ -29,7 +29,8 @@ _DEBUG = flags.DEFINE_bool(
 _ENVIRONMENT_NAME = flags.DEFINE_string(
     'environment_name',
     None,
-    'Name of the environment to use. Must be one of "circuit_training" or "circuit_training_v2".',
+    'Name of the environment to use. Must be one of "circuit_training" or'
+    ' "circuit_training_v2".',
 )
 
 _ALGORITHM = flags.DEFINE_string(
@@ -228,7 +229,8 @@ def run_circuit_training_reverb_server(root_dir):
             # Menger sets this to 8, but empirically 1 learns better
             # consistently.
             rate_limiter=reverb.rate_limiters.MinSize(
-                _MIN_TABLE_SIZE_BEFORE_SAMPLING.value),
+                _MIN_TABLE_SIZE_BEFORE_SAMPLING.value
+            ),
             max_size=_REPLAY_BUFFER_CAPACITY.value,
             max_times_sampled=1,
             signature=replay_buffer_signature,
@@ -239,17 +241,17 @@ def run_circuit_training_reverb_server(root_dir):
   # TODO(b/159130813): Optionally turn the reverb server pieces into a library.
   server = reverb.Server(
       tables=training_tables
-             + [
-                 reverb.Table(  # Variable container storing policy parameters.
-                     name=reverb_variable_container.DEFAULT_TABLE,
-                     sampler=reverb.selectors.Fifo(),
-                     remover=reverb.selectors.Fifo(),
-                     rate_limiter=reverb.rate_limiters.MinSize(1),
-                     max_size=1,
-                     max_times_sampled=0,
-                     signature=variable_container_signature,
-                 ),
-             ],
+      + [
+          reverb.Table(  # Variable container storing policy parameters.
+              name=reverb_variable_container.DEFAULT_TABLE,
+              sampler=reverb.selectors.Fifo(),
+              remover=reverb.selectors.Fifo(),
+              rate_limiter=reverb.rate_limiters.MinSize(1),
+              max_size=1,
+              max_times_sampled=0,
+              signature=variable_container_signature,
+          ),
+      ],
       port=_PORT.value,
   )
   server.wait()

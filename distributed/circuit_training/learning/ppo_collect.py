@@ -17,9 +17,9 @@
 import functools
 import os
 
-import gin
 from absl import app
 from absl import flags
+import gin
 from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
 from tf_agents.system import system_multiprocessing as multiprocessing

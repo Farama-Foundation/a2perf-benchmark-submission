@@ -17,15 +17,14 @@
 import functools
 import os
 
-import gin
+from a2perf.domains.circuit_training.circuit_training.environment import environment
 from absl import app
 from absl import flags
+import gin
 from tf_agents.system import system_multiprocessing as multiprocessing
 
-from a2perf.domains.circuit_training.circuit_training.environment import \
-  environment
-from . import eval_lib
 from ..model import create_models_lib
+from . import eval_lib
 
 _GIN_FILE = flags.DEFINE_multi_string(
     'gin_file', None, 'Paths to the gin-config files.'

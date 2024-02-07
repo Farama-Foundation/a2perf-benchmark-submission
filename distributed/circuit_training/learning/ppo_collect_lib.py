@@ -19,9 +19,10 @@ from typing import Any
 from typing import Callable
 from typing import Optional
 
+from a2perf.domains import circuit_training
+from absl import logging
 import gin
 import reverb
-from absl import logging
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
 from tf_agents.replay_buffers import reverb_utils
@@ -29,9 +30,6 @@ from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
-
-# noinspection PyUnresolvedReferences
-from a2perf.domains import circuit_training
 
 # If we have not collected in this many seconds, run another episode. This
 # prevents the training loop from being stuck when using a collector

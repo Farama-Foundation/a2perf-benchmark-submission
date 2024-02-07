@@ -1,16 +1,19 @@
 """Sample collection Job using a variable container for policy updates."""
 
 import functools
+from multiprocessing.managers import BaseManager
 import os
 import time
-from multiprocessing.managers import BaseManager
 from typing import Text
 
-import gin
-import reverb
+# noinspection PyUnresolvedReferences
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 from absl import app
 from absl import flags
 from absl import logging
+import gin
+import reverb
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_pybullet
 from tf_agents.environments import wrappers
@@ -24,10 +27,6 @@ from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
-
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 _DIFFICULTY_LEVEL = flags.DEFINE_integer(
     'difficulty_level',
@@ -143,8 +142,10 @@ def collect_off_policy(
   summary_dir = os.path.join(root_dir, 'summaries', str(task))
   logging.info('Summary dir: %s', summary_dir)
 
-  collect_env = suite_load_function(environment_name,
-                                    env_wrappers=[wrappers.ActionClipWrapper], )
+  collect_env = suite_load_function(
+      environment_name,
+      env_wrappers=[wrappers.ActionClipWrapper],
+  )
   # Create the variable container.
   train_step = train_utils.create_train_step()
   variables = {
@@ -187,8 +188,9 @@ def collect_off_policy(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(
-          ACTOR_COLLECT_METRICS_BUFFER_SIZE) if task == 0 else [],
+      metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE)
+      if task == 0
+      else [],
       summary_dir=summary_dir if task == 0 else None,
       summary_interval=summary_interval,
       observers=[rb_observer, env_step_metric],
@@ -239,8 +241,10 @@ def collect_sequences(
   logging.info('Sequence length collect: %s', sequence_length)
   summary_dir = os.path.join(root_dir, 'summaries', str(task))
 
-  collect_env = suite_load_function(environment_name,
-                                    env_wrappers=[wrappers.ActionClipWrapper], )
+  collect_env = suite_load_function(
+      environment_name,
+      env_wrappers=[wrappers.ActionClipWrapper],
+  )
   # Create the variable container.
   train_step = train_utils.create_train_step()
   variables = {
@@ -272,8 +276,9 @@ def collect_sequences(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(
-          ACTOR_COLLECT_METRICS_BUFFER_SIZE) if task == 0 else [],
+      metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE)
+      if task == 0
+      else [],
       summary_interval=summary_interval,
       summary_dir=summary_dir if task == 0 else None,
       observers=[experience_observer, env_step_metric],

@@ -23,12 +23,18 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
-import gin
-import numpy as np
-import tensorflow as tf
+# noinspection PyUnresolvedReferences
+from a2perf.domains import circuit_training
+# noinspection PyUnresolvedReferences
+from a2perf.domains import quadruped_locomotion
+# noinspection PyUnresolvedReferences
+from a2perf.domains import web_navigation
 from absl import app
 from absl import flags
 from absl import logging
+import gin
+import numpy as np
+import tensorflow as tf
 from tf_agents.environments import py_environment
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_mujoco
@@ -44,17 +50,10 @@ from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 
 from .agents import _create_ddpg_agent
+from .agents import _create_ddqn_agent
 from .agents import _create_ppo_agent
 from .agents import _create_sac_agent
 from .agents import _create_td3_agent
-from .agents import _create_ddqn_agent
-
-# noinspection PyUnresolvedReferences
-from a2perf.domains import circuit_training
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-# noinspection PyUnresolvedReferences
-from a2perf.domains import web_navigation
 
 _MAX_VOCAB_SIZE = flags.DEFINE_integer(
     'max_vocab_size', None, 'Maximum vocabulary size.'
@@ -194,7 +193,7 @@ def train(
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
-      [Text], py_environment.PyEnvironment
+        [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,

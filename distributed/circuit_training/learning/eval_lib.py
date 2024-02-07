@@ -24,9 +24,9 @@ from typing import List
 from typing import Optional
 from typing import Text
 
+from absl import logging
 import numpy as np
 import tensorflow as tf
-from absl import logging
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metric
 from tf_agents.metrics import py_metrics
