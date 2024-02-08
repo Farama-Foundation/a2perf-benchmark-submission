@@ -11,8 +11,27 @@ PROCESS_WAIT_INTERVAL = 120  # 2 minutes
 
 
 def print_subprocess_output(process):
-  for line in iter(process.stdout.readline, b''):
-    print(line.decode(), end='')
+  try:
+    for line in iter(process.stdout.readline, b''):
+      logging.info(line.decode().strip())
+  except Exception as e:
+    logging.error(f'Error while printing subprocess output: {e}')
+
+
+def create_and_manage_process(command, process_list, env_vars=None):
+  if env_vars is None:
+    env_vars = os.environ.copy()
+  process = subprocess.Popen(
+      command,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.STDOUT,
+      env=env_vars,
+      bufsize=1,
+      universal_newlines=True,  # Treats all data as text and decodes it
+  )
+  process_list.append(process)
+  threading.Thread(target=print_subprocess_output, args=(process,)).start()
+  return process
 
 
 def train():
@@ -222,17 +241,14 @@ def train():
           f'--max_vocab_size={max_vocab_size}',
           f'--verbosity={logging.get_verbosity()}',
       ]
-      vocab_manager_process = subprocess.Popen(
-          vocab_manager_command,
-          stdout=subprocess.PIPE,
-          stderr=subprocess.STDOUT,
-          env=os.environ.copy(),
-      )
-      all_processes.append(vocab_manager_process)
-      threading.Thread(
-          target=print_subprocess_output, args=(vocab_manager_process,)
-      ).start()
-      logging.info('Successfully launched vocab manager server.')
+      print(f'Command for vocab manager: {vocab_manager_command}')
+      vocab_server_process = create_and_manage_process(vocab_manager_command,
+                                                       all_processes)
+
+      if vocab_server_process.poll() is not None:
+        raise ValueError('Vocabulary manager server failed to start.')
+      else:
+        logging.info('Successfully launched vocab manager server.')
   elif env_name == 'QuadrupedLocomotion-v0':
     env_flags.extend(
         [f'--env_name={env_name}', f'--motion_file_path={motion_file_path}']
@@ -308,17 +324,7 @@ def train():
 
     collect_jobs = []
     for command in collect_job_commands:
-      process = subprocess.Popen(
-          command,
-          stdout=subprocess.PIPE,
-          stderr=subprocess.STDOUT,
-          env=os.environ.copy(),
-      )
-      all_processes.append(process)
-      collect_jobs.append(process)
-    threading.Thread(
-        target=print_subprocess_output, args=(collect_jobs[0],)
-    ).start()
+      create_and_manage_process(command, all_processes)
     logging.info('Successfully launched collect jobs.')
 
     while True:
@@ -345,17 +351,7 @@ def train():
         f'--verbosity={logging.get_verbosity()}',
     ]
     logging.info(' '.join(reverb_command))
-
-    reverb_process = subprocess.Popen(
-        reverb_command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=os.environ.copy(),
-    )
-    all_processes.append(reverb_process)
-    threading.Thread(
-        target=print_subprocess_output, args=(reverb_process,)
-    ).start()
+    create_and_manage_process(reverb_command, all_processes)
     logging.info('Successfully launched reverb server.')
 
     if env_name == 'CircuitTraining-v0':
@@ -436,15 +432,7 @@ def train():
 
     # Display the command
     logging.info(' '.join(train_job_command))
-
-    train_job = subprocess.Popen(
-        train_job_command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=os.environ.copy(),
-    )
-    all_processes.append(train_job)
-    threading.Thread(target=print_subprocess_output, args=(train_job,)).start()
+    train_job = create_and_manage_process(train_job_command, all_processes)
     logging.info('Successfully launched train job.')
 
     while True:
