@@ -102,5 +102,9 @@ def main(_):
 
 if __name__ == '__main__':
   flags.mark_flags_as_required(
-      ['port', 'vocabulary_manager_auth_key', 'max_vocab_size'])
+      ['vocabulary_manager_auth_key',
+       'max_vocab_size',
+       'vocabulary_manager_address',
+       'vocabulary_manager_port'
+       ])
   app.run(main)
