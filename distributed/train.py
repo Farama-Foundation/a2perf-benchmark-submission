@@ -163,13 +163,6 @@ _USE_GAE = flags.DEFINE_bool('use_gae', None, 'Whether to use GAE or not.')
 FLAGS = flags.FLAGS
 
 
-class PrefixedLogFormatter(logging.PythonFormatter):
-
-  def format(self, record):
-    original = super(PrefixedLogFormatter, self).format(record)
-    return f'Train: {original}'
-
-
 @gin.configurable
 def train(
     root_dir: Text,
@@ -432,9 +425,6 @@ def main(_):
   # Set the random seeds
   tf.random.set_seed(_SEED.value)
   np.random.seed(_SEED.value)
-
-  absl_handler = logging.get_absl_handler()
-  absl_handler.setFormatter(PrefixedLogFormatter())
 
   # A2Perf environments may have more configs to add, so don't finalize
   gin.parse_config_files_and_bindings(
