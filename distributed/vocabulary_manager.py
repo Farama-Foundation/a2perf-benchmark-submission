@@ -1,17 +1,20 @@
 import multiprocessing
-from multiprocessing.managers import BaseManager
 import time
+from multiprocessing.managers import BaseManager
 
 from absl import app
 from absl import flags
 from absl import logging
 
-# Define flags
-_PORT = flags.DEFINE_integer(
-    'port', None, 'Port number for the manager server.'
+_VOCABULARY_MANAGER_PORT = flags.DEFINE_integer(
+    'vocabulary_manager_port', None, 'Port number for the vocabulary manager.'
 )
-_AUTH_KEY = flags.DEFINE_string(
-    'auth_key', None, 'Authentication key for the manager server.'
+_VOCABULARY_MANAGER_HOSTNAME = flags.DEFINE_string(
+    'vocabulary_manager_address', None, 'Address for the vocabulary manager.'
+)
+_VOCABULARY_MANAGER_AUTH_KEY = flags.DEFINE_string(
+    'vocabulary_manager_auth_key', None,
+    'Authentication key for the manager server.'
 )
 _MAX_VOCAB_SIZE = flags.DEFINE_integer(
     'max_vocab_size', None, 'Maximum vocabulary size.'
@@ -44,7 +47,11 @@ def LockProxy(lock):
 
 def main(_):
   manager = VocabularyManager(
-      address=('', _PORT.value), authkey=_AUTH_KEY.value.encode()
+      address=(
+          _VOCABULARY_MANAGER_HOSTNAME.value,
+          _VOCABULARY_MANAGER_PORT.value,
+      ),
+      authkey=_VOCABULARY_MANAGER_AUTH_KEY.value.encode()
   )
 
   general_manager = multiprocessing.Manager()
@@ -84,7 +91,8 @@ def main(_):
   )
 
   manager.start()
-  logging.info(f'Started vocabulary manager server on port {_PORT.value}.')
+  logging.info(
+      f'Started vocabulary manager server at {_VOCABULARY_MANAGER_HOSTNAME.value}:{_VOCABULARY_MANAGER_PORT.value}.')
 
   # Keep the main script running
   while True:
@@ -93,5 +101,6 @@ def main(_):
 
 
 if __name__ == '__main__':
-  flags.mark_flags_as_required(['port', 'auth_key', 'max_vocab_size'])
+  flags.mark_flags_as_required(
+      ['port', 'vocabulary_manager_auth_key', 'max_vocab_size'])
   app.run(main)

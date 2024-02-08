@@ -104,8 +104,8 @@ _GIN_FILE = flags.DEFINE_multi_string(
 _GIN_BINDINGS = flags.DEFINE_multi_string(
     'gin_bindings', None, 'Gin binding parameters.'
 )
-_AUTH_KEY = flags.DEFINE_string(
-    'auth_key', None, 'Authentication key for the manager server.'
+_VOCABULARY_MANAGER_AUTH_KEY = flags.DEFINE_string(
+    'vocabulary_manager_auth_key', None, 'Authentication key for the manager server.'
 )
 _VOCABULARY_SERVER_HOSTNAME = flags.DEFINE_string(
     'vocabulary_server_hostname', None, 'Vocabulary server hostname.'
@@ -384,7 +384,7 @@ def main(_):
             _VOCABULARY_SERVER_HOSTNAME.value,
             _VOCABULARY_SERVER_PORT.value,
         ),
-        authkey=_AUTH_KEY.value.encode(),
+        authkey=_VOCABULARY_MANAGER_AUTH_KEY.value.encode(),
     )
 
     for attempt in range(MAX_RETRIES):
@@ -394,7 +394,7 @@ def main(_):
                 _VOCABULARY_SERVER_HOSTNAME.value,
                 _VOCABULARY_SERVER_PORT.value,
             ),
-            authkey=_AUTH_KEY.value.encode(),
+            authkey=_VOCABULARY_MANAGER_AUTH_KEY.value.encode(),
         )
         manager.connect()
         break
@@ -459,7 +459,7 @@ if __name__ == '__main__':
       'variable_container_server_address',
       'vocabulary_server_hostname',
       'vocabulary_server_port',
-      'auth_key',
+      'vocabulary_manager_auth_key',
       'sequence_length',
       'env_batch_size',
       'task',
