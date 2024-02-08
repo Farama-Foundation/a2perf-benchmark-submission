@@ -84,7 +84,6 @@ def train():
       f'variable_container_server_address: {variable_container_server_address}'
   )
   print(f'variable_container_server_port: {variable_container_server_port}')
-
   print(f'batch_size: {batch_size}')
   print(f'debug: {debug}')
   print(f'entropy_regularization: {entropy_regularization}')
@@ -217,8 +216,8 @@ def train():
       vocab_manager_command = [
           'python',
           'distributed/vocabulary_manager.py',
-          f'--vocabulary_manager_port={vocab_port}',
-          f'--vocabulary_manager_address={vocabulary_server_address}',
+          f'--vocabulary_server_port={vocab_port}',
+          f'--vocabulary_server_address={vocabulary_server_address}',
           f'--vocabulary_manager_auth_key={vocabulary_manager_auth_key}',
           f'--max_vocab_size={max_vocab_size}',
           f'--verbosity={logging.get_verbosity()}',

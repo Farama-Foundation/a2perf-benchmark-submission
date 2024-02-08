@@ -6,11 +6,11 @@ from absl import app
 from absl import flags
 from absl import logging
 
-_VOCABULARY_MANAGER_PORT = flags.DEFINE_integer(
-    'vocabulary_manager_port', None, 'Port number for the vocabulary manager.'
+_VOCABULARY_SERVER_PORT = flags.DEFINE_integer(
+    'vocabulary_server_port', None, 'Port number for the vocabulary manager.'
 )
-_VOCABULARY_MANAGER_HOSTNAME = flags.DEFINE_string(
-    'vocabulary_manager_address', None, 'Address for the vocabulary manager.'
+_VOCABULARY_SERVER_ADDRESS = flags.DEFINE_string(
+    'vocabulary_server_address', None, 'Address for the vocabulary manager.'
 )
 _VOCABULARY_MANAGER_AUTH_KEY = flags.DEFINE_string(
     'vocabulary_manager_auth_key', None,
@@ -46,10 +46,13 @@ def LockProxy(lock):
 
 
 def main(_):
+  logging.info(
+      f'Attempting to start vocabulary manager server at {_VOCABULARY_SERVER_ADDRESS.value}:{_VOCABULARY_SERVER_PORT.value}.' * 10000)
+
   manager = VocabularyManager(
       address=(
-          _VOCABULARY_MANAGER_HOSTNAME.value,
-          _VOCABULARY_MANAGER_PORT.value,
+          _VOCABULARY_SERVER_ADDRESS.value,
+          _VOCABULARY_SERVER_PORT.value,
       ),
       authkey=_VOCABULARY_MANAGER_AUTH_KEY.value.encode()
   )
@@ -92,7 +95,7 @@ def main(_):
 
   manager.start()
   logging.info(
-      f'Started vocabulary manager server at {_VOCABULARY_MANAGER_HOSTNAME.value}:{_VOCABULARY_MANAGER_PORT.value}.')
+      f'Started vocabulary manager server at {_VOCABULARY_SERVER_ADDRESS.value}:{_VOCABULARY_SERVER_PORT.value}.')
 
   # Keep the main script running
   while True:
@@ -104,7 +107,7 @@ if __name__ == '__main__':
   flags.mark_flags_as_required(
       ['vocabulary_manager_auth_key',
        'max_vocab_size',
-       'vocabulary_manager_address',
-       'vocabulary_manager_port'
+       'vocabulary_server_address',
+       'vocabulary_server_port'
        ])
   app.run(main)
