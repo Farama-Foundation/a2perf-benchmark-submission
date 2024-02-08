@@ -7,13 +7,17 @@ import numpy as np
 from absl import app
 from absl import logging
 
-PROCESS_WAIT_INTERVAL = 120  # 2 minutes
+PROCESS_WAIT_INTERVAL = 5
 
 
 def print_subprocess_output(process):
   try:
-    for line in iter(process.stdout.readline, b''):
-      logging.info(line.decode().strip())
+    while True:
+      output = process.stdout.readline()
+      if output == '' and process.poll() is not None:
+        break
+      if output:
+        print(output.strip())
   except Exception as e:
     logging.error(f'Error while printing subprocess output: {e}')
 
@@ -27,7 +31,7 @@ def create_and_manage_process(command, process_list, env_vars=None):
       stderr=subprocess.STDOUT,
       env=env_vars,
       bufsize=1,
-      universal_newlines=True,  # Treats all data as text and decodes it
+      universal_newlines=True,
   )
   process_list.append(process)
   threading.Thread(target=print_subprocess_output, args=(process,)).start()
@@ -222,7 +226,6 @@ def train():
   print(f'random seed: {seed}')
 
   all_processes = []
-
   env_flags = []
   if env_name == 'WebNavigation-v0':
     env_flags.extend([
@@ -311,7 +314,7 @@ def train():
               f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
               f'--task={i}',
               f'--vocabulary_manager_auth_key={vocabulary_manager_auth_key}',
-              f'--vocabulary_server_hostname={vocabulary_server_address}',
+              f'--vocabulary_server_address={vocabulary_server_address}',
               f'--vocabulary_server_port={vocabulary_server_port}',
               f'--verbosity={"1" if i == 0 else "-1"}',
           ]
@@ -324,7 +327,8 @@ def train():
 
     collect_jobs = []
     for command in collect_job_commands:
-      create_and_manage_process(command, all_processes)
+      collect_jobs.append(
+          create_and_manage_process(command, all_processes))
     logging.info('Successfully launched collect jobs.')
 
     while True:
@@ -351,7 +355,7 @@ def train():
         f'--verbosity={logging.get_verbosity()}',
     ]
     logging.info(' '.join(reverb_command))
-    create_and_manage_process(reverb_command, all_processes)
+    reverb_job = create_and_manage_process(reverb_command, all_processes)
     logging.info('Successfully launched reverb server.')
 
     if env_name == 'CircuitTraining-v0':
@@ -448,13 +452,8 @@ def train():
     # can read the final train step.
     time.sleep(PROCESS_WAIT_INTERVAL)
 
-  for process in all_processes:
-    process.kill()
-    try:
-      process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-      logging.info('Process killed unsuccessfully.')
-      return
+    reverb_job.kill()
+    logging.info('Reverb server killed.')
 
 
 def main(_):

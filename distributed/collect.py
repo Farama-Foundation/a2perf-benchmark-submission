@@ -105,19 +105,19 @@ _GIN_BINDINGS = flags.DEFINE_multi_string(
     'gin_bindings', None, 'Gin binding parameters.'
 )
 _VOCABULARY_MANAGER_AUTH_KEY = flags.DEFINE_string(
-    'vocabulary_manager_auth_key', None, 'Authentication key for the manager server.'
+    'vocabulary_manager_auth_key', None,
+    'Authentication key for the manager server.'
 )
-_VOCABULARY_SERVER_HOSTNAME = flags.DEFINE_string(
-    'vocabulary_server_hostname', None, 'Vocabulary server hostname.'
+_VOCABULARY_SERVER_ADDRESS = flags.DEFINE_string(
+    'vocabulary_server_address', None, 'Address for the vocabulary manager.'
 )
 _VOCABULARY_SERVER_PORT = flags.DEFINE_integer(
     'vocabulary_server_port', None, 'Vocabulary server port.'
 )
 ACTOR_COLLECT_METRICS_BUFFER_SIZE = 10
 
-MAX_RETRIES = 10
-RETRY_DELAY = 20
-
+MAX_RETRIES = 2
+RETRY_DELAY = 1
 
 
 def collect_off_policy(
@@ -372,42 +372,44 @@ def main(_):
         suite_pybullet.load, gym_kwargs=default_gym_kwargs
     )
   elif _ENV_NAME.value == 'WebNavigation-v0':
-    # Connect to the global vocabulary. This vocabulary is shared across all
-    # collect jobs.
+
+    # Connect to the global vocabulary. This vocabulary is shared across all collect jobs.
     class VocabularyManager(BaseManager):
       pass
 
     VocabularyManager.register('get_shared_dict')
     VocabularyManager.register('get_shared_lock')
+
+    # Initialize the manager outside of the loop
     manager = VocabularyManager(
         address=(
-            _VOCABULARY_SERVER_HOSTNAME.value,
+            _VOCABULARY_SERVER_ADDRESS.value,
             _VOCABULARY_SERVER_PORT.value,
         ),
         authkey=_VOCABULARY_MANAGER_AUTH_KEY.value.encode(),
     )
 
+    connected = False
     for attempt in range(MAX_RETRIES):
       try:
-        manager = VocabularyManager(
-            address=(
-                _VOCABULARY_SERVER_HOSTNAME.value,
-                _VOCABULARY_SERVER_PORT.value,
-            ),
-            authkey=_VOCABULARY_MANAGER_AUTH_KEY.value.encode(),
-        )
         manager.connect()
+        connected = True
+        print(
+            f'Successfully connected to the vocab server on attempt {attempt + 1}.')
         break
       except ConnectionRefusedError:
         if attempt < MAX_RETRIES - 1:
           print(
-              f'Attempt {attempt + 1} failed to connect to the vocab server.'
-              f' Retrying in {RETRY_DELAY} seconds...'
+              f'Attempt {attempt + 1} failed to connect to the vocab server. '
+              f'Retrying in {RETRY_DELAY} seconds...'
           )
           time.sleep(RETRY_DELAY)
         else:
           print('Failed to connect to the manager server.')
-          raise
+
+    if not connected:
+      raise ConnectionRefusedError(
+          'Unable to connect to the vocabulary server after maximum retries.')
 
     manager.connect()
 
@@ -457,7 +459,7 @@ if __name__ == '__main__':
       'env_name',
       'replay_buffer_server_address',
       'variable_container_server_address',
-      'vocabulary_server_hostname',
+      'vocabulary_server_address',
       'vocabulary_server_port',
       'vocabulary_manager_auth_key',
       'sequence_length',
