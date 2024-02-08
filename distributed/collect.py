@@ -119,12 +119,6 @@ MAX_RETRIES = 10
 RETRY_DELAY = 20
 
 
-class PrefixedLogFormatter(logging.PythonFormatter):
-
-  def format(self, record):
-    original = super(PrefixedLogFormatter, self).format(record)
-    return f'Collect {_TASK.value}: {original}'
-
 
 def collect_off_policy(
     environment_name: str,
@@ -364,10 +358,6 @@ def run_collect(
 
 
 def main(_):
-  # Add a prefix to our absl logger so we know which collect job this is
-  absl_handler = logging.get_absl_handler()
-  absl_handler.setFormatter(PrefixedLogFormatter())
-
   gin.parse_config_files_and_bindings(
       _GIN_FILE.value, _GIN_BINDINGS.value, finalize_config=False
   )
