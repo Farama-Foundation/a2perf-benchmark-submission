@@ -23,18 +23,12 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
-# noinspection PyUnresolvedReferences
-from a2perf.domains import circuit_training
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-# noinspection PyUnresolvedReferences
-from a2perf.domains import web_navigation
-from absl import app
-from absl import flags
-from absl import logging
 import gin
 import numpy as np
 import tensorflow as tf
+from absl import app
+from absl import flags
+from absl import logging
 from tf_agents.environments import py_environment
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_mujoco
@@ -49,6 +43,12 @@ from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 
+# noinspection PyUnresolvedReferences
+from a2perf.domains import circuit_training
+# noinspection PyUnresolvedReferences
+from a2perf.domains import quadruped_locomotion
+# noinspection PyUnresolvedReferences
+from a2perf.domains import web_navigation
 from .agents import _create_ddpg_agent
 from .agents import _create_ddqn_agent
 from .agents import _create_ppo_agent
@@ -186,7 +186,7 @@ def train(
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
-        [Text], py_environment.PyEnvironment
+      [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
@@ -417,6 +417,16 @@ def train(
 
   logging.info('Training finished.')
 
+  # Cleanup so process exits
+  del agent
+  del learner
+  del variable_container
+  del strategy
+
+  # Create root_dir/training_complete file to signal training completion
+  with open(os.path.join(root_dir, 'training_complete'), 'w') as f:
+    f.write('Training complete.')
+  
 
 def main(_):
   if _DEBUG.value:

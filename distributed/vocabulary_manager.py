@@ -99,7 +99,7 @@ def main(_):
 
   # Keep the main script running
   while True:
-    time.sleep(10)
+    time.sleep(60)
     logging.info('Vocabulary manager server is running.')
 
 

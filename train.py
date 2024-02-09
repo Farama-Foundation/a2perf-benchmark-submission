@@ -1,23 +1,18 @@
 import os
 import subprocess
-import threading
 import time
 
 import numpy as np
 from absl import app
 from absl import logging
 
-PROCESS_WAIT_INTERVAL = 5
+PROCESS_WAIT_INTERVAL = 1
 
 
 def print_subprocess_output(process):
   try:
-    while True:
-      output = process.stdout.readline()
-      if output == '' and process.poll() is not None:
-        break
-      if output:
-        print(output.strip())
+    for line in iter(process.stdout.readline, ''):
+      logging.info(line.strip())
   except Exception as e:
     logging.error(f'Error while printing subprocess output: {e}')
 
@@ -25,16 +20,15 @@ def print_subprocess_output(process):
 def create_and_manage_process(command, process_list, env_vars=None):
   if env_vars is None:
     env_vars = os.environ.copy()
+
   process = subprocess.Popen(
       command,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.STDOUT,
       env=env_vars,
-      bufsize=1,
-      universal_newlines=True,
+      text=True,  # Replaces universal_newlines=True in Python 3.7+
   )
+
   process_list.append(process)
-  threading.Thread(target=print_subprocess_output, args=(process,)).start()
+
   return process
 
 
@@ -101,44 +95,45 @@ def train():
   vocabulary_server_address = os.environ.get('VOCABULARY_SERVER_ADDRESS', None)
   vocabulary_server_port = int(os.environ.get('VOCABULARY_SERVER_PORT', -1))
 
-  print(f'replay_buffer_server_address: {replay_buffer_server_address}')
-  print(f'replay_buffer_server_port: {replay_buffer_server_port}')
-  print(
+  logging.info(f'replay_buffer_server_address: {replay_buffer_server_address}')
+  logging.info(f'replay_buffer_server_port: {replay_buffer_server_port}')
+  logging.info(
       f'variable_container_server_address: {variable_container_server_address}'
   )
-  print(f'variable_container_server_port: {variable_container_server_port}')
-  print(f'batch_size: {batch_size}')
-  print(f'debug: {debug}')
-  print(f'entropy_regularization: {entropy_regularization}')
-  print(f'env_batch_size: {env_batch_size}')
-  print(f'env_name: {env_name}')
-  print(f'eval_interval: {eval_interval}')
-  print(f'learning_rate: {learning_rate}')
-  print(f'log_interval: {log_interval}')
-  print(f'num_epochs: {num_epochs}')
-  print(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
-  print(f'root_dir: {root_dir}')
-  print(f'seed: {seed}')
-  print(f'timesteps_per_actorbatch: {timesteps_per_actorbatch}')
-  print(f'total_env_steps: {total_env_steps}')
-  print(f'train_checkpoint_interval: {train_checkpoint_interval}')
+  logging.info(
+      f'variable_container_server_port: {variable_container_server_port}')
+  logging.info(f'batch_size: {batch_size}')
+  logging.info(f'debug: {debug}')
+  logging.info(f'entropy_regularization: {entropy_regularization}')
+  logging.info(f'env_batch_size: {env_batch_size}')
+  logging.info(f'env_name: {env_name}')
+  logging.info(f'eval_interval: {eval_interval}')
+  logging.info(f'learning_rate: {learning_rate}')
+  logging.info(f'log_interval: {log_interval}')
+  logging.info(f'num_epochs: {num_epochs}')
+  logging.info(f'policy_checkpoint_interval: {policy_checkpoint_interval}')
+  logging.info(f'root_dir: {root_dir}')
+  logging.info(f'seed: {seed}')
+  logging.info(f'timesteps_per_actorbatch: {timesteps_per_actorbatch}')
+  logging.info(f'total_env_steps: {total_env_steps}')
+  logging.info(f'train_checkpoint_interval: {train_checkpoint_interval}')
 
   if env_name == 'CircuitTraining-v0':
-    print(f'netlist_path: {netlist_path}')
-    print(f'init_placement_path: {init_placement_path}')
-    print(f'std_cell_placer_mode: {std_cell_placer_mode}')
+    logging.info(f'netlist_path: {netlist_path}')
+    logging.info(f'init_placement_path: {init_placement_path}')
+    logging.info(f'std_cell_placer_mode: {std_cell_placer_mode}')
   elif env_name == 'QuadrupedLocomotion-v0':
-    print(f'motion_file_path: {motion_file_path}')
+    logging.info(f'motion_file_path: {motion_file_path}')
   elif env_name == 'WebNavigation-v0':
-    print(f'vocabulary_server_address: {vocabulary_server_address}')
-    print(f'vocabulary_server_port: {vocabulary_server_port}')
-    print(f'difficulty_level: {difficulty_level}')
-    print(f'num_websites: {num_websites}')
-    print(f'embedding_dim: {embedding_dim}')
-    print(f'latent_dim: {latent_dim}')
-    print(f'epsilon_greedy: {epsilon_greedy}')
-    print(f'profile_value_dropout: {profile_value_dropout}')
-    print(f'max_vocab_size: {max_vocab_size}')
+    logging.info(f'vocabulary_server_address: {vocabulary_server_address}')
+    logging.info(f'vocabulary_server_port: {vocabulary_server_port}')
+    logging.info(f'difficulty_level: {difficulty_level}')
+    logging.info(f'num_websites: {num_websites}')
+    logging.info(f'embedding_dim: {embedding_dim}')
+    logging.info(f'latent_dim: {latent_dim}')
+    logging.info(f'epsilon_greedy: {epsilon_greedy}')
+    logging.info(f'profile_value_dropout: {profile_value_dropout}')
+    logging.info(f'max_vocab_size: {max_vocab_size}')
   else:
     raise ValueError(f'Unsupported environment: {env_name}')
 
@@ -215,15 +210,17 @@ def train():
       ).astype(int),
   )
 
-  print(f'train_steps_per_iteration: {train_steps_per_iteration}')
-  print(f'num_iterations: {num_iterations}')
-  print(f'max_train_steps: {max_train_steps}')
-  print(f'converted policy_checkpoint_interval: {policy_checkpoint_interval}')
-  print(f'converted train_checkpoint_interval: {train_checkpoint_interval}')
-  print(f'converted eval_interval: {eval_interval}')
-  print(f'converted log_interval: {log_interval}')
-  print(f'shuffle_buffer_size: {shuffle_buffer_size}')
-  print(f'random seed: {seed}')
+  logging.info(f'train_steps_per_iteration: {train_steps_per_iteration}')
+  logging.info(f'num_iterations: {num_iterations}')
+  logging.info(f'max_train_steps: {max_train_steps}')
+  logging.info(
+      f'converted policy_checkpoint_interval: {policy_checkpoint_interval}')
+  logging.info(
+      f'converted train_checkpoint_interval: {train_checkpoint_interval}')
+  logging.info(f'converted eval_interval: {eval_interval}')
+  logging.info(f'converted log_interval: {log_interval}')
+  logging.info(f'shuffle_buffer_size: {shuffle_buffer_size}')
+  logging.info(f'random seed: {seed}')
 
   all_processes = []
   env_flags = []
@@ -244,7 +241,7 @@ def train():
           f'--max_vocab_size={max_vocab_size}',
           f'--verbosity={logging.get_verbosity()}',
       ]
-      print(f'Command for vocab manager: {vocab_manager_command}')
+      logging.info(f'Command for vocab manager: {vocab_manager_command}')
       vocab_server_process = create_and_manage_process(vocab_manager_command,
                                                        all_processes)
 
@@ -331,15 +328,11 @@ def train():
           create_and_manage_process(command, all_processes))
     logging.info('Successfully launched collect jobs.')
 
-    while True:
-      try:
-        for process in collect_jobs:
-          process.wait(timeout=PROCESS_WAIT_INTERVAL)
-        break
-      except subprocess.TimeoutExpired:
-        logging.info('Collect jobs still running.')
-        continue
-    logging.info('Collect jobs finished.')
+    # Recall that root dir is modified for collect jobs to separate
+    # system metrics from the train job
+    while not os.path.exists(
+        os.path.join(root_dir, '../../', 'training_complete')):
+      time.sleep(PROCESS_WAIT_INTERVAL)
 
   elif job_type == 'train':
     reverb_command = [
@@ -355,7 +348,7 @@ def train():
         f'--verbosity={logging.get_verbosity()}',
     ]
     logging.info(' '.join(reverb_command))
-    reverb_job = create_and_manage_process(reverb_command, all_processes)
+    create_and_manage_process(reverb_command, all_processes)
     logging.info('Successfully launched reverb server.')
 
     if env_name == 'CircuitTraining-v0':
@@ -436,24 +429,16 @@ def train():
 
     # Display the command
     logging.info(' '.join(train_job_command))
-    train_job = create_and_manage_process(train_job_command, all_processes)
+    create_and_manage_process(train_job_command, all_processes)
     logging.info('Successfully launched train job.')
 
-    while True:
-      try:
-        train_job.wait(timeout=PROCESS_WAIT_INTERVAL)
-        break
-      except subprocess.TimeoutExpired:
-        logging.info('Train job still running.')
-        continue
-    logging.info('Train job finished.')
+    while not os.path.exists(os.path.join(root_dir, 'training_complete')):
+      time.sleep(PROCESS_WAIT_INTERVAL)
 
-    # Wait before killing the reverb server so the collect jobs
-    # can read the final train step.
-    time.sleep(PROCESS_WAIT_INTERVAL)
-
-    reverb_job.kill()
-    logging.info('Reverb server killed.')
+  logging.info('Training complete.')
+  for process in all_processes:
+    process.kill()
+  logging.info('All processes killed.')
 
 
 def main(_):

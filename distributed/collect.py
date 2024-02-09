@@ -116,8 +116,8 @@ _VOCABULARY_SERVER_PORT = flags.DEFINE_integer(
 )
 ACTOR_COLLECT_METRICS_BUFFER_SIZE = 10
 
-MAX_RETRIES = 2
-RETRY_DELAY = 1
+MAX_RETRIES = 8640  # 24 hours worth of retries
+RETRY_DELAY = 10
 
 
 def collect_off_policy(
