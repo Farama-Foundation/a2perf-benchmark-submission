@@ -54,7 +54,7 @@ def main(_):
 
   manager = VocabularyManager(
       address=(
-          _VOCABULARY_SERVER_ADDRESS.value,
+          '0.0.0.0', # Allow connections from any address (firewall rules apply)
           _VOCABULARY_SERVER_PORT.value,
       ),
       authkey=_VOCABULARY_MANAGER_AUTH_KEY.value.encode()
@@ -102,7 +102,7 @@ def main(_):
 
   # Keep the main script running
   while True:
-    time.sleep(10)
+    time.sleep(60)
     logging.info(
         f'Vocabulary manager server running at {_VOCABULARY_SERVER_ADDRESS.value}:{_VOCABULARY_SERVER_PORT.value}.')
     logging.info(f'\tCurrent vocabulary size: {len(_shared_dict)}')
