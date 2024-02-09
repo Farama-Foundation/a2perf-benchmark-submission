@@ -47,7 +47,10 @@ def LockProxy(lock):
 
 def main(_):
   logging.info(
-      f'Attempting to start vocabulary manager server at {_VOCABULARY_SERVER_ADDRESS.value}:{_VOCABULARY_SERVER_PORT.value}.' * 10000)
+      f'Attempting to start vocabulary manager server at '
+      f'{_VOCABULARY_SERVER_ADDRESS.value}:{_VOCABULARY_SERVER_PORT.value}.'
+  )
+  logging.info(f'Using authkey: {_VOCABULARY_MANAGER_AUTH_KEY.value.encode()}')
 
   manager = VocabularyManager(
       address=(
@@ -99,8 +102,12 @@ def main(_):
 
   # Keep the main script running
   while True:
-    time.sleep(60)
-    logging.info('Vocabulary manager server is running.')
+    time.sleep(10)
+    logging.info(
+        f'Vocabulary manager server running at {_VOCABULARY_SERVER_ADDRESS.value}:{_VOCABULARY_SERVER_PORT.value}.')
+    logging.info(f'\tCurrent vocabulary size: {len(_shared_dict)}')
+    logging.info(
+        f'\tConnect with authkey: {_VOCABULARY_MANAGER_AUTH_KEY.value.encode()}')
 
 
 if __name__ == '__main__':
