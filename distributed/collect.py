@@ -105,8 +105,9 @@ _GIN_BINDINGS = flags.DEFINE_multi_string(
     'gin_bindings', None, 'Gin binding parameters.'
 )
 _VOCABULARY_MANAGER_AUTH_KEY = flags.DEFINE_string(
-    'vocabulary_manager_auth_key', None,
-    'Authentication key for the manager server.'
+    'vocabulary_manager_auth_key',
+    None,
+    'Authentication key for the manager server.',
 )
 _VOCABULARY_SERVER_ADDRESS = flags.DEFINE_string(
     'vocabulary_server_address', None, 'Address for the vocabulary manager.'
@@ -133,7 +134,26 @@ def collect_off_policy(
     suite_load_function: callable,
     initial_collect_steps: int,
 ) -> None:
-  summary_dir = os.path.join(root_dir, 'summaries', str(task))
+
+  # We run collect jobs in replicas when using kubernetes,
+  # so check if JOB_COMPLETION_INDEX is set.
+  # If it is, we make sure to only record summaries from task 0, replica 0.
+  if 'JOB_COMPLETION_INDEX' in os.environ:
+    job_completion_index = int(os.environ['JOB_COMPLETION_INDEX'])
+    if job_completion_index == 0 and task == 0:
+      summary_dir = os.path.join(root_dir, 'summaries', str(task))
+      actor_collect_metrics = actor.collect_metrics(
+          ACTOR_COLLECT_METRICS_BUFFER_SIZE
+      )
+    else:
+      summary_dir = None
+      actor_collect_metrics = []
+  else:
+    summary_dir = os.path.join(root_dir, 'summaries', str(task))
+    actor_collect_metrics = actor.collect_metrics(
+        ACTOR_COLLECT_METRICS_BUFFER_SIZE
+    )
+
   logging.info('Summary dir: %s', summary_dir)
 
   collect_env = suite_load_function(
@@ -182,10 +202,8 @@ def collect_off_policy(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE)
-      if task == 0
-      else [],
-      summary_dir=summary_dir if task == 0 else None,
+      metrics=actor_collect_metrics,
+      summary_dir=summary_dir,
       summary_interval=summary_interval,
       observers=[rb_observer, env_step_metric],
   )
@@ -233,8 +251,24 @@ def collect_sequences(
 ) -> None:
   """Collects experience using a policy updated after every episode."""
   logging.info('Sequence length collect: %s', sequence_length)
-  summary_dir = os.path.join(root_dir, 'summaries', str(task))
-
+  # We run collect jobs in replicas when using kubernetes,
+  # so check if JOB_COMPLETION_INDEX is set.
+  # If it is, we make sure to only record summaries from task 0, replica 0.
+  if 'JOB_COMPLETION_INDEX' in os.environ:
+    job_completion_index = int(os.environ['JOB_COMPLETION_INDEX'])
+    if job_completion_index == 0 and task == 0:
+      summary_dir = os.path.join(root_dir, 'summaries', str(task))
+      actor_collect_metrics = actor.collect_metrics(
+          ACTOR_COLLECT_METRICS_BUFFER_SIZE
+      )
+    else:
+      summary_dir = None
+      actor_collect_metrics = []
+  else:
+    summary_dir = os.path.join(root_dir, 'summaries', str(task))
+    actor_collect_metrics = actor.collect_metrics(
+        ACTOR_COLLECT_METRICS_BUFFER_SIZE
+    )
   collect_env = suite_load_function(
       environment_name,
       env_wrappers=[wrappers.ActionClipWrapper],
@@ -270,11 +304,9 @@ def collect_sequences(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE)
-      if task == 0
-      else [],
+      metrics=actor_collect_metrics,
       summary_interval=summary_interval,
-      summary_dir=summary_dir if task == 0 else None,
+      summary_dir=summary_dir,
       observers=[experience_observer, env_step_metric],
   )
 
@@ -395,7 +427,9 @@ def main(_):
         manager.connect()
         connected = True
         print(
-            f'Successfully connected to the vocab server on attempt {attempt + 1}.')
+            'Successfully connected to the vocab server on attempt'
+            f' {attempt + 1}.'
+        )
         break
       except ConnectionRefusedError:
         if attempt < MAX_RETRIES - 1:
@@ -409,7 +443,8 @@ def main(_):
 
     if not connected:
       raise ConnectionRefusedError(
-          'Unable to connect to the vocabulary server after maximum retries.')
+          'Unable to connect to the vocabulary server after maximum retries.'
+      )
 
     manager.connect()
 
