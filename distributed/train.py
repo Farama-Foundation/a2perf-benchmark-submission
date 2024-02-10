@@ -23,12 +23,15 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
-import gin
-import numpy as np
-import tensorflow as tf
+from a2perf.domains import circuit_training
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains import web_navigation
 from absl import app
 from absl import flags
 from absl import logging
+import gin
+import numpy as np
+import tensorflow as tf
 from tf_agents.environments import py_environment
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_mujoco
@@ -43,12 +46,6 @@ from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 
-# noinspection PyUnresolvedReferences
-from a2perf.domains import circuit_training
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-# noinspection PyUnresolvedReferences
-from a2perf.domains import web_navigation
 from .agents import _create_ddpg_agent
 from .agents import _create_ddqn_agent
 from .agents import _create_ppo_agent
@@ -67,7 +64,11 @@ _PROFILE_VALUE_DROPOUT = flags.DEFINE_float(
 _EMBEDDING_DIM = flags.DEFINE_integer(
     'embedding_dim', None, 'Embedding dimension of the LSTM.'
 )
-
+_TIMESTEPS_PER_ACTORBATCH = flags.DEFINE_integer(
+    'timesteps_per_actorbatch',
+    None,
+    'Number of timesteps per actorbatch.',
+)
 _LEARNER_ITERATIONS_PER_CALL = flags.DEFINE_integer(
     'learner_iterations_per_call',
     None,
@@ -186,12 +187,13 @@ def train(
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
-      [Text], py_environment.PyEnvironment
+        [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
     use_gae: bool = True,
     env_batch_size: int = 1,
+    timesteps_per_actorbatch: int = 0,
     seed: Optional[int] = None,
     max_vocab_size: Optional[int] = None,
     latent_dim: Optional[int] = None,
@@ -325,9 +327,8 @@ def train(
         ).prefetch(tf.data.AUTOTUNE)
 
       # Add an `after_train_step_fn` with metrics on how on-policy the data is.
-      timesteps_per_actorbatch = env_batch_size * sequence_length
-      train_steps_per_policy_update = (
-          timesteps_per_actorbatch * num_epochs // num_replicas // batch_size
+      train_steps_per_policy_update = int(
+          timesteps_per_actorbatch * num_epochs / num_replicas / batch_size
       )
       logging.info(
           'Train steps per policy update: %d', train_steps_per_policy_update
@@ -426,7 +427,7 @@ def train(
   # Create root_dir/training_complete file to signal training completion
   with open(os.path.join(root_dir, 'training_complete'), 'w') as f:
     f.write('Training complete.')
-  
+
 
 def main(_):
   if _DEBUG.value:
@@ -501,6 +502,7 @@ def main(_):
       exploration_noise_std=_EXPLORATION_NOISE_STD.value,
       seed=_SEED.value,
       algorithm=_ALGORITHM.value,
+      timesteps_per_actorbatch=_TIMESTEPS_PER_ACTORBATCH.value,
       max_vocab_size=_MAX_VOCAB_SIZE.value,
       latent_dim=_LATENT_DIM.value,
       profile_value_dropout=_PROFILE_VALUE_DROPOUT.value,
@@ -516,6 +518,7 @@ if __name__ == '__main__':
       'replay_buffer_server_address',
       'variable_container_server_address',
       'env_batch_size',
+      'timesteps_per_actorbatch',
       'sequence_length',
       'seed',
       'batch_size',
