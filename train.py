@@ -66,7 +66,7 @@ def train():
   epsilon_greedy = float(os.environ.get('EPSILON_GREEDY', -1))
   profile_value_dropout = float(os.environ.get('PROFILE_VALUE_DROPOUT', -1))
   std_cell_placer_mode = os.environ.get('STD_CELL_PLACER_MODE', None)
-
+  num_replicas = int(os.environ.get('NUM_REPLICAS', -1))
   # Networking params
   num_collect_jobs = int(os.environ.get('NUM_COLLECT_JOBS', 1))
   vocabulary_manager_auth_key = os.environ.get(
@@ -172,7 +172,7 @@ def train():
         f' {train_steps_per_iteration}'
     )
   min_table_size_before_sampling = 1
-  max_train_steps = train_steps_per_iteration * num_iterations
+  max_train_steps = train_steps_per_iteration * num_iterations // num_replicas
 
   policy_checkpoint_interval = np.maximum(
       1,
@@ -274,11 +274,11 @@ def train():
               f'--debug={debug}',
               f'--global_seed={seed}',
               f'--max_train_steps={max_train_steps}',
+              f'--num_replicas={num_replicas}',
               f'--verbosity={"1" if i == 0 else "-1"}',
               f'--summary_interval={log_interval}',
               f'--initial_collect_steps={initial_collect_steps}',
               f'--sequence_length={num_collect_steps_per_actor}',
-              f'--initial_collect_steps={initial_collect_steps}',
           ]
           + env_flags
           for i in range(num_collect_jobs)
@@ -293,6 +293,7 @@ def train():
               f'--sequence_length={num_collect_steps_per_actor}',
               f'--summary_interval={log_interval}',
               f'--env_batch_size={env_batch_size}',
+              f'--num_replicas={num_replicas}',
               f'--initial_collect_steps={initial_collect_steps}',
               f'--max_train_steps={max_train_steps}',
               f'--debug={debug}',
@@ -362,6 +363,7 @@ def train():
           f'--num_epochs={num_epochs}',
           f'--batch_size={batch_size}',
           f'--shuffle_buffer_size={shuffle_buffer_size}',
+          f'--num_replicas={num_replicas}',
           f'--algorithm={algorithm}',
           f'--debug={debug}',
           f'--epsilon_greedy={epsilon_greedy}',
@@ -399,6 +401,7 @@ def train():
           f'--train_checkpoint_interval={train_checkpoint_interval}',
           f'--max_train_steps={max_train_steps}',
           f'--env_batch_size={env_batch_size}',
+          f'--num_replicas={num_replicas}',
           f'--timesteps_per_actorbatch={timesteps_per_actorbatch}',
           f'--learning_rate={learning_rate}',
           f'--log_interval={log_interval}',

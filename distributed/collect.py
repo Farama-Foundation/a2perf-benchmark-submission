@@ -38,7 +38,11 @@ _DEBUG = flags.DEFINE_bool(
     False,
     'Whether to run in debug mode.',
 )
-
+_NUM_REPLICAS = flags.DEFINE_integer(
+    'num_replicas',
+    None,
+    'Number of replicas to use.',
+)
 _ALGORITHM = flags.DEFINE_string(
     'algorithm',
     None,
@@ -504,5 +508,6 @@ if __name__ == '__main__':
       'max_train_steps',
       'initial_collect_steps',
       'algorithm',
+      'num_replicas',
   ])
   multiprocessing.handle_main(functools.partial(app.run, main))

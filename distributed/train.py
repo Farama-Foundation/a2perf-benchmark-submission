@@ -61,6 +61,9 @@ _LATENT_DIM = flags.DEFINE_integer(
 _PROFILE_VALUE_DROPOUT = flags.DEFINE_float(
     'profile_value_dropout', None, 'Profile value dropout.'
 )
+_NUM_REPLICAS = flags.DEFINE_integer(
+    'num_replicas', None, 'Number of replicas.'
+)
 _EMBEDDING_DIM = flags.DEFINE_integer(
     'embedding_dim', None, 'Embedding dimension of the LSTM.'
 )
@@ -193,6 +196,7 @@ def train(
     train_checkpoint_interval: int = 1000,
     use_gae: bool = True,
     env_batch_size: int = 1,
+    num_replicas: int = 1,
     timesteps_per_actorbatch: int = 0,
     seed: Optional[int] = None,
     max_vocab_size: Optional[int] = None,
@@ -241,7 +245,6 @@ def train(
 
   # Create the agent.
   with strategy.scope():
-    num_replicas = strategy.num_replicas_in_sync
     train_step = train_utils.create_train_step()
 
     agent = create_agent_fn(
@@ -296,7 +299,6 @@ def train(
 
     if algorithm in ('ppo',):
       # More replicas results in fewer train steps per epoch.
-      max_train_step //= num_replicas
       reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
           agent.collect_data_spec,
           sequence_length=sequence_length,
@@ -508,6 +510,7 @@ def main(_):
       profile_value_dropout=_PROFILE_VALUE_DROPOUT.value,
       embedding_dim=_EMBEDDING_DIM.value,
       epsilon_greedy=_EPSILON_GREEDY.value,
+      num_replicas=_NUM_REPLICAS.value,
   )
 
 
@@ -533,5 +536,6 @@ if __name__ == '__main__':
       'learner_iterations_per_call',
       'shuffle_buffer_size',
       'algorithm',
+      'num_replicas',
   ])
   multiprocessing.handle_main(lambda _: app.run(main))
