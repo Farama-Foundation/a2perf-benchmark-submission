@@ -138,10 +138,10 @@ def train():
         timesteps_per_actorbatch / batch_size * num_epochs
     )
 
-    # Shuffle buffer just needs to be enough to uncorrelate samples within a
-    # few episodes. We have assumed the `num_steps_per_actor` is the number of
+    # Shuffle buffer just needs to be enough to uncorrelate samples within an
+    # episode. We have assumed the `num_steps_per_actor` is the number of
     # timesteps in a single episode.
-    shuffle_buffer_size = 3 * num_collect_steps_per_actor
+    shuffle_buffer_size = num_collect_steps_per_actor
 
     # Only a single iteration is performed per call to the learner. We set the
     # `num_samples` argument to `env_batch_size` to ensure that the learner

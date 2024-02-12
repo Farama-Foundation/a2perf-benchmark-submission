@@ -312,9 +312,12 @@ def train(
           server_address=replay_buffer_server_address,
       )
 
+      # Each call to the dataset will return `episodes_per_actorbatch` episodes.
+      episodes_per_actorbatch = timesteps_per_actorbatch // sequence_length
+
       def experience_dataset_fn():
         return reverb_replay_train.as_dataset(
-            sample_batch_size=env_batch_size,
+            sample_batch_size=episodes_per_actorbatch,
             num_steps=sequence_length,
             sequence_preprocess_fn=agent.preprocess_sequence,
             num_parallel_calls=tf.data.AUTOTUNE,
@@ -322,7 +325,7 @@ def train(
 
       def normalization_dataset_fn():
         return reverb_replay_train.as_dataset(
-            sample_batch_size=env_batch_size,
+            sample_batch_size=episodes_per_actorbatch,
             num_steps=sequence_length,
             sequence_preprocess_fn=agent.preprocess_sequence,
             num_parallel_calls=tf.data.AUTOTUNE,
