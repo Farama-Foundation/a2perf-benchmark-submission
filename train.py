@@ -417,9 +417,6 @@ def train():
       time.sleep(PROCESS_WAIT_INTERVAL)
 
   logging.info('Training complete.')
-  for process in all_processes:
-    process.kill()
-  logging.info('All processes killed.')
 
 
 def main(_):

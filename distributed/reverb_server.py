@@ -1,6 +1,7 @@
 """Main binary to launch a stand alone Reverb RB server."""
 
 import os
+import time
 
 from absl import app
 from absl import flags
@@ -14,6 +15,7 @@ from tf_agents.specs import tensor_spec
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
+
 
 _NUM_NETLISTS = flags.DEFINE_integer(
     'num_netlists',
@@ -53,6 +55,8 @@ _MIN_TABLE_SIZE_BEFORE_SAMPLING = flags.DEFINE_integer(
     None,
     'Minimum number of items in the replay buffer table before sampling.',
 )
+
+PROCESS_WAIT_INTERVAL = 10
 
 
 def run_reverb_server(root_dir):
@@ -163,11 +167,13 @@ def run_reverb_server(root_dir):
   )
 
   logging.info(
-      f'Started Reverb server on port {_PORT.value} with capacity'
-      f' {_REPLAY_BUFFER_CAPACITY.value}'
+      'Started Reverb server on port %s with capacity %s',
+      _PORT.value,
+      _REPLAY_BUFFER_CAPACITY.value,
   )
 
-  server.wait()
+  while not os.path.exists(os.path.join(_ROOT_DIR.value, 'training_complete')):
+    time.sleep(PROCESS_WAIT_INTERVAL)
 
 
 def run_circuit_training_reverb_server(root_dir):
@@ -254,7 +260,9 @@ def run_circuit_training_reverb_server(root_dir):
       ],
       port=_PORT.value,
   )
-  server.wait()
+
+  while not os.path.exists(os.path.join(_ROOT_DIR.value, 'training_complete')):
+    time.sleep(PROCESS_WAIT_INTERVAL)
 
 
 def main(_):
