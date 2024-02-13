@@ -138,10 +138,8 @@ def train():
         timesteps_per_actorbatch / batch_size * num_epochs
     )
 
-    # Shuffle buffer just needs to be enough to uncorrelate samples within an
-    # episode. We have assumed the `num_steps_per_actor` is the number of
-    # timesteps in a single episode.
-    shuffle_buffer_size = num_collect_steps_per_actor
+    # Shuffle all samples collected in the current iteration
+    shuffle_buffer_size = timesteps_per_actorbatch
 
     # Only a single iteration is performed per call to the learner. We set the
     # `num_samples` argument to `env_batch_size` to ensure that the learner
@@ -175,34 +173,22 @@ def train():
   min_table_size_before_sampling = 1
   max_train_steps = train_steps_per_iteration * num_iterations // num_replicas
 
-  policy_checkpoint_interval = np.maximum(
-      1,
-      np.round(
-          policy_checkpoint_interval
-          / timesteps_per_actorbatch
-          * train_steps_per_iteration
-      ).astype(int),
-  )
-  train_checkpoint_interval = np.maximum(
-      1,
-      np.round(
-          train_checkpoint_interval
-          / timesteps_per_actorbatch
-          * train_steps_per_iteration
-      ).astype(int),
-  )
-  eval_interval = np.maximum(
-      1,
-      np.round(
-          eval_interval / timesteps_per_actorbatch * train_steps_per_iteration
-      ).astype(int),
-  )
-  log_interval = np.maximum(
-      1,
-      np.round(
-          log_interval / timesteps_per_actorbatch * train_steps_per_iteration
-      ).astype(int),
-  )
+  policy_checkpoint_interval = np.ceil(
+      policy_checkpoint_interval
+      / timesteps_per_actorbatch
+      * train_steps_per_iteration
+  ).astype(int)
+  train_checkpoint_interval = np.ceil(
+      train_checkpoint_interval
+      / timesteps_per_actorbatch
+      * train_steps_per_iteration
+  ).astype(int)
+  eval_interval = np.ceil(
+      eval_interval / timesteps_per_actorbatch * train_steps_per_iteration
+  ).astype(int)
+  log_interval = np.ceil(
+      log_interval / timesteps_per_actorbatch * train_steps_per_iteration
+  ).astype(int)
 
   logging.info('train_steps_per_iteration: %s', train_steps_per_iteration)
   logging.info('num_iterations: %s', num_iterations)
