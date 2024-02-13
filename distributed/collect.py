@@ -213,8 +213,9 @@ def collect_off_policy(
   )
 
   # Run the experience collection loop.
+  training_done_file = os.path.join(root_dir, '../../', 'training_complete')
   prev_num_steps_collected = 0
-  while train_step < max_train_step:
+  while train_step < max_train_step and not os.path.exists(training_done_file):
     start_time = time.time()
     collect_actor.run()
     end_time = time.time()
@@ -357,6 +358,7 @@ def run_collect(
       learner.POLICY_SAVED_MODEL_DIR,
       learner.COLLECT_POLICY_SAVED_MODEL_DIR,
   )
+
   logging.info('Looking for collect policy in %s', collect_policy_dir)
 
   collect_policy = train_utils.wait_for_policy(
