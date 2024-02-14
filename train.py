@@ -138,8 +138,8 @@ def train():
         timesteps_per_actorbatch / batch_size * num_epochs
     )
 
-    # Shuffle a few episodes worth of data.
-    shuffle_buffer_size = 3 * num_collect_steps_per_actor
+    # Shuffle a maximum episode length worth of data.
+    shuffle_buffer_size = num_collect_steps_per_actor
 
     # Only a single iteration is performed per call to the learner. We set the
     # `num_samples` argument to `env_batch_size` to ensure that the learner
