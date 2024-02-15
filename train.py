@@ -87,46 +87,42 @@ def train():
   vocabulary_server_address = os.environ.get('VOCABULARY_SERVER_ADDRESS', None)
   vocabulary_server_port = int(os.environ.get('VOCABULARY_SERVER_PORT', -1))
 
-  logging.info('replay_buffer_server_address: %s', replay_buffer_server_address)
-  logging.info('replay_buffer_server_port: %s', replay_buffer_server_port)
-  logging.info(
-      'variable_container_server_address: %s', variable_container_server_address
-  )
-  logging.info(
-      'variable_container_server_port: %s', variable_container_server_port
-  )
-  logging.info('batch_size: %s', batch_size)
-  logging.info('debug: %s', debug)
-  logging.info('entropy_regularization: %s', entropy_regularization)
-  logging.info('env_batch_size: %s', env_batch_size)
-  logging.info('env_name: %s', env_name)
-  logging.info('eval_interval: %s', eval_interval)
-  logging.info('learning_rate: %s', learning_rate)
-  logging.info('log_interval: %s', log_interval)
-  logging.info('num_epochs: %s', num_epochs)
-  logging.info('policy_checkpoint_interval: %s', policy_checkpoint_interval)
-  logging.info('root_dir: %s', root_dir)
-  logging.info('seed: %s', seed)
-  logging.info('timesteps_per_actorbatch: %s', timesteps_per_actorbatch)
-  logging.info('total_env_steps: %s', total_env_steps)
-  logging.info('train_checkpoint_interval: %s', train_checkpoint_interval)
+  print('replay_buffer_server_address:', replay_buffer_server_address)
+  print('replay_buffer_server_port:', replay_buffer_server_port)
+  print('variable_container_server_address:', variable_container_server_address)
+  print('variable_container_server_port:', variable_container_server_port)
+  print('batch_size:', batch_size)
+  print('debug:', debug)
+  print('entropy_regularization:', entropy_regularization)
+  print('env_batch_size:', env_batch_size)
+  print('env_name:', env_name)
+  print('eval_interval:', eval_interval)
+  print('learning_rate:', learning_rate)
+  print('log_interval:', log_interval)
+  print('num_epochs:', num_epochs)
+  print('policy_checkpoint_interval:', policy_checkpoint_interval)
+  print('root_dir:', root_dir)
+  print('seed:', seed)
+  print('timesteps_per_actorbatch:', timesteps_per_actorbatch)
+  print('total_env_steps:', total_env_steps)
+  print('train_checkpoint_interval:', train_checkpoint_interval)
 
   if env_name == 'CircuitTraining-v0':
-    logging.info('netlist_path: %s', netlist_path)
-    logging.info('init_placement_path: %s', init_placement_path)
-    logging.info('std_cell_placer_mode: %s', std_cell_placer_mode)
+    print('netlist_path:', netlist_path)
+    print('init_placement_path:', init_placement_path)
+    print('std_cell_placer_mode:', std_cell_placer_mode)
   elif env_name == 'QuadrupedLocomotion-v0':
-    logging.info('motion_file_path: %s', motion_file_path)
+    print('motion_file_path:', motion_file_path)
   elif env_name == 'WebNavigation-v0':
-    logging.info('vocabulary_server_address: %s', vocabulary_server_address)
-    logging.info('vocabulary_server_port: %s', vocabulary_server_port)
-    logging.info('difficulty_level: %s', difficulty_level)
-    logging.info('num_websites: %s', num_websites)
-    logging.info('embedding_dim: %s', embedding_dim)
-    logging.info('latent_dim: %s', latent_dim)
-    logging.info('epsilon_greedy: %s', epsilon_greedy)
-    logging.info('profile_value_dropout: %s', profile_value_dropout)
-    logging.info('max_vocab_size: %s', max_vocab_size)
+    print('vocabulary_server_address:', vocabulary_server_address)
+    print('vocabulary_server_port:', vocabulary_server_port)
+    print('difficulty_level:', difficulty_level)
+    print('num_websites:', num_websites)
+    print('embedding_dim:', embedding_dim)
+    print('latent_dim:', latent_dim)
+    print('epsilon_greedy:', epsilon_greedy)
+    print('profile_value_dropout:', profile_value_dropout)
+    print('max_vocab_size:', max_vocab_size)
   else:
     raise ValueError(f'Unsupported environment: {env_name}')
 
@@ -138,9 +134,9 @@ def train():
         timesteps_per_actorbatch / batch_size * num_epochs
     )
 
-    # Shuffle a maximum episode length worth of data.
-    shuffle_buffer_size = num_collect_steps_per_actor
-
+    # Shuffle the data coming from a single collect job.
+    # shuffle_buffer_size = timesteps_per_actorbatch // env_batch_size
+    shuffle_buffer_size = timesteps_per_actorbatch
     # Only a single iteration is performed per call to the learner. We set the
     # `num_samples` argument to `env_batch_size` to ensure that the learner
     # processes all the data collected by the actors in a single call.
@@ -151,6 +147,8 @@ def train():
     num_iterations = np.maximum(
         1, total_env_steps / timesteps_per_actorbatch
     ).astype(int)
+
+    min_table_size_before_sampling = 1
   elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg', 'dqn'):
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration
     # roughly.
@@ -163,6 +161,8 @@ def train():
     num_iterations = np.maximum(
         1, total_env_steps / timesteps_per_actorbatch
     ).astype(int)
+    min_table_size_before_sampling = 1
+
   else:
     raise ValueError(f'Unsupported algorithm: {algorithm}')
   if train_steps_per_iteration < 1:
@@ -170,7 +170,7 @@ def train():
         'train_steps_per_iteration must be at least 1, got'
         f' {train_steps_per_iteration}'
     )
-  min_table_size_before_sampling = 1
+
   max_train_steps = train_steps_per_iteration * num_iterations // num_replicas
 
   policy_checkpoint_interval = np.ceil(
@@ -190,19 +190,17 @@ def train():
       log_interval / timesteps_per_actorbatch * train_steps_per_iteration
   ).astype(int)
 
-  logging.info('train_steps_per_iteration: %s', train_steps_per_iteration)
-  logging.info('num_iterations: %s', num_iterations)
-  logging.info('max_train_steps: %s', max_train_steps)
-  logging.info(
-      'converted policy_checkpoint_interval: %s', policy_checkpoint_interval
-  )
-  logging.info(
-      'converted train_checkpoint_interval: %s', train_checkpoint_interval
-  )
-  logging.info('converted eval_interval: %s', eval_interval)
-  logging.info('converted log_interval: %s', log_interval)
-  logging.info('shuffle_buffer_size: %s', shuffle_buffer_size)
-  logging.info('random seed: %s', seed)
+  print('train_checkpoint_interval:', train_checkpoint_interval)
+  print('policy_checkpoint_interval:', policy_checkpoint_interval)
+  print('eval_interval:', eval_interval)
+  print('log_interval:', log_interval)
+  print('shuffle_buffer_size:', shuffle_buffer_size)
+  print('train_steps_per_iteration:', train_steps_per_iteration)
+  print('learner_iterations_per_call:', learner_iterations_per_call)
+  print('initial_collect_steps:', initial_collect_steps)
+  print('num_iterations:', num_iterations)
+  print('min_table_size_before_sampling:', min_table_size_before_sampling)
+  print('max_train_steps:', max_train_steps)
 
   all_processes = []
   env_flags = []
@@ -223,7 +221,7 @@ def train():
           f'--max_vocab_size={max_vocab_size}',
           f'--verbosity={logging.get_verbosity()}',
       ]
-      logging.info('Command for vocab manager: %s', vocab_manager_command)
+      print('Command for vocab manager:', vocab_manager_command)
       vocab_server_process = create_and_manage_process(
           vocab_manager_command, all_processes
       )
@@ -231,7 +229,7 @@ def train():
       if vocab_server_process.poll() is not None:
         raise ValueError('Vocabulary manager server failed to start.')
       else:
-        logging.info('Successfully launched vocab manager server.')
+        print('Successfully launched vocab manager server.')
   elif env_name == 'QuadrupedLocomotion-v0':
     env_flags.extend(
         [f'--env_name={env_name}', f'--motion_file_path={motion_file_path}']
@@ -297,12 +295,12 @@ def train():
       ]
 
     # Display one of the commands
-    logging.info(' '.join(collect_job_commands[0]))
+    print(' '.join(collect_job_commands[0]))
 
     collect_jobs = []
     for command in collect_job_commands:
       collect_jobs.append(create_and_manage_process(command, all_processes))
-    logging.info('Successfully launched collect jobs.')
+    print('Successfully launched collect jobs.')
 
     # Recall that root dir is modified for collect jobs to separate
     # system metrics from the train job
@@ -324,9 +322,13 @@ def train():
         f'--min_table_size_before_sampling={min_table_size_before_sampling}',
         f'--verbosity={logging.get_verbosity()}',
     ]
-    logging.info(' '.join(reverb_command))
-    create_and_manage_process(reverb_command, all_processes)
-    logging.info('Successfully launched reverb server.')
+    print(' '.join(reverb_command))
+    create_and_manage_process(
+        reverb_command,
+        all_processes,
+        env_vars=dict(**os.environ, CUDA_VISIBLE_DEVICES='-1'),
+    )
+    print('Successfully launched reverb server.')
 
     if env_name == 'CircuitTraining-v0':
       train_job_command = [
@@ -409,14 +411,14 @@ def train():
       ] + env_flags
 
     # Display the command
-    logging.info(' '.join(train_job_command))
+    print(' '.join(train_job_command))
     create_and_manage_process(train_job_command, all_processes)
-    logging.info('Successfully launched train job.')
+    print('Successfully launched train job.')
 
     while not os.path.exists(os.path.join(root_dir, 'training_complete')):
       time.sleep(PROCESS_WAIT_INTERVAL)
 
-  logging.info('Training complete.')
+  print('Training complete.')
 
 
 def main(_):
