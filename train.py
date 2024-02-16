@@ -68,7 +68,7 @@ def train():
   std_cell_placer_mode = os.environ.get('STD_CELL_PLACER_MODE', None)
   num_replicas = int(os.environ.get('NUM_REPLICAS', -1))
   # Networking params
-  num_collect_jobs = int(os.environ.get('NUM_COLLECT_JOBS', 1))
+  num_collect_jobs = int(os.environ.get('NUM_COLLECT_JOBS_PER_MACHINE', -1))
   vocabulary_manager_auth_key = os.environ.get(
       'VOCABULARY_MANAGER_AUTH_KEY', ''
   )
@@ -131,7 +131,7 @@ def train():
     # One step per minibatch. There are `timesteps_per_actorbatch` timesteps
     # per iteration, then multiplied by the number of epochs.
     train_steps_per_iteration = int(
-        timesteps_per_actorbatch / batch_size * num_epochs
+        timesteps_per_actorbatch / batch_size * num_epochs / num_replicas
     )
 
     # Shuffle the data coming from a single collect job.
@@ -171,7 +171,7 @@ def train():
         f' {train_steps_per_iteration}'
     )
 
-  max_train_steps = train_steps_per_iteration * num_iterations // num_replicas
+  max_train_steps = train_steps_per_iteration * num_iterations
 
   policy_checkpoint_interval = np.ceil(
       policy_checkpoint_interval
