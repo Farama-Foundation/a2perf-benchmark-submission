@@ -162,7 +162,6 @@ def collect_off_policy(
 
   collect_env = suite_load_function(
       environment_name,
-      env_wrappers=[wrappers.ActionClipWrapper],
   )
   # Create the variable container.
   train_step = train_utils.create_train_step()
@@ -276,7 +275,6 @@ def collect_sequences(
     )
   collect_env = suite_load_function(
       environment_name,
-      env_wrappers=[wrappers.ActionClipWrapper],
   )
   # Create the variable container.
   train_step = train_utils.create_train_step()
