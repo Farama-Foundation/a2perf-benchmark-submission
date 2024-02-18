@@ -276,6 +276,7 @@ def collect_sequences(
   collect_env = suite_load_function(
       environment_name,
   )
+  
   # Create the variable container.
   train_step = train_utils.create_train_step()
   variables = {
@@ -313,9 +314,9 @@ def collect_sequences(
       observers=[experience_observer, env_step_metric],
   )
 
-  # Run the experience collection loop.
+  training_done_file = os.path.join(root_dir, '../../', 'training_complete')
   prev_num_steps_collected = 0
-  while train_step < max_train_step:
+  while train_step < max_train_step and not os.path.exists(training_done_file):
     start_time = time.time()
     collect_actor.run()
     end_time = time.time()
