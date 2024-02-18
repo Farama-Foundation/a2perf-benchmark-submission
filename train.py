@@ -135,8 +135,7 @@ def train():
     )
 
     # Shuffle the data coming from a single collect job.
-    # shuffle_buffer_size = timesteps_per_actorbatch // env_batch_size
-    shuffle_buffer_size = timesteps_per_actorbatch
+    shuffle_buffer_size = num_collect_steps_per_actor
     # Only a single iteration is performed per call to the learner. We set the
     # `num_samples` argument to `env_batch_size` to ensure that the learner
     # processes all the data collected by the actors in a single call.
