@@ -119,7 +119,7 @@ _VOCABULARY_SERVER_ADDRESS = flags.DEFINE_string(
 _VOCABULARY_SERVER_PORT = flags.DEFINE_integer(
     'vocabulary_server_port', None, 'Vocabulary server port.'
 )
-ACTOR_COLLECT_METRICS_BUFFER_SIZE = 10
+ACTOR_COLLECT_METRICS_BUFFER_SIZE = 1
 
 MAX_RETRIES = 8640  # 24 hours worth of retries
 RETRY_DELAY = 10

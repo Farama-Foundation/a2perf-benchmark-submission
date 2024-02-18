@@ -313,9 +313,14 @@ def train(
       )
 
       # Sample batch size of `env_batch_size` is used to leverage parallelism.
+      num_sequences_to_sample = np.ceil(
+          timesteps_per_actorbatch / sequence_length
+      )
+      logging.info('Num sequences to sample: %s', num_sequences_to_sample)
+      
       def experience_dataset_fn():
         return reverb_replay_train.as_dataset(
-            sample_batch_size=env_batch_size,
+            sample_batch_size=num_sequences_to_sample,
             num_steps=sequence_length,
             sequence_preprocess_fn=agent.preprocess_sequence,
             num_parallel_calls=tf.data.AUTOTUNE,
@@ -323,7 +328,7 @@ def train(
 
       def normalization_dataset_fn():
         return reverb_replay_train.as_dataset(
-            sample_batch_size=env_batch_size,
+            sample_batch_size=num_sequences_to_sample,
             num_steps=sequence_length,
             sequence_preprocess_fn=agent.preprocess_sequence,
             num_parallel_calls=tf.data.AUTOTUNE,
