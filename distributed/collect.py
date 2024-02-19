@@ -142,24 +142,19 @@ def collect_off_policy(
   # We run collect jobs in replicas when using kubernetes,
   # so check if JOB_COMPLETION_INDEX is set.
   # If it is, we make sure to only record summaries from task 0, replica 0.
+  summary_dir = None
+  actor_collect_metrics = actor.collect_metrics(
+      ACTOR_COLLECT_METRICS_BUFFER_SIZE
+  )
   if 'JOB_COMPLETION_INDEX' in os.environ:
     job_completion_index = int(os.environ['JOB_COMPLETION_INDEX'])
-    if job_completion_index == 0 and task == 0:
+    if job_completion_index == 0:
       summary_dir = os.path.join(root_dir, 'summaries', str(task))
-      actor_collect_metrics = actor.collect_metrics(
-          ACTOR_COLLECT_METRICS_BUFFER_SIZE
-      )
-    else:
-      summary_dir = None
-      actor_collect_metrics = []
+
   else:
     summary_dir = os.path.join(root_dir, 'summaries', str(task))
-    actor_collect_metrics = actor.collect_metrics(
-        ACTOR_COLLECT_METRICS_BUFFER_SIZE
-    )
 
   logging.info('Summary dir: %s', summary_dir)
-
   collect_env = suite_load_function(
       environment_name,
   )
@@ -254,29 +249,22 @@ def collect_sequences(
     suite_load_function: callable,
 ) -> None:
   """Collects experience using a policy updated after every episode."""
-  logging.info('Sequence length collect: %s', sequence_length)
-  # We run collect jobs in replicas when using kubernetes,
-  # so check if JOB_COMPLETION_INDEX is set.
-  # If it is, we make sure to only record summaries from task 0, replica 0.
+  summary_dir = None
+  actor_collect_metrics = actor.collect_metrics(
+      ACTOR_COLLECT_METRICS_BUFFER_SIZE
+  )
   if 'JOB_COMPLETION_INDEX' in os.environ:
     job_completion_index = int(os.environ['JOB_COMPLETION_INDEX'])
-    if job_completion_index == 0 and task == 0:
+    if job_completion_index == 0:
       summary_dir = os.path.join(root_dir, 'summaries', str(task))
-      actor_collect_metrics = actor.collect_metrics(
-          ACTOR_COLLECT_METRICS_BUFFER_SIZE
-      )
-    else:
-      summary_dir = None
-      actor_collect_metrics = []
+
   else:
     summary_dir = os.path.join(root_dir, 'summaries', str(task))
-    actor_collect_metrics = actor.collect_metrics(
-        ACTOR_COLLECT_METRICS_BUFFER_SIZE
-    )
+
   collect_env = suite_load_function(
       environment_name,
   )
-  
+
   # Create the variable container.
   train_step = train_utils.create_train_step()
   variables = {
