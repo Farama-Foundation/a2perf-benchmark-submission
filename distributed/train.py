@@ -166,6 +166,16 @@ _LEARNING_RATE = flags.DEFINE_float('learning_rate', None, 'Learning rate.')
 _USE_GAE = flags.DEFINE_bool('use_gae', None, 'Whether to use GAE or not.')
 FLAGS = flags.FLAGS
 
+GIGABYTES = 1073741824  # 1 GB in bytes
+
+
+def dataset_options():
+  options = tf.data.Options()
+  autotune_options = tf.data.experimental.AutotuneOptions()
+  autotune_options.ram_budget = 2 * GIGABYTES
+  options.autotune = autotune_options
+  return options
+
 
 @gin.configurable
 def train(
@@ -317,22 +327,30 @@ def train(
           timesteps_per_actorbatch / sequence_length
       )
       logging.info('Num sequences to sample: %s', num_sequences_to_sample)
-      
+
       def experience_dataset_fn():
-        return reverb_replay_train.as_dataset(
-            sample_batch_size=num_sequences_to_sample,
-            num_steps=sequence_length,
-            sequence_preprocess_fn=agent.preprocess_sequence,
-            num_parallel_calls=tf.data.AUTOTUNE,
-        ).prefetch(tf.data.AUTOTUNE)
+        return (
+            reverb_replay_train.as_dataset(
+                sample_batch_size=num_sequences_to_sample,
+                num_steps=sequence_length,
+                sequence_preprocess_fn=agent.preprocess_sequence,
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
+            .prefetch(tf.data.AUTOTUNE)
+            .with_options(dataset_options())
+        )
 
       def normalization_dataset_fn():
-        return reverb_replay_train.as_dataset(
-            sample_batch_size=num_sequences_to_sample,
-            num_steps=sequence_length,
-            sequence_preprocess_fn=agent.preprocess_sequence,
-            num_parallel_calls=tf.data.AUTOTUNE,
-        ).prefetch(tf.data.AUTOTUNE)
+        return (
+            reverb_replay_train.as_dataset(
+                sample_batch_size=num_sequences_to_sample,
+                num_steps=sequence_length,
+                sequence_preprocess_fn=agent.preprocess_sequence,
+                num_parallel_calls=tf.data.AUTOTUNE,
+            )
+            .prefetch(tf.data.AUTOTUNE)
+            .with_options(dataset_options())
+        )
 
       # Add an `after_train_step_fn` with metrics on how on-policy the data is.
       train_steps_per_policy_update = int(
@@ -375,11 +393,15 @@ def train(
       reverb_replay_normalization = None
 
       def experience_dataset_fn():
-        return reverb_replay_train.as_dataset(
-            sample_batch_size=batch_size,
-            num_parallel_calls=tf.data.AUTOTUNE,
-            num_steps=2,
-        ).prefetch(tf.data.AUTOTUNE)
+        return (
+            reverb_replay_train.as_dataset(
+                sample_batch_size=batch_size,
+                num_parallel_calls=tf.data.AUTOTUNE,
+                num_steps=2,
+            )
+            .prefetch(tf.data.AUTOTUNE)
+            .with_options(dataset_options())
+        )
 
       create_learner_fn = functools.partial(
           learner_lib.Learner,
