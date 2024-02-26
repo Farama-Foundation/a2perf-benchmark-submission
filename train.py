@@ -147,7 +147,9 @@ def train():
         1, total_env_steps / timesteps_per_actorbatch
     ).astype(int)
 
-    min_table_size_before_sampling = 1
+    min_table_size_before_sampling = (
+        timesteps_per_actorbatch // num_collect_steps_per_actor
+    )
   elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg', 'dqn'):
     # We want to exhaust `timesteps_per_actorbatch` samples each iteration
     # roughly.
