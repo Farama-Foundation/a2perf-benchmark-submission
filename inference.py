@@ -37,7 +37,7 @@ def load_policy(env: Any) -> TFPolicy:
   root_dir = os.environ.get('ROOT_DIR', None)
   if root_dir is None:
     raise ValueError(
-        'ROOT_DIR environment variable must be set to load the model.'
+        'ROOT_DIR environment variable must be set to load the model for inference.'
     )
   logging.info('Loading model from %s', root_dir)
 
