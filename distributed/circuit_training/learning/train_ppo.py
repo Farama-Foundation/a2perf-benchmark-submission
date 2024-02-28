@@ -20,13 +20,14 @@ import random
 from typing import Dict
 from typing import Optional
 
-from a2perf.domains import circuit_training
+import gin
+import gym
+import gymnasium as gym
+import numpy as np
+import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
-import gin
-import numpy as np
-import tensorflow as tf
 from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
 from tf_agents.system import system_multiprocessing as multiprocessing
@@ -34,73 +35,14 @@ from tf_agents.train import learner
 from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import strategy_utils
 
-from ..model import create_models_lib
+# noinspection PyUnresolvedReferences
+from a2perf.domains import circuit_training
 from . import static_feature_cache
 from . import train_ppo_lib
+from ..model import create_models_lib
 
-_POLICY_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
-    'policy_checkpoint_interval', None, 'Policy checkpoint interval.'
-)
-_NUM_EPOCHS = flags.DEFINE_integer(
-    'num_epochs',
-    100,
-    'Number of epochs to train the policy. An epoch is defined as a '
-    'complete pass through the dataset.',
-)
-_SUMMARY_INTERVAL = flags.DEFINE_integer(
-    'summary_interval',
-    200,
-    'The interval to write summaries. Only used if summary_dir is set.',
-)
-_LEARNER_ITERATIONS_PER_CALL = flags.DEFINE_integer(
-    'learner_iterations_per_call',
-    1,
-    'The number of learner iterations per call.',
-)
-
-_BATCH_SIZE = flags.DEFINE_integer(
-    'batch_size', 64, 'Batch size for training the policy.',
-)
-_SHUFFLE_BUFFER_SIZE = flags.DEFINE_integer(
-    'shuffle_buffer_size',
-    1000,
-    'The buffer size to shuffle the dataset.',
-)
-_ALGORITHM = flags.DEFINE_enum(
-    'algorithm', 'ppo', ['ppo', 'ddqn'], 'The algorithm to use for training.'
-)
-_EPSILON_GREEDY = flags.DEFINE_float(
-    'epsilon_greedy',
-    0.1,
-    'The epsilon greedy value for the epsilon greedy algorithm.',
-)
-_TRAIN_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
-    'train_checkpoint_interval',
-    1000,
-    'The interval to save the train checkpoint.',
-)
-_MAX_TRAIN_STEPS = flags.DEFINE_integer(
-    'max_train_steps',
-    0,
-    'The maximum number of training steps for the policy.',
-)
-_ENV_BATCH_SIZE = flags.DEFINE_integer(
-    'env_batch_size',
-    1,
-    'The number of environments to run in parallel.',
-)
-_LEARNING_RATE = flags.DEFINE_float(
-    'learning_rate', 1e-3, 'The learning rate for the policy.',
-)
-_DEBUG = flags.DEFINE_boolean(
-    'debug', False, 'If set, run the training in debug mode.'
-)
-
-_GIN_FILE = flags.DEFINE_multi_string(
-    'gin_file', None, 'Paths to the gin-config files.'
-)
-_GIN_BINDINGS = flags.DEFINE_multi_string(
-    'gin_bindings', [], 'Gin binding parameters.'
+_NETLIST_INDEX = flags.DEFINE_integer(
+    'netlist_index', 0, 'Index of the netlist in the agent policy model.'
 )
 _NETLIST_FILE = flags.DEFINE_multi_string(
     'netlist_file', None, 'File path to the netlist files.'
@@ -122,45 +64,117 @@ _ROOT_DIR = flags.DEFINE_string(
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
     'Root directory for writing logs/summaries/checkpoints.',
 )
-_REPLAY_BUFFER_SERVER_ADDR = flags.DEFINE_string(
-    'replay_buffer_server_address', None, 'Replay buffer server address.'
-)
-_VARIABLE_CONTAINER_SERVER_ADDR = flags.DEFINE_string(
-    'variable_container_server_address',
-    None,
-    'Variable container server address.',
-)
-_SEQUENCE_LENGTH = flags.DEFINE_integer(
-    'sequence_length',
-    134,
-    (
-        'The sequence length to estimate shuffle size. Depends on the'
-        ' environment.Max horizon = T translates to sequence_length T+1 because'
-        ' of the additional boundary step (last -> first).'
-    ),
-)
-_GLOBAL_SEED = flags.DEFINE_integer(
-    'global_seed',
-    111,
-    'Used in env and weight initialization, does not impact action sampling.',
-)
+
 _POLICY_SAVED_MODEL_DIR = flags.DEFINE_string(
     'policy_saved_model_dir', None, 'If set, load the pretrained policy model.'
 )
 _POLICY_CHECKPOINT_DIR = flags.DEFINE_string(
     'policy_checkpoint_dir', None, 'If set, load the pretrained policy model.'
 )
-_ENTROPY_REGULARIZATION = flags.DEFINE_float(
-    'entropy_regularization',
-    0.0,
-    'Entropy regularization coefficient for the policy.',
+_MAX_VOCAB_SIZE = flags.DEFINE_integer(
+    'max_vocab_size', None, 'Maximum vocabulary size.'
 )
-_USE_GAE = flags.DEFINE_boolean(
-    'use_gae',
-    False,
-    'If set, use Generalized Advantage Estimation (GAE) for value estimation.',
+_LATENT_DIM = flags.DEFINE_integer(
+    'latent_dim', None, 'Latent dimension of the LSTM.'
+)
+_PROFILE_VALUE_DROPOUT = flags.DEFINE_float(
+    'profile_value_dropout', None, 'Profile value dropout.'
+)
+_NUM_REPLICAS = flags.DEFINE_integer(
+    'num_replicas', None, 'Number of replicas.'
+)
+_EMBEDDING_DIM = flags.DEFINE_integer(
+    'embedding_dim', None, 'Embedding dimension of the LSTM.'
+)
+_TIMESTEPS_PER_ACTORBATCH = flags.DEFINE_integer(
+    'timesteps_per_actorbatch',
+    None,
+    'Number of timesteps per actorbatch.',
+)
+_LEARNER_ITERATIONS_PER_CALL = flags.DEFINE_integer(
+    'learner_iterations_per_call',
+    None,
+    'Number of iterations per learner call.',
 )
 
+_EPSILON_GREEDY = flags.DEFINE_float(
+    'epsilon_greedy', None, 'Epsilon greedy value.'
+)
+_EXPLORATION_NOISE_STD = flags.DEFINE_float(
+    'exploration_noise_std', None, 'Exploration noise std.'
+)
+
+_SHUFFLE_BUFFER_SIZE = flags.DEFINE_integer(
+    'shuffle_buffer_size',
+    None,
+    'Size of the shuffle buffer for the training dataset.',
+)
+
+_MAX_SEQUENCE_LENGTH = flags.DEFINE_integer(
+    'max_sequence_length',
+    None,
+    'Length of sequences to sample from the replay buffer.',
+)
+_SEED = flags.DEFINE_integer('seed', None, 'Random seed.')
+_NUM_WEBSITES = flags.DEFINE_integer(
+    'num_websites', None, 'Number of websites to use.'
+)
+_DIFFICULTY_LEVEL = flags.DEFINE_integer(
+    'difficulty_level', None, 'Difficulty of the task.'
+)
+_DEBUG = flags.DEFINE_bool('debug', None, 'Debug mode')
+_ENV_NAME = flags.DEFINE_string('env_name', None, 'Name of the environment')
+_LOG_INTERVAL = flags.DEFINE_integer('log_interval', None, 'Log interval.')
+_REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
+    'replay_buffer_server_address', None, 'Replay buffer server address.'
+)
+_POLICY_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
+    'policy_checkpoint_interval', None, 'Policy checkpoint interval.'
+)
+
+_ENV_BATCH_SIZE = flags.DEFINE_integer(
+    'env_batch_size', None, 'Number of environments to run in parallel.'
+)
+_MOTION_FILE_PATH = flags.DEFINE_string(
+    'motion_file_path', None, 'Path to the motion file.'
+)
+_TRAIN_CHECKPOINT_INTERVAL = flags.DEFINE_integer(
+    'train_checkpoint_interval', None, 'Train checkpoint interval.'
+)
+
+_USE_TPU = flags.DEFINE_bool('use_tpu', False, 'Whether to use TPU or not.')
+_VARIABLE_CONTAINER_SERVER_ADDRESS = flags.DEFINE_string(
+    'variable_container_server_address',
+    None,
+    'Variable container server address.',
+)
+_BATCH_SIZE = flags.DEFINE_integer('batch_size', None, 'Batch size.')
+_NUM_EPOCHS = flags.DEFINE_integer('num_epochs', None, 'Number of epochs.')
+_GIN_FILE = flags.DEFINE_multi_string(
+    'gin_file', None, 'Paths to the gin-config files.'
+)
+_ENTROPY_REGULARIZATION = flags.DEFINE_float(
+    'entropy_regularization', None, 'Entropy regularization.'
+)
+_GIN_BINDINGS = flags.DEFINE_multi_string(
+    'gin_bindings', None, 'Gin binding parameters.'
+)
+_MAX_TRAIN_STEP = flags.DEFINE_integer(
+    'max_train_steps', None, 'Number of iterations.'
+)
+_ALGORITHM = flags.DEFINE_string(
+    'algorithm',
+    None,
+    'Algorithm to use. Must be one of "ppo" or "sac".',
+)
+_GRADIENT_CLIPPING = flags.DEFINE_float(
+    'gradient_clipping', None, 'Gradient clipping.'
+)
+_SUMMARIZE_GRADS_AND_VARS = flags.DEFINE_bool(
+    'summarize_grads_and_vars', False, 'Whether to summarize grads and vars.'
+)
+_LEARNING_RATE = flags.DEFINE_float('learning_rate', None, 'Learning rate.')
+_USE_GAE = flags.DEFINE_bool('use_gae', None, 'Whether to use GAE or not.')
 FLAGS = flags.FLAGS
 
 
@@ -362,16 +376,13 @@ def main(_):
       finalize_config=False
   )
 
-  if _DEBUG.value:
-    tf.config.run_functions_eagerly(True)
-    # tf.data.experimental.enable_debug_mode()
-
-  logging.info('global seed=%d', _GLOBAL_SEED.value)
-  np.random.seed(_GLOBAL_SEED.value)
-  random.seed(_GLOBAL_SEED.value)
-  tf.random.set_seed(_GLOBAL_SEED.value)
+  logging.info('global seed=%d', _SEED.value)
+  np.random.seed(_SEED.value)
+  random.seed(_SEED.value)
+  tf.random.set_seed(_SEED.value)
 
   root_dir = _ROOT_DIR.value
+
   strategy = strategy_utils.get_strategy(
       strategy_utils.TPU.value, strategy_utils.USE_GPU.value
   )
@@ -386,17 +397,20 @@ def main(_):
   for netlist_index, (netlist_file, init_placement) in enumerate(
       zip(_NETLIST_FILE.value, _INIT_PLACEMENT.value)
   ):
-    gym_kwargs = dict(
-        netlist_file=netlist_file,
-        init_placement=init_placement,
-        global_seed=_GLOBAL_SEED.value,
-        std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
-        netlist_index=netlist_index
-    )
+    # create_env_fn = functools.partial(
+    #     environment.create_circuit_environment,
+    #     netlist_file=netlist_file,
+    #     init_placement=init_placement,
+    #     global_seed=_SEED.value,
+    #     std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
+    #     netlist_index=netlist_index,
+    # )
+    # env = create_env_fn()
+
     create_env_fn = functools.partial(
         suite_gym.load,
-        gym_kwargs=gym_kwargs,
         env_wrappers=[wrappers.ActionClipWrapper],
+
     )
     env = create_env_fn('CircuitTraining-v0')
     observation_tensor_spec, action_tensor_spec, time_step_tensor_spec = (
@@ -405,58 +419,41 @@ def main(_):
     static_features = env.wrapped_env().get_static_obs()
     cache.add_static_feature(static_features)
 
-    env.close()
-    del env
+  with strategy.scope():
+    actor_net, value_net = create_models_lib.create_models_fn(
+        rl_architecture='generalization',
+        observation_tensor_spec=observation_tensor_spec,
+        action_tensor_spec=action_tensor_spec,
+        static_features=cache.get_all_static_features(),
+        use_model_tpu=use_model_tpu,
+        seed=_SEED.value,
+    )
 
-    if _ALGORITHM.value == 'ppo':
-      with strategy.scope():
-        actor_net, value_net = create_models_lib.create_models_fn(
-            rl_architecture='generalization',
-            observation_tensor_spec=observation_tensor_spec,
-            action_tensor_spec=action_tensor_spec,
-            static_features=cache.get_all_static_features(),
-            use_model_tpu=use_model_tpu,
-            seed=_GLOBAL_SEED.value,
-        )
+    actor_net.create_variables(training=False)
+    value_net.create_variables(training=False)
 
-        actor_net.create_variables(training=False)
-        value_net.create_variables(training=False)
+    init_train_step = try_load_checkpoint(
+        root_dir,
+        actor_net,
+        value_net,
+        _POLICY_SAVED_MODEL_DIR.value,
+        _POLICY_CHECKPOINT_DIR.value,
+    )
 
-        init_train_step = try_load_checkpoint(
-            root_dir,
-            actor_net,
-            value_net,
-            _POLICY_SAVED_MODEL_DIR.value,
-            _POLICY_CHECKPOINT_DIR.value,
-        )
-
-      train_ppo_lib.train(
-          root_dir=root_dir,
-          strategy=strategy,
-          debug_summaries=_DEBUG.value,
-          per_replica_batch_size=_BATCH_SIZE.value,
-          replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDR.value,
-          variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDR.value,
-          action_tensor_spec=action_tensor_spec,
-          time_step_tensor_spec=time_step_tensor_spec,
-          sequence_length=_SEQUENCE_LENGTH.value,
-          actor_net=actor_net,
-          value_net=value_net,
-          num_netlists=len(_NETLIST_FILE.value),
-          entropy_regularization=_ENTROPY_REGULARIZATION.value,
-          use_gae=_USE_GAE.value,
-          init_learning_rate=_LEARNING_RATE.value,
-          num_epochs=_NUM_EPOCHS.value,
-          summary_interval=_SUMMARY_INTERVAL.value,
-          shuffle_buffer_size=_SHUFFLE_BUFFER_SIZE.value,
-          policy_checkpoint_interval=_POLICY_CHECKPOINT_INTERVAL.value,
-          max_train_steps=_MAX_TRAIN_STEPS.value,
-          timesteps_per_actorbatch=_SEQUENCE_LENGTH.value * _ENV_BATCH_SIZE.value,
-      )
-    elif _ALGORITHM.value == 'ddqn':
-      raise NotImplementedError('DDQN is not supported yet.')
-    else:
-      raise ValueError(f'Algorithm {_ALGORITHM.value} is not supported.')
+  train_ppo_lib.train(
+      root_dir=root_dir,
+      strategy=strategy,
+      replay_buffer_server_address=_REPLAY_BUFFER_SERVER_ADDRESS.value,
+      variable_container_server_address=_VARIABLE_CONTAINER_SERVER_ADDRESS.value,
+      action_tensor_spec=action_tensor_spec,
+      time_step_tensor_spec=time_step_tensor_spec,
+      max_sequence_length=_MAX_SEQUENCE_LENGTH.value,
+      actor_net=actor_net,
+      value_net=value_net,
+      init_train_step=init_train_step,
+      num_netlists=len(_NETLIST_FILE.value),
+      debug_summaries=_DEBUG.value,
+  )
 
 
 if __name__ == '__main__':

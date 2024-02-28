@@ -52,12 +52,17 @@ from .agents import _create_ppo_agent
 from .agents import _create_sac_agent
 from .agents import _create_td3_agent
 
+_NETLIST_INDEX = flags.DEFINE_integer(
+    'netlist_index', 0, 'Index of the netlist in the agent policy model.'
+)
+
 _MAX_VOCAB_SIZE = flags.DEFINE_integer(
     'max_vocab_size', None, 'Maximum vocabulary size.'
 )
 _LATENT_DIM = flags.DEFINE_integer(
     'latent_dim', None, 'Latent dimension of the LSTM.'
 )
+
 _PROFILE_VALUE_DROPOUT = flags.DEFINE_float(
     'profile_value_dropout', None, 'Profile value dropout.'
 )
@@ -200,7 +205,7 @@ def train(
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
-        [Text], py_environment.PyEnvironment
+      [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,

@@ -105,8 +105,8 @@ def collect(
       train_step,
       steps_per_run=sequence_length,
       metrics=actor.collect_metrics(
-          ACTOR_COLLECT_METRICS_BUFFER_SIZE) if task == 0 else [],
-      summary_dir=summary_dir if task == 0 else None,
+          ACTOR_COLLECT_METRICS_BUFFER_SIZE),
+      summary_dir=summary_dir,
       summary_interval=summary_interval,
       observers=observers,
   )

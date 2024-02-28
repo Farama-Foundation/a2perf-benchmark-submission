@@ -3,11 +3,11 @@
 import os
 import time
 
+import reverb
+import tensorflow as tf
 from absl import app
 from absl import flags
 from absl import logging
-import reverb
-import tensorflow as tf
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.policies import py_tf_eager_policy
 from tf_agents.replay_buffers import reverb_replay_buffer
@@ -15,7 +15,6 @@ from tf_agents.specs import tensor_spec
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
-
 
 _NUM_NETLISTS = flags.DEFINE_integer(
     'num_netlists',
@@ -247,17 +246,17 @@ def run_circuit_training_reverb_server(root_dir):
   # TODO(b/159130813): Optionally turn the reverb server pieces into a library.
   server = reverb.Server(
       tables=training_tables
-      + [
-          reverb.Table(  # Variable container storing policy parameters.
-              name=reverb_variable_container.DEFAULT_TABLE,
-              sampler=reverb.selectors.Fifo(),
-              remover=reverb.selectors.Fifo(),
-              rate_limiter=reverb.rate_limiters.MinSize(1),
-              max_size=1,
-              max_times_sampled=0,
-              signature=variable_container_signature,
-          ),
-      ],
+             + [
+                 reverb.Table(  # Variable container storing policy parameters.
+                     name=reverb_variable_container.DEFAULT_TABLE,
+                     sampler=reverb.selectors.Fifo(),
+                     remover=reverb.selectors.Fifo(),
+                     rate_limiter=reverb.rate_limiters.MinSize(1),
+                     max_size=1,
+                     max_times_sampled=0,
+                     signature=variable_container_signature,
+                 ),
+             ],
       port=_PORT.value,
   )
 
