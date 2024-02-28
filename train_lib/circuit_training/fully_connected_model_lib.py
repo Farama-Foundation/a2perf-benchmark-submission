@@ -22,7 +22,7 @@ more suitable that the GCN-based model for reward function development.
 import functools
 import sys
 import numpy as np
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 import tensorflow_probability as tfp
 from tf_agents.networks import nest_map
 from tf_agents.networks import sequential
@@ -67,7 +67,7 @@ def create_actor_net(
     # number. We do not use -inf because it produces NaNs in many tfp
     # functions.
     # Currently keep aligned with Menger. Eventually move to logits.dtype.min.
-    almost_neg_inf = tf.ones_like(logits) * (-(2.0**32) + 1)
+    almost_neg_inf = tf.ones_like(logits) * (-(2.0 ** 32) + 1)
     logits = tf.where(tf.equal(mask, 1), logits, almost_neg_inf)
 
     return tfp.distributions.Categorical(
