@@ -839,7 +839,6 @@ def _create_ppo_agent(
       use_gae=use_gae,
       use_td_lambda_return=True,
       value_net=value_net,
-      **algo_kwargs
   )
 
 
@@ -860,6 +859,7 @@ def _create_ddqn_agent(
     profile_value_dropout: Optional[float] = None,
     embedding_dim: Optional[int] = None,
     seed: Optional[int] = None,
+    **kwargs
 ) -> tf_agent.TFAgent:
   """Creates an agent."""
   q_net = _create_q_net(
@@ -978,13 +978,12 @@ def create_agent(algorithm, environment_name,
         summarize_grads_and_vars=summarize_grads_and_vars,
         gradient_clipping=gradient_clipping,
         seed=seed,
-        algo_kwargs=algo_kwargs, **kwargs)
+        **algo_kwargs, **kwargs)
 
   elif algorithm == 'ddqn':
     return _create_ddqn_agent(
         env_name=environment_name,
         train_step=train_step,
-        max_train_steps=max_train_step,
         observation_tensor_spec=observation_tensor_spec,
         action_tensor_spec=action_tensor_spec,
         time_step_tensor_spec=time_step_tensor_spec,
@@ -992,7 +991,7 @@ def create_agent(algorithm, environment_name,
         summarize_grads_and_vars=summarize_grads_and_vars,
         gradient_clipping=gradient_clipping,
         seed=seed,
-        algo_kwargs=algo_kwargs, **kwargs)
+        **algo_kwargs, **kwargs)
 
   elif algorithm == 'td3':
     return _create_td3_agent(
@@ -1006,7 +1005,7 @@ def create_agent(algorithm, environment_name,
         summarize_grads_and_vars=summarize_grads_and_vars,
         gradient_clipping=gradient_clipping,
         seed=seed,
-        algo_kwargs=algo_kwargs, **kwargs)
+        **algo_kwargs, **kwargs)
   elif algorithm == 'ddpg':
     return _create_ddpg_agent(
         env_name=environment_name,
@@ -1019,6 +1018,6 @@ def create_agent(algorithm, environment_name,
         summarize_grads_and_vars=summarize_grads_and_vars,
         gradient_clipping=gradient_clipping,
         seed=seed,
-        algo_kwargs=algo_kwargs, **kwargs)
+        **algo_kwargs, **kwargs)
   else:
     raise ValueError(f'Unknown algorithm: {algorithm}')

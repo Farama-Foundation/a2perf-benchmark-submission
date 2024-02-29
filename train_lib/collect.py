@@ -400,7 +400,6 @@ def collect_sequences(
     )
     prev_num_steps_collected = env_step_metric.result()
   # Clean up the environment and replay buffer.
-  del reverb_client
   collect_env.close()
   del collect_env
 

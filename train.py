@@ -38,6 +38,7 @@ def train_command(num_iterations, entropy_regularization, use_gae, root_dir,
       'train_lib.train',
       f'--algorithm={algorithm}',
       f'--batch_size={batch_size}',
+      f'--env_batch_size={env_batch_size}',
       f'--debug={debug}',
       f'--entropy_regularization={entropy_regularization}',
       f'--env_name={env_name}',
@@ -125,7 +126,8 @@ def train():
   task_name = os.environ.get('TASK_NAME', None)
   algorithm = os.environ.get('ALGORITHM', None)
   seed = int(os.environ.get('SEED', -1))
-  use_gae = bool(os.environ.get('USE_GAE', None))
+  use_gae_str = os.environ.get('USE_GAE', None)
+  use_gae = True if use_gae_str == 'True' else False
   root_dir = os.environ.get('ROOT_DIR', None)
   num_epochs = int(os.environ.get('NUM_EPOCHS', -1))
   replay_buffer_capacity = int(os.environ.get('RB_CAPACITY', -1))
@@ -154,7 +156,8 @@ def train():
   vocab_port = int(os.environ.get('VOCAB_PORT', '50000'))
   difficulty_level = int(os.environ.get('DIFFICULTY_LEVEL', -1))
   num_websites = int(os.environ.get('NUM_WEBSITES', -1))
-  debug = bool(os.environ.get('DEBUG', None))
+  debug_str = os.environ.get('DEBUG', None)
+  debug = True if debug_str == 'True' else False
   max_vocab_size = int(os.environ.get('MAX_VOCAB_SIZE', -1))
   embedding_dim = int(os.environ.get('EMBEDDING_DIM', -1))
   latent_dim = int(os.environ.get('LATENT_DIM', -1))

@@ -21,12 +21,12 @@ import functools
 import os
 import time
 from typing import Callable
+from typing import Dict
 from typing import Optional
 from typing import Text
 
 import gin
 import numpy as np
-import reverb
 import tensorflow as tf
 from absl import app
 from absl import flags
@@ -39,6 +39,7 @@ from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.system import system_multiprocessing as multiprocessing
+from tf_agents.train import learner
 from tf_agents.train import triggers
 from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import strategy_utils
@@ -53,7 +54,6 @@ from a2perf.domains import quadruped_locomotion
 from a2perf.domains import web_navigation
 from . import agents
 from . import learners
-from .circuit_training import static_feature_cache
 
 _TASK_INDEX = flags.DEFINE_integer(
     'task_index', 0, 'Index of the netlist in the agent policy model.'
@@ -132,7 +132,7 @@ _STD_CELL_PLACER_MODE = flags.DEFINE_string(
         'algorithm).'
     ),
 )
-_DEBUG = flags.DEFINE_bool('debug', None, 'Debug mode')
+_DEBUG = flags.DEFINE_bool('debug', False, 'Debug mode')
 _ENV_NAME = flags.DEFINE_string('env_name', None, 'Name of the environment')
 _LOG_INTERVAL = flags.DEFINE_integer('log_interval', None, 'Log interval.')
 _REPLAY_BUFFER_SERVER_ADDRESS = flags.DEFINE_string(
@@ -188,6 +188,20 @@ _USE_GAE = flags.DEFINE_bool('use_gae', None, 'Whether to use GAE or not.')
 FLAGS = flags.FLAGS
 
 
+def create_replay_buffers(tf_agent, tasks, replay_buffer_server_address):
+  reverb_replay_trains = []
+  for i, index in enumerate(tasks):
+    reverb_replay_trains += [
+        reverb_replay_buffer.ReverbReplayBuffer(
+            tf_agent.collect_data_spec,
+            sequence_length=None,
+            table_name=f'training_table_{i}',
+            server_address=replay_buffer_server_address,
+        )
+    ]
+  return reverb_replay_trains
+
+
 def compute_init_iteration(
     init_train_step: int,
     sequence_length: int,
@@ -227,58 +241,6 @@ def compute_init_iteration(
       / num_episodes_per_iteration
       / num_epochs
   )
-
-
-def compute_total_training_step(
-    sequence_length,
-    num_iterations,
-    num_episodes_per_iteration,
-    num_epochs,
-    per_replica_batch_size,
-    num_replicas_in_sync,
-) -> int:
-  """Computes the total training step.
-
-  Args:
-    sequence_length: Fixed sequence length for elements in the dataset. Used for
-      calculating how many iterations of minibatches to use for training.
-    num_iterations: The number of iterations to run the training.
-    num_episodes_per_iteration: This is the number of episodes we train in each
-      epoch.
-    num_epochs: The number of iterations to go through the same sequences. The
-      num_episodes_per_iteration are repeated for num_epochs times in a
-      particular learner run.
-    per_replica_batch_size: The minibatch size for learner. The dataset used for
-      training is shaped `[minibatch_size, 1, ...]`. If None, full sequences
-      will be fed into the agent. Please set this parameter to None for RNN
-      networks which requires full sequences.
-    num_replicas_in_sync: The number of replicas training in sync.
-
-  Returns:
-    The total training step.
-  """
-  return int(
-      sequence_length
-      * num_iterations
-      * num_episodes_per_iteration
-      * num_epochs
-      / per_replica_batch_size
-      / num_replicas_in_sync
-  )
-
-
-def create_replay_buffers(tf_agent, tasks, replay_buffer_server_address):
-  reverb_replay_trains = []
-  for i, index in enumerate(tasks):
-    reverb_replay_trains += [
-        reverb_replay_buffer.ReverbReplayBuffer(
-            tf_agent.collect_data_spec,
-            sequence_length=None,
-            table_name=f'training_table_{i}',
-            server_address=replay_buffer_server_address,
-        )
-    ]
-  return reverb_replay_trains
 
 
 def train_on_policy(train_step, debug_summaries, learner, model_id,
@@ -400,6 +362,8 @@ def train(
     env_kwargs = {}
   elif environment_name == 'QuadrupedLocomotion-v0':
     env_kwargs = {}
+  else:
+    raise ValueError(f'Unknown environment: {environment_name}')
 
   env.close()
   del env
@@ -431,25 +395,6 @@ def train(
   else:
     raise ValueError(f'Unknown algorithm: {algorithm}')
 
-  init_iteration = compute_init_iteration(
-      init_train_step,
-      sequence_length,
-      num_episodes_per_iteration,
-      num_epochs,
-      batch_size,
-      strategy.num_replicas_in_sync,
-  )
-  logging.info('Initialize iteration at: init_iteration %s.', init_iteration)
-
-  total_training_step = compute_total_training_step(
-      sequence_length,
-      num_iterations,
-      num_episodes_per_iteration,
-      num_epochs,
-      batch_size,
-      strategy.num_replicas_in_sync,
-  )
-
   # Create the agent.
   with strategy.scope():
     train_step = train_utils.create_train_step()
@@ -457,6 +402,15 @@ def train(
     logging.info('Initialize train_step at %s', init_train_step)
     model_id = common.create_variable('model_id')
     # The model_id should equal to the iteration number.
+    init_iteration = compute_init_iteration(
+        init_train_step,
+        sequence_length,
+        num_episodes_per_iteration,
+        num_epochs,
+        batch_size,
+        strategy.num_replicas_in_sync,
+    )
+    logging.info('Initialize iteration at: init_iteration %s.', init_iteration)
     model_id.assign(init_iteration)
     agent = agents.create_agent(environment_name=environment_name,
                                 algorithm=algorithm,
@@ -514,7 +468,6 @@ def train(
 
     learner = learners.create_learner(
         algorithm=algorithm,
-        environment_name=environment_name,
         model_id=model_id,
         agent=agent,
         sequence_length=sequence_length,
@@ -525,7 +478,6 @@ def train(
         train_step=train_step,
         root_dir=root_dir,
         train_checkpoint_interval=train_checkpoint_interval,
-        shuffle_buffer_size=shuffle_buffer_size,
         log_interval=log_interval,
         learning_triggers=learning_triggers,
         strategy=strategy
@@ -569,6 +521,8 @@ def train(
 def main(_):
   if _DEBUG.value:
     logging.set_verbosity(logging.DEBUG)
+    # tf.config.run_functions_eagerly(True)
+    # tf.data.experimental.enable_debug_mode()
 
   # Set the random seeds
   tf.random.set_seed(_SEED.value)

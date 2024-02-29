@@ -8,10 +8,9 @@ import tensorflow as tf
 from absl import logging
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.train import learner as learner_lib
-from tf_agents.train import ppo_learner as ppo_learner_lib
 from tf_agents.typing import types
 
-from .circuit_training import learner as circuit_training_learner
+from . import learner_lib as learner
 
 # A function which processes a tuple of a nested tensor representing a TF-Agent
 # Trajectory and Reverb SampleInfo.
@@ -27,6 +26,16 @@ def dataset_options():
   autotune_options.ram_budget = 2 * GIGABYTES
   options.autotune = autotune_options
   return options
+
+
+def broadcast_info(info_traj):
+  # Assumes that the first element of traj is shaped
+  # (sequence_length, ...); and we extract this length.
+  info, traj = info_traj
+  first_elem = tf.nest.flatten(traj)[0]
+  length = first_elem.shape[0] or tf.shape(first_elem)[0]
+  info = tf.nest.map_structure(lambda t: tf.repeat(t, [length]), info)
+  return reverb.ReplaySample(info, traj)
 
 
 @gin.configurable(allowlist=['shuffle_buffer_episode_len'])
@@ -47,21 +56,39 @@ def get_shuffle_buffer_size(
   return sequence_length * shuffle_buffer_episode_len
 
 
-def create_experience_dataset_fn(tf_agent, tasks, replay_buffer_server_address):
+def create_off_policy_experience_dataset_fn(tf_agent, tasks, batch_size,
+    replay_buffer_server_address):
+  def experience_dataset_fn():
+    reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
+        tf_agent.collect_data_spec,
+        sequence_length=2,
+        table_name=reverb_replay_buffer.DEFAULT_TABLE,
+        server_address=replay_buffer_server_address,
+    )
+
+    datasets = []
+    for i, index in enumerate(tasks):
+      dataset = reverb_replay_train.as_dataset(
+          sample_batch_size=batch_size,
+          num_parallel_calls=tf.data.AUTOTUNE,
+          num_steps=2,
+      ).prefetch(tf.data.AUTOTUNE).with_options(dataset_options())
+      logging.info('Created dataset for training_table_%s', index)
+
+      datasets += [dataset.map(broadcast_info)]
+
+    return datasets
+
+  return experience_dataset_fn
+
+
+def create_on_policy_experience_dataset_fn(tf_agent, tasks,
+    replay_buffer_server_address):
   def experience_dataset_fn():
     get_dtype = lambda x: x.dtype
     get_shape = lambda x: (None,) + x.shape
     shapes = tf.nest.map_structure(get_shape, tf_agent.collect_data_spec)
     dtypes = tf.nest.map_structure(get_dtype, tf_agent.collect_data_spec)
-
-    def broadcast_info(info_traj):
-      # Assumes that the first element of traj is shaped
-      # (sequence_length, ...); and we extract this length.
-      info, traj = info_traj
-      first_elem = tf.nest.flatten(traj)[0]
-      length = first_elem.shape[0] or tf.shape(first_elem)[0]
-      info = tf.nest.map_structure(lambda t: tf.repeat(t, [length]), info)
-      return reverb.ReplaySample(info, traj)
 
     datasets = []
     for i, index in enumerate(tasks):
@@ -99,7 +126,6 @@ def create_per_sequence_fn(tf_agent):
 
 
 def create_ppo_learner(agent,
-    environment_name,
     sequence_length,
     replay_buffer_server_address,
     model_id,
@@ -107,70 +133,45 @@ def create_ppo_learner(agent,
     num_epochs,
     batch_size,
     train_step,
-    root_dir, train_checkpoint_interval, shuffle_buffer_size,
+    root_dir, train_checkpoint_interval,
     learning_triggers,
     log_interval,
     strategy):
-  experience_dataset_fn = create_experience_dataset_fn(tf_agent=agent,
-                                                       tasks=[0],
-                                                       replay_buffer_server_address=replay_buffer_server_address)
+  experience_dataset_fn = create_on_policy_experience_dataset_fn(tf_agent=agent,
+                                                                 tasks=[0],
+                                                                 replay_buffer_server_address=replay_buffer_server_address)
   per_sequence_fn = create_per_sequence_fn(agent)
-  if environment_name == 'CircuitTraining-v0':
-    return circuit_training_learner.CircuittrainingPPOLearner(
-        root_dir,
-        train_step,
-        model_id,
-        agent,
-        experience_dataset_fn,
-        sequence_length=sequence_length,
-        num_episodes_per_iteration=num_episodes_per_iteration,
-        minibatch_size=batch_size,
-        shuffle_buffer_size=get_shuffle_buffer_size(sequence_length),
-        triggers=learning_triggers,
-        strategy=strategy,
-        num_epochs=num_epochs,
-        per_sequence_fn=per_sequence_fn,
-    )
-  else:
-    return ppo_learner_lib.PPOLearner(
-        root_dir=root_dir,
-        train_step=train_step,
-        agent=agent,
-        experience_dataset_fn=experience_dataset_fn,
-        num_samples=num_episodes_per_iteration * sequence_length,
-        num_epochs=num_epochs,
-        checkpoint_interval=train_checkpoint_interval,
-        shuffle_buffer_size=shuffle_buffer_size,
-        minibatch_size=batch_size,
-        summary_interval=log_interval,
-        triggers=learning_triggers,
-        strategy=strategy,
-    )
-
-
-def create_off_policy_learner(algorithm, agent, sequence_length,
-    replay_buffer_server_address,
-    timesteps_per_actorbatch, batch_size,
-    train_step, root_dir, train_checkpoint_interval, shuffle_buffer_size,
-    log_interval, learning_triggers, strategy):
-  reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
-      agent.collect_data_spec,
-      sequence_length=2,
-      table_name=reverb_replay_buffer.DEFAULT_TABLE,
-      server_address=replay_buffer_server_address,
+  return learner.PPOLearner(
+      root_dir,
+      train_step,
+      model_id,
+      agent,
+      experience_dataset_fn,
+      sequence_length=sequence_length,
+      num_episodes_per_iteration=num_episodes_per_iteration,
+      minibatch_size=batch_size,
+      shuffle_buffer_size=get_shuffle_buffer_size(sequence_length),
+      triggers=learning_triggers,
+      strategy=strategy,
+      num_epochs=num_epochs,
+      per_sequence_fn=per_sequence_fn,
+      summary_interval=log_interval,
+      checkpoint_interval=train_checkpoint_interval,
   )
-  reverb_replay_normalization = None
 
-  def experience_dataset_fn():
-    return (
-        reverb_replay_train.as_dataset(
-            sample_batch_size=batch_size,
-            num_parallel_calls=tf.data.AUTOTUNE,
-            num_steps=2,
-        )
-        .prefetch(tf.data.AUTOTUNE)
-        .with_options(dataset_options())
-    )
+
+def create_off_policy_learner(
+    model_id, agent,
+    replay_buffer_server_address,
+    batch_size,
+    train_step, root_dir, train_checkpoint_interval,
+    log_interval, learning_triggers, strategy):
+  experience_dataset_fn = create_off_policy_experience_dataset_fn(
+      tf_agent=agent,
+      batch_size=batch_size,
+      tasks=[0],
+      replay_buffer_server_address=replay_buffer_server_address
+  )
 
   create_learner_fn = functools.partial(
       learner_lib.Learner,
@@ -187,15 +188,14 @@ def create_off_policy_learner(algorithm, agent, sequence_length,
 
 
 def create_learner(
-    algorithm, agent, environment_name, model_id, sequence_length,
+    algorithm, agent, model_id, sequence_length,
     replay_buffer_server_address,
     num_episodes_per_iteration, num_epochs, batch_size,
-    train_step, root_dir, train_checkpoint_interval, shuffle_buffer_size,
+    train_step, root_dir, train_checkpoint_interval,
     log_interval, learning_triggers, strategy):
   if algorithm in ('ppo',):
     return create_ppo_learner(
         agent=agent,
-        environment_name=environment_name,
         model_id=model_id,
         sequence_length=sequence_length,
         replay_buffer_server_address=replay_buffer_server_address,
@@ -205,25 +205,19 @@ def create_learner(
         train_step=train_step,
         root_dir=root_dir,
         train_checkpoint_interval=train_checkpoint_interval,
-        shuffle_buffer_size=shuffle_buffer_size,
         log_interval=log_interval,
         learning_triggers=learning_triggers,
         strategy=strategy
     )
   elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg'):
     return create_off_policy_learner(
-        algorithm=algorithm,
-        environment_name=environment_name,
         model_id=model_id,
         agent=agent,
-        sequence_length=sequence_length,
         replay_buffer_server_address=replay_buffer_server_address,
-        num_episodes_per_iteration=num_episodes_per_iteration,
         batch_size=batch_size,
         train_step=train_step,
         root_dir=root_dir,
         train_checkpoint_interval=train_checkpoint_interval,
-        shuffle_buffer_size=shuffle_buffer_size,
         log_interval=log_interval,
         learning_triggers=learning_triggers,
         strategy=strategy
