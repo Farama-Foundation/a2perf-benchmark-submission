@@ -225,7 +225,7 @@ def train():
     ))
 
     # Shuffle the data coming from three episodes
-    shuffle_buffer_size = 3 * max_sequence_length
+    shuffle_buffer_size = 3
 
     # Only a single iteration is performed per call to the learner. We set the
     # `num_samples` argument to `env_batch_size` to ensure that the learner
@@ -253,6 +253,15 @@ def train():
         'train_steps_per_iteration must be at least 1, got'
         f' {train_steps_per_iteration}'
     )
+
+  # All intervals are given in terms of iterations, so translate them to train steps
+  log_interval *= train_steps_per_iteration
+  train_checkpoint_interval *= train_steps_per_iteration
+  policy_checkpoint_interval *= train_steps_per_iteration
+  print('Computed train_steps_per_iteration:', train_steps_per_iteration)
+  print('Computed log_interval:', log_interval)
+  print('Computed train_checkpoint_interval:', train_checkpoint_interval)
+  print('Computed policy_checkpoint_interval:', policy_checkpoint_interval)
 
   max_train_steps = train_steps_per_iteration * num_iterations
   print('shuffle_buffer_size:', shuffle_buffer_size)

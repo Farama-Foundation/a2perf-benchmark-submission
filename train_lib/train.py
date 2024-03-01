@@ -243,7 +243,8 @@ def compute_init_iteration(
   )
 
 
-def train_on_policy(train_step, debug_summaries, learner, model_id,
+def train_on_policy(train_step, max_train_step, debug_summaries, learner,
+    model_id,
     variable_container, variables, reverb_replay_trains, init_iteration,
     num_iterations):
   for i in range(init_iteration, num_iterations):
@@ -262,6 +263,7 @@ def train_on_policy(train_step, debug_summaries, learner, model_id,
     num_steps = train_step.numpy() - step_val
     logging.info('Steps per sec: %s', num_steps / run_time)
     logging.info('Pushing variables at model_id: %d', model_id.numpy())
+    logging.info('%d train steps out of %d', train_step.numpy(), max_train_step)
     variable_container.push(variables)
     logging.info('clearing replay buffers')
     for reverb_replay_train in reverb_replay_trains:
@@ -489,7 +491,9 @@ def train(
     )
 
     if algorithm == 'ppo':
-      train_on_policy(train_step=train_step, debug_summaries=debug_summaries,
+      train_on_policy(train_step=train_step,
+                      max_train_step=max_train_step,
+                      debug_summaries=debug_summaries,
                       learner=learner, model_id=model_id,
                       variable_container=variable_container,
                       variables=variables,
