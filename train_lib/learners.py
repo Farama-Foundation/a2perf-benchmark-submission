@@ -62,22 +62,20 @@ def create_off_policy_experience_dataset_fn(tf_agent, tasks, batch_size,
     reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
         tf_agent.collect_data_spec,
         sequence_length=2,
-        table_name=reverb_replay_buffer.DEFAULT_TABLE,
+        table_name='training_table_0',
         server_address=replay_buffer_server_address,
     )
 
-    datasets = []
-    for i, index in enumerate(tasks):
-      dataset = reverb_replay_train.as_dataset(
-          sample_batch_size=batch_size,
-          num_parallel_calls=tf.data.AUTOTUNE,
-          num_steps=2,
-      ).prefetch(tf.data.AUTOTUNE).with_options(dataset_options())
-      logging.info('Created dataset for training_table_%s', index)
+    dataset = reverb_replay_train.as_dataset(
+        sample_batch_size=batch_size,
+        sequence_preprocess_fn=tf_agent.preprocess_sequence,
+        num_steps=2,
+        num_parallel_calls=tf.data.experimental.AUTOTUNE,
+        single_deterministic_pass=False,
+    ).prefetch(3).with_options(dataset_options())
+    logging.info('Created dataset for training_table_0')
 
-      datasets += [dataset.map(broadcast_info)]
-
-    return datasets
+    return dataset
 
   return experience_dataset_fn
 
@@ -173,8 +171,7 @@ def create_off_policy_learner(
       replay_buffer_server_address=replay_buffer_server_address
   )
 
-  create_learner_fn = functools.partial(
-      learner_lib.Learner,
+  return learner_lib.Learner(
       root_dir=root_dir,
       train_step=train_step,
       agent=agent,
@@ -184,7 +181,6 @@ def create_off_policy_learner(
       triggers=learning_triggers,
       strategy=strategy,
   )
-  return create_learner_fn()
 
 
 def create_learner(

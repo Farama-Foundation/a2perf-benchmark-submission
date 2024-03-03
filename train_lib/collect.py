@@ -217,23 +217,26 @@ def collect_off_policy(
   collect_env = suite_load_function(
       environment_name,
   )
+
   # Create the variable container.
   train_step = train_utils.create_train_step()
+  model_id = common.create_variable('model_id')
   variables = {
       reverb_variable_container.POLICY_KEY: collect_policy.variables(),
       reverb_variable_container.TRAIN_STEP_KEY: train_step,
+      'model_id': model_id,
   }
-
   variable_container = reverb_variable_container.ReverbVariableContainer(
       variable_container_server_address,
       table_names=[reverb_variable_container.DEFAULT_TABLE],
   )
   variable_container.update(variables)
+
   reverb_client = reverb.Client(replay_buffer_server_address)
 
   rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
       reverb_client,
-      table_name=reverb_replay_buffer.DEFAULT_TABLE,
+      table_name='training_table_0',
       sequence_length=2,
       stride_length=1,
   )
@@ -241,16 +244,21 @@ def collect_off_policy(
   random_policy = random_py_policy.RandomPyPolicy(
       collect_env.time_step_spec(), collect_env.action_spec()
   )
-  initial_collect_actor = actor.Actor(
-      collect_env,
-      random_policy,
-      train_step,
-      steps_per_run=initial_collect_steps,
-      observers=[rb_observer],
-  )
-  logging.info('Doing initial collect.')
-  initial_collect_actor.run()
-  logging.info('Done initial collect.')
+  # Circuit Training has a mask for valid actions, and sampling randomly
+  # may result in invalid actions.
+  if environment_name == 'CircuitTraining-v0':
+    pass
+  else:
+    initial_collect_actor = actor.Actor(
+        collect_env,
+        random_policy,
+        train_step,
+        steps_per_run=initial_collect_steps,
+        observers=[rb_observer],
+    )
+    logging.info('Doing initial collect.')
+    initial_collect_actor.run()
+    logging.info('Done initial collect.')
 
   # Create the collect actor.
   env_step_metric = py_metrics.EnvironmentSteps()

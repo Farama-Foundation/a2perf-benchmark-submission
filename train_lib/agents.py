@@ -23,7 +23,7 @@ from tf_agents.utils import object_identity
 from tf_agents.utils import value_ops
 
 from .circuit_training import static_feature_cache
-from .models import create_circuit_training_models_fn
+from .models import create_circuit_training_ppo_models_fn
 from .networks import _create_actor_distribution_net
 from .networks import _create_actor_net
 from .networks import _create_critic_net
@@ -756,11 +756,19 @@ def _create_ppo_agent(
 ) -> tf_agent.TFAgent:
   """Creates a PPO agent."""
 
+  lr = tf.keras.optimizers.schedules.CosineDecay(
+      initial_learning_rate=learning_rate,
+      decay_steps=max_train_steps,
+      alpha=0.1,
+  )
+
+  optimizer = tf.keras.optimizers.Adam(learning_rate=lr, epsilon=1e-5)
+
   if env_name == 'CircuitTraining-v0':
     static_features = kwargs.get('static_features', None)
     cache = static_feature_cache.StaticFeatureCache()
     cache.add_static_feature(static_features)
-    actor_net, value_net = create_circuit_training_models_fn(
+    actor_net, value_net = create_circuit_training_ppo_models_fn(
         rl_architecture='generalization',
         observation_tensor_spec=observation_tensor_spec,
         action_tensor_spec=action_tensor_spec,
@@ -768,14 +776,6 @@ def _create_ppo_agent(
         use_model_tpu=False,
         seed=seed,
     )
-
-    lr = tf.keras.optimizers.schedules.CosineDecay(
-        initial_learning_rate=learning_rate,
-        decay_steps=max_train_steps,
-        alpha=0.1,
-    )
-
-    optimizer = tf.keras.optimizers.Adam(learning_rate=lr, epsilon=1e-5)
 
     return create_circuit_ppo_agent(train_step=train_step,
                                     max_train_steps=max_train_steps,
@@ -815,10 +815,6 @@ def _create_ppo_agent(
         embedding_dim=embedding_dim,
     )
 
-    optimizer = tf.keras.optimizers.Adam(
-        learning_rate=learning_rate, epsilon=1e-5
-    )
-
   return ppo_clip_agent.PPOClipAgent(
       action_spec=action_tensor_spec,
       actor_net=actor_net,
@@ -845,6 +841,7 @@ def _create_ppo_agent(
 def _create_ddqn_agent(
     env_name: Text,
     train_step: tf.Variable,
+    max_train_steps: int,
     observation_tensor_spec: types.NestedTensorSpec,
     action_tensor_spec: types.NestedTensorSpec,
     time_step_tensor_spec: ts.TimeStep,
@@ -853,33 +850,40 @@ def _create_ddqn_agent(
     debug_summaries: bool = False,
     summarize_grads_and_vars: bool = False,
     gradient_clipping: Optional[float] = None,
-    # webnav kwargs
-    max_vocab_size: Optional[int] = None,
-    latent_dim: Optional[int] = None,
-    profile_value_dropout: Optional[float] = None,
-    embedding_dim: Optional[int] = None,
     seed: Optional[int] = None,
     **kwargs
 ) -> tf_agent.TFAgent:
   """Creates an agent."""
+
+  lr = tf.keras.optimizers.schedules.CosineDecay(
+      initial_learning_rate=learning_rate,
+      decay_steps=max_train_steps,
+      alpha=0.1,
+  )
+
+  optimizer = tf.keras.optimizers.Adam(learning_rate=lr, epsilon=1e-5)
+
   q_net = _create_q_net(
       env_name=env_name,
       observation_tensor_spec=observation_tensor_spec,
       action_tensor_spec=action_tensor_spec,
       seed=seed,
-      max_vocab_size=max_vocab_size,
-      latent_dim=latent_dim,
-      profile_value_dropout=profile_value_dropout,
-      embedding_dim=embedding_dim,
+      **kwargs,
+  )
+  target_q_net = _create_q_net(
+      env_name=env_name,
+      observation_tensor_spec=observation_tensor_spec,
+      action_tensor_spec=action_tensor_spec,
+      seed=seed,
+      **kwargs,
   )
 
   return dqn_agent.DdqnAgent(
       time_step_spec=time_step_tensor_spec,
       action_spec=action_tensor_spec,
       q_network=q_net,
-      optimizer=tf.keras.optimizers.Adam(
-          learning_rate=learning_rate, epsilon=1e-5
-      ),
+      target_q_network=target_q_net,
+      optimizer=optimizer,
       td_errors_loss_fn=tf.math.squared_difference,
       train_step_counter=train_step,
       epsilon_greedy=epsilon_greedy,
@@ -984,6 +988,7 @@ def create_agent(algorithm, environment_name,
     return _create_ddqn_agent(
         env_name=environment_name,
         train_step=train_step,
+        max_train_steps=max_train_step,
         observation_tensor_spec=observation_tensor_spec,
         action_tensor_spec=action_tensor_spec,
         time_step_tensor_spec=time_step_tensor_spec,

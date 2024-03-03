@@ -243,7 +243,7 @@ def compute_init_iteration(
   )
 
 
-def train_on_policy(train_step, max_train_step, debug_summaries, learner,
+def train_on_policy(train_step, max_train_step, debug_summaries, learner_obj,
     model_id,
     variable_container, variables, reverb_replay_trains, init_iteration,
     num_iterations):
@@ -255,10 +255,10 @@ def train_on_policy(train_step, max_train_step, debug_summaries, learner,
       # `wait_for_data` is not necessary and is added only to measure the data
       # latency. It takes one batch of data from dataset and print it. So, it
       # waits until the data is ready to consume.
-      learner.wait_for_data()
+      learner_obj.wait_for_data()
       data_wait_time = time.time() - start_time
       logging.info('Data wait time sec: %s', data_wait_time)
-    learner.run()
+    learner_obj.run()
     run_time = time.time() - start_time
     num_steps = train_step.numpy() - step_val
     logging.info('Steps per sec: %s', num_steps / run_time)
@@ -269,7 +269,7 @@ def train_on_policy(train_step, max_train_step, debug_summaries, learner,
     for reverb_replay_train in reverb_replay_trains:
       reverb_replay_train.clear()
     with (
-      learner.train_summary_writer.as_default(),
+      learner_obj.train_summary_writer.as_default(),
       common.soft_device_placement(),
       tf.summary.record_if(lambda: True),
     ):
@@ -283,21 +283,23 @@ def train_on_policy(train_step, max_train_step, debug_summaries, learner,
           )
 
 
-def train_off_policy(train_step, learner, model_id,
+def train_off_policy(train_step,
+    learner_obj,
+    model_id,
     variable_container, variables, init_iteration,
     num_iterations, learner_iterations_per_call):
   for i in range(init_iteration, num_iterations):
     step_val = train_step.numpy()
     logging.info('Training. Iteration: %d', i)
     start_time = time.time()
-    learner.run(learner_iterations_per_call)
+    learner_obj.run(learner_iterations_per_call)
     run_time = time.time() - start_time
     num_steps = train_step.numpy() - step_val
     logging.info('Steps per sec: %s', num_steps / run_time)
     logging.info('Pushing variables at model_id: %d', model_id.numpy())
     variable_container.push(variables)
     with (
-      learner.train_summary_writer.as_default(),
+      learner_obj.train_summary_writer.as_default(),
       common.soft_device_placement(),
       tf.summary.record_if(lambda: True),
     ):
@@ -494,7 +496,7 @@ def train(
       train_on_policy(train_step=train_step,
                       max_train_step=max_train_step,
                       debug_summaries=debug_summaries,
-                      learner=learner, model_id=model_id,
+                      learner_obj=learner, model_id=model_id,
                       variable_container=variable_container,
                       variables=variables,
                       reverb_replay_trains=reverb_replay_trains,
@@ -503,11 +505,11 @@ def train(
                       )
 
     else:
-      train_off_policy(train_step=train_step, debug_summaries=debug_summaries,
-                       learner=learner, model_id=model_id,
+      train_off_policy(train_step=train_step,
+                       learner_obj=learner,
+                       model_id=model_id,
                        variable_container=variable_container,
                        variables=variables,
-                       reverb_replay_trains=reverb_replay_trains,
                        num_iterations=num_iterations,
                        init_iteration=init_iteration,
                        learner_iterations_per_call=learner_iterations_per_call

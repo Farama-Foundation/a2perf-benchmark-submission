@@ -35,7 +35,7 @@ from a2perf.domains.circuit_training.circuit_training.environment import \
 from .circuit_training import fully_connected_model_lib
 
 
-def create_circuit_training_models_fn(
+def create_circuit_training_ppo_models_fn(
     rl_architecture: str,
     observation_tensor_spec: types.NestedTensorSpec,
     action_tensor_spec: types.NestedTensorSpec,
@@ -57,7 +57,7 @@ def create_circuit_training_models_fn(
     Tuple of actor_net, value_net.
   """
   if rl_architecture == 'generalization':
-    actor_net, value_net = create_grl_models(
+    actor_net, value_net = create_grl_actor_critic_models(
         observation_tensor_spec,
         action_tensor_spec,
         static_features,
@@ -73,6 +73,41 @@ def create_circuit_training_models_fn(
     )
 
   return actor_net, value_net
+
+
+def create_circuit_training_dqn_models_fn(
+    rl_architecture: str,
+    observation_tensor_spec: types.NestedTensorSpec,
+    action_tensor_spec: types.NestedTensorSpec,
+    static_features: Dict[str, np.ndarray],
+    use_model_tpu: bool = False,
+    seed: int = 0,
+) -> Any:
+  """Creates DQN network.
+
+  Args:
+    rl_architecture: The RL architecture.
+    observation_tensor_spec: Env observation spec.
+    action_tensor_spec: Env action spec.
+    static_features: Env static features.
+    use_model_tpu: Use TPU model.
+    seed: Random seed.
+
+  Returns:
+    DQN network.
+  """
+  if rl_architecture == 'generalization':
+    return create_grl_q_models(
+        observation_tensor_spec,
+        action_tensor_spec,
+        static_features,
+        use_model_tpu=use_model_tpu,
+        seed=seed,
+    )
+  else:
+    return fully_connected_model_lib.create_q_network(
+        observation_tensor_spec, action_tensor_spec
+    )
 
 
 # Reimplements internal function
@@ -134,6 +169,7 @@ class CircuitTrainingModel(tf.keras.layers.Layer):
       is_augmented: bool = False,
       seed: int = 0,
       include_min_max_var: bool = True,
+      use_value_head: bool = True,
   ):
     """Builds the circuit training model.
 
@@ -157,6 +193,7 @@ class CircuitTrainingModel(tf.keras.layers.Layer):
     self._policy_noise_weight = policy_noise_weight
     self._is_augmented = is_augmented
     self._seed = seed
+    self._use_value_head = use_value_head
     self._include_min_max_var = include_min_max_var
     self._all_static_features = all_static_features
     self._observation_config = (
@@ -223,16 +260,17 @@ class CircuitTrainingModel(tf.keras.layers.Layer):
         kernel_initializer=kernel_initializer,
     )
 
-    self._value_head = tf.keras.Sequential(
-        [
-            tf.keras.layers.Dense(32, kernel_initializer=kernel_initializer),
-            tf.keras.layers.ReLU(),
-            tf.keras.layers.Dense(8, kernel_initializer=kernel_initializer),
-            tf.keras.layers.ReLU(),
-            tf.keras.layers.Dense(1, kernel_initializer=kernel_initializer),
-        ],
-        name='value_head',
-    )
+    if use_value_head:
+      self._value_head = tf.keras.Sequential(
+          [
+              tf.keras.layers.Dense(32, kernel_initializer=kernel_initializer),
+              tf.keras.layers.ReLU(),
+              tf.keras.layers.Dense(8, kernel_initializer=kernel_initializer),
+              tf.keras.layers.ReLU(),
+              tf.keras.layers.Dense(1, kernel_initializer=kernel_initializer),
+          ],
+          name='value_head',
+      )
 
     if self._is_augmented:
       self._augmented_embedding_layer = tf.keras.layers.Dense(
@@ -646,7 +684,7 @@ class CircuitTrainingModel(tf.keras.layers.Layer):
             lambda: self.add_noise(location_logits),
         ),
     }
-    value = self._value_head(h, training=training)
+
     logits = {
         'location': tf.cond(
             finetune_value_only,
@@ -655,7 +693,11 @@ class CircuitTrainingModel(tf.keras.layers.Layer):
         )
     }
 
-    return logits, value
+    if self._use_value_head:
+      value = self._value_head(h, training=training)
+      return logits, value
+    else:
+      return logits, None
 
 
 class CircuitTrainingTPUModel(CircuitTrainingModel):
@@ -986,6 +1028,7 @@ class GrlModel(network.Network):
       policy_noise_weight: float = 0.0,
       use_model_tpu: bool = True,
       is_augmented: bool = False,
+      use_value_head: bool = True,
       seed: int = 0,
   ):
     super(GrlModel, self).__init__(
@@ -1004,6 +1047,7 @@ class GrlModel(network.Network):
           policy_noise_weight=policy_noise_weight,
           all_static_features=all_static_features,
           is_augmented=is_augmented,
+          use_value_head=use_value_head,
           seed=seed,
       )
 
@@ -1115,7 +1159,42 @@ class GrlValueModel(network.Network):
     return squeeze_value_dim(model_out['value']), network_state
 
 
-def create_grl_models(
+@gin.configurable(module='circuittraining.models')
+class GrlQModel(network.Network):
+  """Circuit GRL Model."""
+
+  def __init__(
+      self,
+      input_tensors_spec: types.NestedTensorSpec,
+      shared_network: network.Network,
+      name: Optional[Text] = None,
+  ):
+    super(GrlQModel, self).__init__(
+        input_tensor_spec=input_tensors_spec, state_spec=(), name=name
+    )
+
+    self._input_tensors_spec = input_tensors_spec
+    self._shared_network = shared_network
+
+  def call(self, inputs, step_types=None, network_state=()):
+    outer_rank = nest_utils.get_outer_rank(inputs, self._input_tensors_spec)
+    if outer_rank == 0:
+      inputs = tf.nest.map_structure(lambda x: tf.reshape(x, (1, -1)), inputs)
+    model_out, _ = self._shared_network(inputs)
+
+    paddings = tf.ones_like(inputs['mask'], dtype=tf.float32) * (
+        -(2.0 ** 32) + 1
+    )
+    masked_logits = tf.where(
+        tf.cast(inputs['mask'], tf.bool),
+        model_out['logits']['location'],
+        paddings,
+    )
+
+    return masked_logits, network_state
+
+
+def create_grl_actor_critic_models(
     observation_tensor_spec: types.NestedTensorSpec,
     action_tensor_spec: types.NestedTensorSpec,
     all_static_features: Dict[str, np.ndarray],
@@ -1152,3 +1231,41 @@ def create_grl_models(
   )
   grl_value_net = GrlValueModel(observation_tensor_spec, grl_shared_net)
   return grl_actor_net, grl_value_net
+
+
+def create_grl_q_models(
+    observation_tensor_spec: types.NestedTensorSpec,
+    action_tensor_spec: types.NestedTensorSpec,
+    all_static_features: Dict[str, np.ndarray],
+    use_model_tpu: bool = False,
+    is_augmented: bool = False,
+    seed: int = 0,
+):
+  """Create the GRL actor and value networks from scratch.
+
+  Args:
+    observation_tensor_spec: tensor spec for the observations.
+    action_tensor_spec: tensor spec for the actions.
+    all_static_features: static features from the environment to pass into the
+      models.
+    use_model_tpu: boolean flag indicating the versions of the GRL models to
+      create. TPU models leverage map_fn to speed up performance on TPUs. Both
+      versions generate the same output given the same inputs.
+    is_augmented: Whether the model uses augmented features.
+    seed: Random seed.
+
+  Returns:
+    A tuple containing the GRL policy model and value model.
+  """
+  grl_shared_net = GrlModel(
+      observation_tensor_spec,
+      action_tensor_spec,
+      all_static_features=all_static_features,
+      use_model_tpu=use_model_tpu,
+      use_value_head=False,
+      is_augmented=is_augmented,
+      seed=seed,
+  )
+
+  grl_q_net = GrlQModel(observation_tensor_spec, grl_shared_net)
+  return grl_q_net
