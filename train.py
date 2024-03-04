@@ -242,9 +242,12 @@ def train():
     min_table_size_before_sampling = 1
 
   elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg', 'dqn'):
-    # We want to exhaust `num_episodes_per_iteration` worth of samples each iteration
+
+    # We use learner iterations per call to learn from the same number of
+    # batches as there are transitions in a single iteration
     learner_iterations_per_call = np.maximum(
-        1, (num_episodes_per_iteration * max_sequence_length) / batch_size
+        1, (
+               num_episodes_per_iteration * max_sequence_length) / batch_size / num_replicas
     ).astype(int)
     train_steps_per_iteration = learner_iterations_per_call
     shuffle_buffer_size = -1
