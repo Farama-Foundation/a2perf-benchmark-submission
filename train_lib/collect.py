@@ -9,6 +9,7 @@ from typing import Text
 
 import gin
 import reverb
+import tensorflow as tf
 import tf_agents
 from absl import app
 from absl import flags
@@ -18,12 +19,10 @@ from tf_agents.environments import suite_pybullet
 from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
+from tf_agents.policies import py_epsilon_greedy_policy
 from tf_agents.policies import py_tf_eager_policy
 from tf_agents.policies import random_py_policy
-from tf_agents.policies import py_policy, epsilon_greedy_policy, \
-  py_epsilon_greedy_policy
 from tf_agents.policies import tf_policy
-
 from tf_agents.replay_buffers import reverb_utils
 from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import actor
@@ -37,7 +36,6 @@ from a2perf.domains import circuit_training
 from a2perf.domains import quadruped_locomotion
 # noinspection PyUnresolvedReferences
 from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
-import tensorflow as tf
 
 _DEBUG = flags.DEFINE_bool('debug', False, 'Debug mode.')
 _GIN_FILE = flags.DEFINE_multi_string(
@@ -68,7 +66,9 @@ _STD_CELL_PLACER_MODE = flags.DEFINE_string(
         'algorithm).'
     ),
 )
-
+_NUM_ITERATIONS = flags.DEFINE_integer(
+    'num_iterations', None, 'Number of iterations.'
+)
 _ROOT_DIR = flags.DEFINE_string(
     'root_dir',
     os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
@@ -190,6 +190,8 @@ ACTOR_COLLECT_METRICS_BUFFER_SIZE = 10
 MAX_RETRIES = 8640  # 24 hours
 RETRY_DELAY = 10
 
+EPSILON_DECAY_END_VALUE = 1e-4
+
 
 def mask_circuit_training_actions(circuit_env, observation):
   mask = circuit_env.unwrapped._get_mask()
@@ -292,6 +294,13 @@ def collect_off_policy(
     )
     logging.info('\tCollection took %.3f seconds', end_time - start_time)
     prev_num_steps_collected = env_step_metric.result()
+
+    with collect_actor.summary_writer.as_default():
+      tf.summary.scalar(
+          'Metrics/EpsilonGreedy',
+          collect_policy._get_epsilon(),
+          step=train_step,
+      )
 
   logging.info('Done collecting.')
 
@@ -454,6 +463,9 @@ def run_collect(
         random_policy=random_policy,
         epsilon=_EPSILON_GREEDY.value,
         random_seed=_GLOBAL_SEED.value,
+        epsilon_decay_end_value=EPSILON_DECAY_END_VALUE,
+        # Total number of steps should be max_train_
+        epsilon_decay_end_count=_NUM_ITERATIONS.value * sequence_length
     )
     epsilon_greedy_policy_obj.variables = greedy_policy.variables
     policy = epsilon_greedy_policy_obj

@@ -175,6 +175,7 @@ def create_off_policy_learner(
       root_dir=root_dir,
       train_step=train_step,
       agent=agent,
+      after_train_strategy_step_fn=lambda sample, loss: model_id.assign_add(1),
       experience_dataset_fn=experience_dataset_fn,
       checkpoint_interval=train_checkpoint_interval,
       summary_interval=log_interval,
