@@ -9,6 +9,7 @@ from typing import Text
 
 import gin
 import reverb
+import tf_agents
 from absl import app
 from absl import flags
 from absl import logging
@@ -19,7 +20,10 @@ from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
 from tf_agents.policies import py_tf_eager_policy
 from tf_agents.policies import random_py_policy
-from tf_agents.replay_buffers import reverb_replay_buffer
+from tf_agents.policies import py_policy, epsilon_greedy_policy, \
+  py_epsilon_greedy_policy
+from tf_agents.policies import tf_policy
+
 from tf_agents.replay_buffers import reverb_utils
 from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import actor
@@ -28,9 +32,12 @@ from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
 # noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 from a2perf.domains import circuit_training
+# noinspection PyUnresolvedReferences
+from a2perf.domains import quadruped_locomotion
+# noinspection PyUnresolvedReferences
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
+import tensorflow as tf
 
 _DEBUG = flags.DEFINE_bool('debug', False, 'Debug mode.')
 _GIN_FILE = flags.DEFINE_multi_string(
@@ -184,9 +191,15 @@ MAX_RETRIES = 8640  # 24 hours
 RETRY_DELAY = 10
 
 
+def mask_circuit_training_actions(circuit_env, observation):
+  mask = circuit_env.unwrapped._get_mask()
+  return observation, mask
+
+
 def collect_off_policy(
-    environment_name: str,
-    collect_policy: py_tf_eager_policy.PyTFEagerPolicyBase,
+    collect_env: tf_agents.environments.TFPyEnvironment,
+    collect_policy: tf_policy.TFPolicy,
+    random_policy: tf_policy.TFPolicy,
     replay_buffer_server_address: str,
     variable_container_server_address: str,
     root_dir: str,
@@ -194,9 +207,7 @@ def collect_off_policy(
     max_train_step: int,
     summary_interval: int,
     sequence_length: int,
-    suite_load_function: callable,
     initial_collect_steps: int,
-    **kwargs
 ) -> None:
   # We run collect jobs in replicas when using kubernetes,
   # so check if JOB_COMPLETION_INDEX is set.
@@ -214,9 +225,6 @@ def collect_off_policy(
     summary_dir = os.path.join(root_dir, 'summaries', str(task))
 
   logging.info('Summary dir: %s', summary_dir)
-  collect_env = suite_load_function(
-      environment_name,
-  )
 
   # Create the variable container.
   train_step = train_utils.create_train_step()
@@ -241,26 +249,17 @@ def collect_off_policy(
       stride_length=1,
   )
 
-  random_policy = random_py_policy.RandomPyPolicy(
-      collect_env.time_step_spec(), collect_env.action_spec()
+  initial_collect_actor = actor.Actor(
+      collect_env,
+      random_policy,
+      train_step,
+      steps_per_run=initial_collect_steps,
+      observers=[rb_observer],
   )
-  # Circuit Training has a mask for valid actions, and sampling randomly
-  # may result in invalid actions.
-  if environment_name == 'CircuitTraining-v0':
-    pass
-  else:
-    initial_collect_actor = actor.Actor(
-        collect_env,
-        random_policy,
-        train_step,
-        steps_per_run=initial_collect_steps,
-        observers=[rb_observer],
-    )
-    logging.info('Doing initial collect.')
-    initial_collect_actor.run()
-    logging.info('Done initial collect.')
+  logging.info('Doing initial collect.')
+  initial_collect_actor.run()
+  logging.info('Done initial collect.')
 
-  # Create the collect actor.
   env_step_metric = py_metrics.EnvironmentSteps()
   collect_actor = actor.Actor(
       collect_env,
@@ -303,8 +302,8 @@ def collect_off_policy(
 
 
 @gin.configurable
-def collect_sequences(
-    environment_name: Text,
+def collect_on_policy(
+    collect_env: tf_agents.environments.TFPyEnvironment,
     collect_policy: py_tf_eager_policy.PyTFEagerPolicyBase,
     replay_buffer_server_address: Text,
     variable_container_server_address: Text,
@@ -313,7 +312,6 @@ def collect_sequences(
     max_train_step: int,
     summary_interval: int,
     sequence_length: int,
-    suite_load_function: callable,
     max_timesteps_per_model: Optional[int] = None,
 
     **kwargs
@@ -327,10 +325,6 @@ def collect_sequences(
 
   else:
     summary_dir = os.path.join(root_dir, 'summaries', str(task))
-
-  collect_env = suite_load_function(
-      environment_name,
-  )
 
   # Create the variable container.
   train_step = train_utils.create_train_step()
@@ -426,38 +420,73 @@ def run_collect(
     initial_collect_steps: int,
 ) -> None:
   """Wait for the collect policy to be ready and run collect job."""
-  collect_policy_dir = os.path.join(
+  collect_env = suite_load_fn(environment_name)
+  root_policy_path = os.path.join(
       root_dir,
       '../../',  # two levels because collect/<hostname>/ is the root_dir
-      learner.POLICY_SAVED_MODEL_DIR,
-      learner.COLLECT_POLICY_SAVED_MODEL_DIR,
-  )
+      learner.POLICY_SAVED_MODEL_DIR, )
 
-  logging.info('Looking for collect policy in %s', collect_policy_dir)
+  if algorithm in ('dqn', 'ddqn'):
+    # The TF Agent creates a collect policy that handles epsilon greeedy,
+    # but some environments use a mask on valid/invalid actions. Loading the raw
+    # policy allows us to apply the mask ourselves.
+    greedy_policy_dir = os.path.join(root_policy_path,
+                                     learner.GREEDY_POLICY_SAVED_MODEL_DIR)
+    greedy_policy = train_utils.wait_for_policy(
+        greedy_policy_dir, load_specs_from_pbtxt=True
+    )
+    logging.info('Loaded greedy policy from %s', greedy_policy_dir)
 
-  collect_policy = train_utils.wait_for_policy(
-      collect_policy_dir, load_specs_from_pbtxt=True
-  )
-  logging.info('Loaded collect policy from %s', collect_policy_dir)
+    observation_and_action_constraint_splitter_fn = None
+    if environment_name == 'CircuitTraining-v0':
+      observation_and_action_constraint_splitter_fn = functools.partial(
+          mask_circuit_training_actions, collect_env
+      )
+
+    random_policy = random_py_policy.RandomPyPolicy(
+        collect_env.time_step_spec(), collect_env.action_spec(),
+        observation_and_action_constraint_splitter=observation_and_action_constraint_splitter_fn
+    )
+
+    # Now wrap the policy in an epsilon greedy policy.
+    epsilon_greedy_policy_obj = py_epsilon_greedy_policy.EpsilonGreedyPolicy(
+        greedy_policy=greedy_policy,
+        random_policy=random_policy,
+        epsilon=_EPSILON_GREEDY.value,
+        random_seed=_GLOBAL_SEED.value,
+    )
+    epsilon_greedy_policy_obj.variables = greedy_policy.variables
+    policy = epsilon_greedy_policy_obj
+  else:
+    collect_policy_dir = os.path.join(root_policy_path,
+                                      learner.COLLECT_POLICY_SAVED_MODEL_DIR)
+
+    logging.info('Looking for collect policy in %s', collect_policy_dir)
+
+    policy = train_utils.wait_for_policy(
+        collect_policy_dir, load_specs_from_pbtxt=True
+    )
+    random_policy = None
+    logging.info('Loaded collect policy from %s', collect_policy_dir)
 
   if algorithm in ('sac', 'ddqn', 'td3', 'dqn', 'ddpg'):
     collect_off_policy(
-        environment_name=environment_name,
-        collect_policy=collect_policy,
-        replay_buffer_server_address=replay_buffer_server_address,
-        variable_container_server_address=variable_container_server_address,
-        root_dir=root_dir,
-        task=task,
-        max_train_step=max_train_step,
-        summary_interval=summary_interval,
-        sequence_length=sequence_length,
-        suite_load_function=suite_load_fn,
+        collect_env=collect_env,
+        collect_policy=policy,
         initial_collect_steps=initial_collect_steps,
+        max_train_step=max_train_step,
+        random_policy=random_policy,
+        replay_buffer_server_address=replay_buffer_server_address,
+        root_dir=root_dir,
+        sequence_length=sequence_length,
+        summary_interval=summary_interval,
+        task=task,
+        variable_container_server_address=variable_container_server_address,
     )
   else:
-    collect_sequences(
-        environment_name=environment_name,
-        collect_policy=collect_policy,
+    collect_on_policy(
+        collect_env=collect_env,
+        collect_policy=policy,
         replay_buffer_server_address=replay_buffer_server_address,
         variable_container_server_address=variable_container_server_address,
         root_dir=root_dir,
@@ -465,7 +494,6 @@ def run_collect(
         max_train_step=max_train_step,
         summary_interval=summary_interval,
         sequence_length=sequence_length,
-        suite_load_function=suite_load_fn,
     )
 
 
@@ -579,6 +607,9 @@ def setup_env_for_collect():
 
 
 def main(_):
+  if _DEBUG.value:
+    tf.config.experimental_run_functions_eagerly(True)
+
   gin.parse_config_files_and_bindings(
       _GIN_FILE.value, _GIN_BINDINGS.value, finalize_config=False
   )

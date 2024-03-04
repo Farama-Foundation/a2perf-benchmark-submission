@@ -359,9 +359,12 @@ def train(
   )
 
   if environment_name == 'CircuitTraining-v0':
+    # Add static features
     static_features = env.wrapped_env().get_static_obs()
     env_kwargs = {
         'static_features': static_features, }
+
+    # Also supply
   elif environment_name == 'WebNavigation-v0':
     env_kwargs = {}
   elif environment_name == 'QuadrupedLocomotion-v0':

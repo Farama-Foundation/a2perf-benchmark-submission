@@ -18,6 +18,7 @@ from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import Optional
+from typing import Text
 from typing import Union
 
 import gin
@@ -1009,9 +1010,6 @@ class CircuitTrainingTPUModel(CircuitTrainingModel):
     }
 
     return logits, value
-
-
-from typing import Dict, Optional, Text
 
 
 @gin.configurable(module='circuittraining.models')
