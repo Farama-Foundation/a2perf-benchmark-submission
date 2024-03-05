@@ -464,8 +464,9 @@ def run_collect(
         epsilon=_EPSILON_GREEDY.value,
         random_seed=_GLOBAL_SEED.value,
         epsilon_decay_end_value=EPSILON_DECAY_END_VALUE,
-        # Adjust the decay end count as needed.
-        epsilon_decay_end_count=_NUM_ITERATIONS.value * sequence_length * 2
+        # Adjust the decay end count as needed. Set to approximately
+        # the total number of steps to be collected by this collect job.
+        epsilon_decay_end_count=_NUM_ITERATIONS.value * sequence_length,
     )
     epsilon_greedy_policy_obj.variables = greedy_policy.variables
     policy = epsilon_greedy_policy_obj
