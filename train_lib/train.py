@@ -307,6 +307,12 @@ def train_off_policy(train_step,
         tf.summary.scalar(
             name='step_per_sec', data=num_steps / run_time, step=train_step
         )
+      with tf.name_scope('LearningRate/'):
+        tf.summary.scalar(
+            name='learning_rate',
+            data=learner_obj._agent._optimizer.learning_rate,
+            step=train_step
+        )
 
 
 @gin.configurable

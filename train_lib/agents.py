@@ -841,7 +841,6 @@ def _create_ppo_agent(
 def _create_ddqn_agent(
     env_name: Text,
     train_step: tf.Variable,
-    max_train_steps: int,
     observation_tensor_spec: types.NestedTensorSpec,
     action_tensor_spec: types.NestedTensorSpec,
     time_step_tensor_spec: ts.TimeStep,
@@ -857,7 +856,7 @@ def _create_ddqn_agent(
 
   lr = tf.keras.optimizers.schedules.CosineDecay(
       initial_learning_rate=learning_rate,
-      decay_steps=max_train_steps,
+      decay_steps=kwargs.get('max_train_steps', int(1e6)),
       alpha=0.1,
   )
 
@@ -919,19 +918,26 @@ def _create_sac_agent(
       seed=seed,
       env_name=env_name,
   )
+
+  lr = tf.keras.optimizers.schedules.CosineDecay(
+      initial_learning_rate=learning_rate,
+      decay_steps=kwargs.get('max_train_steps', int(1e6)),
+      alpha=0.1,
+  )
+
   return sac_agent.SacAgent(
       time_step_tensor_spec,
       action_tensor_spec,
       actor_network=actor_net,
       critic_network=critic_net,
       actor_optimizer=tf.keras.optimizers.Adam(
-          learning_rate=learning_rate, epsilon=1e-5
+          learning_rate=lr, epsilon=1e-5
       ),
       critic_optimizer=tf.keras.optimizers.Adam(
-          learning_rate=learning_rate, epsilon=1e-5
+          learning_rate=lr, epsilon=1e-5
       ),
       alpha_optimizer=tf.keras.optimizers.Adam(
-          learning_rate=learning_rate, epsilon=1e-5
+          learning_rate=lr, epsilon=1e-5
       ),
       target_update_tau=0.005,
       target_update_period=1,
