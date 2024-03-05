@@ -12,11 +12,13 @@ into a format compatible with the policy.
 """
 
 import os
+from collections import OrderedDict
 from typing import Any
 from typing import Union
 
-from absl import logging
 import numpy as np
+import tensorflow as tf
+from absl import logging
 from tf_agents.policies import policy_loader
 from tf_agents.policies.tf_policy import TFPolicy
 from tf_agents.trajectories import time_step as ts
@@ -56,37 +58,6 @@ def load_policy(env: Any) -> TFPolicy:
   return policy
 
 
-def preprocess_observation(
-    observation: Union[np.ndarray, list],
-    reward: float = 0.0,
-    discount: float = 1.0,
-    step_type: ts.StepType = ts.StepType.MID,
-) -> ts.TimeStep:
-  """Preprocesses a raw observation from the Gym environment into a TF Agents TimeStep.
-
-  Args:
-      observation: Raw observation from the environment.
-      reward: The reward received after the last action.
-      discount: The discount factor.
-      step_type: The type of the current step.
-
-  Returns:
-      A preprocessed TimeStep object suitable for the policy.
-  """
-  # Ensure observation is a 1-D array
-  observation = np.array(observation, dtype=np.float32)
-
-  # Convert step_type to a numpy int32
-  step_type = np.array(step_type, dtype=np.int32)
-
-  return ts.TimeStep(
-      step_type=step_type,  # Step type as numpy int32
-      reward=np.float32(reward),  # Reward as single float32 value
-      discount=np.float32(discount),  # Discount as single float32 value
-      observation=observation,  # Observation as 1-D array
-  )
-
-
 def infer_once(policy: TFPolicy, preprocessed_observation: ts.TimeStep) -> Any:
   """Runs a single inference step using the given policy.
 
@@ -99,3 +70,60 @@ def infer_once(policy: TFPolicy, preprocessed_observation: ts.TimeStep) -> Any:
   """
   action_step = policy.action(preprocessed_observation)
   return action_step.action
+
+
+def preprocess_observation(
+    observation: Union[np.ndarray, Any],
+    reward: float = 0.0,
+    discount: float = 1.0,
+    step_type: ts.StepType = ts.StepType.MID,
+    time_step_spec: ts.TimeStep = None,
+) -> ts.TimeStep:
+  """Preprocesses a raw observation from the Gym environment into a TF Agents TimeStep.
+
+  Args:
+      observation: Raw observation from the environment.
+      reward: The reward received after the last action.
+      discount: The discount factor.
+      step_type: The type of the current step.
+      time_step_spec: The spec of the time_step used to extract dtype and shape.
+
+  Returns:
+      A preprocessed TimeStep object suitable for the policy.
+  """
+  if isinstance(observation, (dict, OrderedDict)):
+    processed_observation = {}
+    for key, value in observation.items():
+      if time_step_spec and key in time_step_spec.observation.keys():
+        spec = time_step_spec.observation[key]
+        # Adjust dtype and shape according to the time_step_spec
+        processed_observation[key] = tf.convert_to_tensor(value,
+                                                          dtype=spec.dtype)
+      else:
+        # Use the numpy dtype of the element that was passed in
+        processed_observation[key] = tf.convert_to_tensor(value,
+                                                          dtype=value.dtype)
+    observation = processed_observation
+  elif isinstance(observation, np.ndarray):
+    # Convert the ndarray directly, using its own dtype
+    observation = tf.convert_to_tensor(observation, dtype=observation.dtype)
+  else:
+    raise ValueError(
+        'Observation type not recognized. Please provide an OrderedDict, dict, or NumPy array.'
+    )
+
+  # Convert step_type, reward, and discount using their respective dtypes from time_step_spec
+  # if it is provided, otherwise default to the dtype inferred from the input
+  step_type = tf.convert_to_tensor(step_type,
+                                   dtype=time_step_spec.step_type.dtype if time_step_spec else step_type.dtype)
+  reward = tf.convert_to_tensor(reward,
+                                dtype=time_step_spec.reward.dtype if time_step_spec else np.float32)
+  discount = tf.convert_to_tensor(discount,
+                                  dtype=time_step_spec.discount.dtype if time_step_spec else np.float32)
+
+  return ts.TimeStep(
+      step_type=step_type,
+      reward=reward,
+      discount=discount,
+      observation=observation,
+  )
