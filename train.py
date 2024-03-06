@@ -243,12 +243,8 @@ def train():
 
   elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg', 'dqn'):
 
-    # We use learner iterations per call to learn from the same number of
-    # batches as there are transitions in a single iteration
-    learner_iterations_per_call = np.maximum(
-        1, (
-               num_episodes_per_iteration * max_sequence_length) / batch_size / num_replicas
-    ).astype(int)
+    # The ratio between environment steps and learner steps is set to 1.
+    learner_iterations_per_call = num_episodes_per_iteration * max_sequence_length // num_replicas
     train_steps_per_iteration = learner_iterations_per_call
     shuffle_buffer_size = -1
     initial_collect_steps = max_sequence_length

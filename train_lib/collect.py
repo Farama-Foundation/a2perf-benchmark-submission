@@ -296,11 +296,12 @@ def collect_off_policy(
     prev_num_steps_collected = env_step_metric.result()
 
     with collect_actor.summary_writer.as_default():
-      tf.summary.scalar(
-          'Metrics/EpsilonGreedy',
-          collect_policy._get_epsilon(),
-          step=train_step,
-      )
+      if getattr(collect_policy, '_get_epsilon', None) is not None:
+        tf.summary.scalar(
+            'Metrics/EpsilonGreedy',
+            collect_policy._get_epsilon(),
+            step=train_step,
+        )
 
   logging.info('Done collecting.')
 
@@ -434,18 +435,7 @@ def run_collect(
       root_dir,
       '../../',  # two levels because collect/<hostname>/ is the root_dir
       learner.POLICY_SAVED_MODEL_DIR, )
-
-  if algorithm in ('dqn', 'ddqn'):
-    # The TF Agent creates a collect policy that handles epsilon greeedy,
-    # but some environments use a mask on valid/invalid actions. Loading the raw
-    # policy allows us to apply the mask ourselves.
-    greedy_policy_dir = os.path.join(root_policy_path,
-                                     learner.GREEDY_POLICY_SAVED_MODEL_DIR)
-    greedy_policy = train_utils.wait_for_policy(
-        greedy_policy_dir, load_specs_from_pbtxt=True
-    )
-    logging.info('Loaded greedy policy from %s', greedy_policy_dir)
-
+  if algorithm in ('sac', 'ddqn', 'td3', 'dqn', 'ddpg'):
     observation_and_action_constraint_splitter_fn = None
     if environment_name == 'CircuitTraining-v0':
       observation_and_action_constraint_splitter_fn = functools.partial(
@@ -457,19 +447,37 @@ def run_collect(
         observation_and_action_constraint_splitter=observation_and_action_constraint_splitter_fn
     )
 
-    # Now wrap the policy in an epsilon greedy policy.
-    epsilon_greedy_policy_obj = py_epsilon_greedy_policy.EpsilonGreedyPolicy(
-        greedy_policy=greedy_policy,
-        random_policy=random_policy,
-        epsilon=_EPSILON_GREEDY.value,
-        random_seed=_GLOBAL_SEED.value,
-        epsilon_decay_end_value=EPSILON_DECAY_END_VALUE,
-        # Adjust the decay end count as needed. Set to approximately
-        # the total number of steps to be collected by this collect job.
-        epsilon_decay_end_count=_NUM_ITERATIONS.value * sequence_length,
-    )
-    epsilon_greedy_policy_obj.variables = greedy_policy.variables
-    policy = epsilon_greedy_policy_obj
+    if algorithm in ('dqn', 'ddqn'):
+      # The TF Agent creates a collect policy that handles epsilon greeedy,
+      # but some environments use a mask on valid/invalid actions. Loading the raw
+      # policy allows us to apply the mask ourselves.
+      greedy_policy_dir = os.path.join(root_policy_path,
+                                       learner.GREEDY_POLICY_SAVED_MODEL_DIR)
+      greedy_policy = train_utils.wait_for_policy(
+          greedy_policy_dir, load_specs_from_pbtxt=True
+      )
+      logging.info('Loaded greedy policy from %s', greedy_policy_dir)
+
+      # Now wrap the policy in an epsilon greedy policy.
+      epsilon_greedy_policy_obj = py_epsilon_greedy_policy.EpsilonGreedyPolicy(
+          greedy_policy=greedy_policy,
+          random_policy=random_policy,
+          epsilon=_EPSILON_GREEDY.value,
+          random_seed=_GLOBAL_SEED.value,
+          epsilon_decay_end_value=EPSILON_DECAY_END_VALUE,
+          # Adjust the decay end count as needed. Set to approximately
+          # the total number of steps to be collected by this collect job.
+          epsilon_decay_end_count=_NUM_ITERATIONS.value * sequence_length,
+      )
+      epsilon_greedy_policy_obj.variables = greedy_policy.variables
+      policy = epsilon_greedy_policy_obj
+    elif algorithm in ('sac', 'td3', 'ddpg'):
+      collect_policy_dir = os.path.join(root_policy_path,
+                                        learner.COLLECT_POLICY_SAVED_MODEL_DIR)
+      policy = train_utils.wait_for_policy(
+          collect_policy_dir, load_specs_from_pbtxt=True
+      )
+      logging.info('Loaded collect policy from %s', collect_policy_dir)
   else:
     collect_policy_dir = os.path.join(root_policy_path,
                                       learner.COLLECT_POLICY_SAVED_MODEL_DIR)
