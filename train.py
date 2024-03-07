@@ -242,10 +242,10 @@ def train():
     min_table_size_before_sampling = 1
 
   elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg', 'dqn'):
-
-    # The ratio between environment steps and learner steps is set to 1.
-    learner_iterations_per_call = num_episodes_per_iteration * max_sequence_length // num_replicas
-    train_steps_per_iteration = learner_iterations_per_call
+    # Off-policy methods do not depend on the number of samples collected
+    # per iteration, but we try to keep the number of gradient updates
+    # proportional to the number of samples collected.
+    learner_iterations_per_call = train_steps_per_iteration = max_sequence_length
     shuffle_buffer_size = -1
     initial_collect_steps = max_sequence_length
     min_table_size_before_sampling = 1
