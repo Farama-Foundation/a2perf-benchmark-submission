@@ -252,7 +252,7 @@ class PPOLearner(object):
       The total loss computed before running the final step.
     """
     loss_info = self._generic_learner.run(
-        self._steps_per_iter, self._train_iterator, parallel_iterations=1000,
+        self._steps_per_iter, self._train_iterator
     )
     self._model_id.assign_add(1)
     return loss_info

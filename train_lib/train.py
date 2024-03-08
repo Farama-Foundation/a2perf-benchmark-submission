@@ -202,7 +202,7 @@ def create_replay_buffers(tf_agent, tasks, replay_buffer_server_address):
   return reverb_replay_trains
 
 
-def compute_init_iteration(
+def compute_init_iteration_on_policy(
     init_train_step: int,
     sequence_length: int,
     num_episodes_per_iteration: int,
@@ -293,6 +293,7 @@ def train_off_policy(train_step,
     logging.info('Training. Iteration: %d', i)
     start_time = time.time()
     learner_obj.run(learner_iterations_per_call)
+    model_id.assign_add(1)
     run_time = time.time() - start_time
     num_steps = train_step.numpy() - step_val
     logging.info('Steps per sec: %s', num_steps / run_time)
@@ -336,9 +337,7 @@ def train(
     log_interval: int = 1000,
     max_train_step: Optional[int] = None,
     num_epochs: int = 0,
-    init_train_step: int = 0,
     batch_size: int = 0,
-    shuffle_buffer_size: int = 0,
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
@@ -349,6 +348,7 @@ def train(
     use_gae: bool = True,
     # Set to a very large number so the learning rate remains the same, and
     # also the deadline stops the training rather than this param.
+    shuffle_buffer_size: int = 3,
     num_iterations: int = 1_000_000_000,
     # This is the number of episodes we train on in each iteration.
     # num_episodes_per_iteration * epsisode_length * num_epochs =
@@ -413,20 +413,8 @@ def train(
   # Create the agent.
   with strategy.scope():
     train_step = train_utils.create_train_step()
-    train_step.assign(init_train_step)
-    logging.info('Initialize train_step at %s', init_train_step)
     model_id = common.create_variable('model_id')
-    # The model_id should equal to the iteration number.
-    init_iteration = compute_init_iteration(
-        init_train_step,
-        sequence_length,
-        num_episodes_per_iteration,
-        num_epochs,
-        batch_size,
-        strategy.num_replicas_in_sync,
-    )
-    logging.info('Initialize iteration at: init_iteration %s.', init_iteration)
-    model_id.assign(init_iteration)
+
     agent = agents.create_agent(environment_name=environment_name,
                                 algorithm=algorithm,
                                 train_step=train_step,
@@ -448,7 +436,7 @@ def train(
 
     logging.info('Created agent.')
 
-    # Create the policy saver which saves the initial model now, then it
+    # Create th e policy saver which saves the initial model now, then it
     # periodically checkpoints the policy weights.
     saved_model_dir = os.path.join(root_dir, 'policies')
     save_model_trigger = triggers.PolicySavedModelTrigger(
@@ -504,6 +492,22 @@ def train(
     )
 
     if algorithm == 'ppo':
+      init_iteration = compute_init_iteration_on_policy(
+          train_step,
+          sequence_length,
+          num_episodes_per_iteration,
+          num_epochs,
+          batch_size,
+          strategy.num_replicas_in_sync,
+      )
+      logging.info('Initialize iteration at: init_iteration %s.',
+                   init_iteration)
+      model_id.assign(init_iteration)
+
+      # Push the variables to the variable container before starting the
+      # training loop. This is to stop the learner from hanging since it will
+      # initially see sequences from model id 0.
+      variable_container.push(variables)
       train_on_policy(train_step=train_step,
                       max_train_step=max_train_step,
                       debug_summaries=debug_summaries,
@@ -516,6 +520,12 @@ def train(
                       )
 
     else:
+      init_iteration = train_step.numpy()
+      logging.info('Initialize iteration at: init_iteration %s.',
+                   init_iteration)
+      model_id.assign(train_step)
+
+      variable_container.push(variables)
       train_off_policy(train_step=train_step,
                        learner_obj=learner,
                        model_id=model_id,
@@ -525,10 +535,6 @@ def train(
                        init_iteration=init_iteration,
                        learner_iterations_per_call=learner_iterations_per_call
                        )
-    del agent
-    del learner
-    del variable_container
-    del strategy
 
     # Create root_dir/training_complete file to signal training completion
     with open(os.path.join(root_dir, 'training_complete'), 'w') as f:

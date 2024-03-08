@@ -228,7 +228,7 @@ def train():
         num_episodes_per_iteration * max_sequence_length / batch_size * num_epochs / num_replicas
     ))
 
-    # Shuffle the data coming from three episodes
+    # Shuffle three episodes worth of samples
     shuffle_buffer_size = 3
 
     # Only a single iteration is performed per call to the learner. We set the
@@ -242,10 +242,8 @@ def train():
     min_table_size_before_sampling = 1
 
   elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg', 'dqn'):
-    # Off-policy methods do not depend on the number of samples collected
-    # per iteration, but we try to keep the number of gradient updates
-    # proportional to the number of samples collected.
-    learner_iterations_per_call = train_steps_per_iteration = max_sequence_length
+    learner_iterations_per_call = 1
+    train_steps_per_iteration = 1
     shuffle_buffer_size = -1
     initial_collect_steps = max_sequence_length
     min_table_size_before_sampling = 1

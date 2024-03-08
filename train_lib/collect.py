@@ -208,7 +208,6 @@ def collect_off_policy(
     task: int,
     max_train_step: int,
     summary_interval: int,
-    sequence_length: int,
     initial_collect_steps: int,
 ) -> None:
   # We run collect jobs in replicas when using kubernetes,
@@ -267,7 +266,7 @@ def collect_off_policy(
       collect_env,
       collect_policy,
       train_step,
-      steps_per_run=sequence_length,
+      steps_per_run=1,
       metrics=actor_collect_metrics,
       summary_dir=summary_dir,
       summary_interval=summary_interval,
@@ -295,7 +294,8 @@ def collect_off_policy(
     logging.info('\tCollection took %.3f seconds', end_time - start_time)
     prev_num_steps_collected = env_step_metric.result()
 
-    with collect_actor.summary_writer.as_default():
+    with collect_actor.summary_writer.as_default(), tf.summary.record_if(
+        lambda: tf.math.equal(train_step % summary_interval, 0)):
       if getattr(collect_policy, '_get_epsilon', None) is not None:
         tf.summary.scalar(
             'Metrics/EpsilonGreedy',
@@ -499,7 +499,6 @@ def run_collect(
         random_policy=random_policy,
         replay_buffer_server_address=replay_buffer_server_address,
         root_dir=root_dir,
-        sequence_length=sequence_length,
         summary_interval=summary_interval,
         task=task,
         variable_container_server_address=variable_container_server_address,
