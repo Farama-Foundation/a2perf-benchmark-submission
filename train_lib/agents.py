@@ -886,6 +886,7 @@ def _create_ddqn_agent(
       optimizer=optimizer,
       target_update_period=1,
       target_update_tau=5e-3,
+      gamma=0.99,
       td_errors_loss_fn=tf.math.squared_difference,
       train_step_counter=train_step,
       epsilon_greedy=epsilon_greedy,

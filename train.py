@@ -242,8 +242,8 @@ def train():
     min_table_size_before_sampling = 1
 
   elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg', 'dqn'):
-    learner_iterations_per_call = num_replicas # each replica processes a batch
-    train_steps_per_iteration = num_replicas
+    learner_iterations_per_call = 1
+    train_steps_per_iteration = 1
     shuffle_buffer_size = -1
     initial_collect_steps = max_sequence_length
     min_table_size_before_sampling = 1
