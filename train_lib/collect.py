@@ -190,7 +190,7 @@ ACTOR_COLLECT_METRICS_BUFFER_SIZE = 10
 MAX_RETRIES = 8640  # 24 hours
 RETRY_DELAY = 10
 
-EPSILON_DECAY_END_VALUE = 1e-3
+EPSILON_DECAY_END_VALUE = 1e-2
 
 
 def mask_circuit_training_actions(circuit_env, observation):
@@ -467,7 +467,7 @@ def run_collect(
           epsilon_decay_end_value=EPSILON_DECAY_END_VALUE,
           # Adjust the decay end count as needed. Set to approximately
           # the total number of steps to be collected by this collect job.
-          epsilon_decay_end_count=_NUM_ITERATIONS.value,
+          epsilon_decay_end_count=_NUM_ITERATIONS.value // _NUM_REPLICAS.value,
       )
       epsilon_greedy_policy_obj.variables = greedy_policy.variables
       policy = epsilon_greedy_policy_obj
