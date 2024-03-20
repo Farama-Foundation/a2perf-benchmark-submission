@@ -17,6 +17,7 @@ r"""Sample training with distributed collection using a variable container.
 
 See README for launch instructions.
 """
+from .patch import gym_wrapper
 import functools
 import os
 import time
