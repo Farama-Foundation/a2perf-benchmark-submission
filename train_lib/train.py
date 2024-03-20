@@ -328,6 +328,8 @@ def train_off_policy(
           )
 
 
+
+
 @gin.configurable
 def train(
     root_dir: Text,
@@ -449,7 +451,7 @@ def train(
 
     logging.info('Created agent.')
 
-    # Create th e policy saver which saves the initial model now, then it
+    # Create the policy saver which saves the initial model now, then it
     # periodically checkpoints the policy weights.
     saved_model_dir = os.path.join(root_dir, 'policies')
     save_model_trigger = triggers.PolicySavedModelTrigger(
@@ -457,7 +459,7 @@ def train(
         agent,
         train_step,
         interval=policy_checkpoint_interval,
-        async_saving=False,
+        async_saving=True,
         save_greedy_policy=True,
         save_collect_policy=True,
     )
