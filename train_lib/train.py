@@ -25,12 +25,15 @@ from typing import Dict
 from typing import Optional
 from typing import Text
 
-import gin
-import numpy as np
-import tensorflow as tf
+from a2perf.domains import circuit_training
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains import web_navigation
 from absl import app
 from absl import flags
 from absl import logging
+import gin
+import numpy as np
+import tensorflow as tf
 from tf_agents.environments import py_environment
 from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_mujoco
@@ -39,19 +42,12 @@ from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.system import system_multiprocessing as multiprocessing
-from tf_agents.train import learner
 from tf_agents.train import triggers
 from tf_agents.train.utils import spec_utils
 from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
-# noinspection PyUnresolvedReferences
-from a2perf.domains import circuit_training
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-# noinspection PyUnresolvedReferences
-from a2perf.domains import web_navigation
 from . import agents
 from . import learners
 
@@ -118,8 +114,9 @@ _DIFFICULTY_LEVEL = flags.DEFINE_integer(
     'difficulty_level', None, 'Difficulty of the task.'
 )
 
-_NETLIST_FILE = flags.DEFINE_string('netlist_file', '',
-                                    'File path to the netlist file.')
+_NETLIST_FILE = flags.DEFINE_string(
+    'netlist_file', '', 'File path to the netlist file.'
+)
 _INIT_PLACEMENT = flags.DEFINE_string(
     'init_placement', '', 'File path to the init placement file.'
 )
@@ -243,10 +240,18 @@ def compute_init_iteration_on_policy(
   )
 
 
-def train_on_policy(train_step, max_train_step, debug_summaries, learner_obj,
+def train_on_policy(
+    train_step,
+    max_train_step,
+    debug_summaries,
+    learner_obj,
     model_id,
-    variable_container, variables, reverb_replay_trains, init_iteration,
-    num_iterations):
+    variable_container,
+    variables,
+    reverb_replay_trains,
+    init_iteration,
+    num_iterations,
+):
   for i in range(init_iteration, num_iterations):
     step_val = train_step.numpy()
     logging.info('Training. Iteration: %d', i)
@@ -269,9 +274,9 @@ def train_on_policy(train_step, max_train_step, debug_summaries, learner_obj,
     for reverb_replay_train in reverb_replay_trains:
       reverb_replay_train.clear()
     with (
-      learner_obj.train_summary_writer.as_default(),
-      common.soft_device_placement(),
-      tf.summary.record_if(lambda: True),
+        learner_obj.train_summary_writer.as_default(),
+        common.soft_device_placement(),
+        tf.summary.record_if(lambda: True),
     ):
       with tf.name_scope('RunTime/'):
         tf.summary.scalar(
@@ -283,11 +288,16 @@ def train_on_policy(train_step, max_train_step, debug_summaries, learner_obj,
           )
 
 
-def train_off_policy(train_step,
+def train_off_policy(
+    train_step,
     learner_obj,
     model_id,
-    variable_container, variables, init_iteration,
-    num_iterations, learner_iterations_per_call):
+    variable_container,
+    variables,
+    init_iteration,
+    num_iterations,
+    learner_iterations_per_call,
+):
   for i in range(init_iteration, num_iterations):
     step_val = train_step.numpy()
     logging.info('Training. Iteration: %d', i)
@@ -300,9 +310,9 @@ def train_off_policy(train_step,
     logging.info('Pushing variables at model_id: %d', model_id.numpy())
     variable_container.push(variables)
     with (
-      learner_obj.train_summary_writer.as_default(),
-      common.soft_device_placement(),
-      tf.summary.record_if(lambda: True),
+        learner_obj.train_summary_writer.as_default(),
+        common.soft_device_placement(),
+        tf.summary.record_if(lambda: True),
     ):
       with tf.name_scope('RunTime/'):
         tf.summary.scalar(
@@ -314,7 +324,7 @@ def train_off_policy(train_step,
           tf.summary.scalar(
               name='learning_rate',
               data=learner_obj._agent._optimizer.learning_rate,
-              step=train_step
+              step=train_step,
           )
 
 
@@ -341,7 +351,7 @@ def train(
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
-      [Text], py_environment.PyEnvironment
+        [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
@@ -370,7 +380,8 @@ def train(
     # Add static features
     static_features = env.wrapped_env().get_static_obs()
     env_kwargs = {
-        'static_features': static_features, }
+        'static_features': static_features,
+    }
 
     # Also supply
   elif environment_name == 'WebNavigation-v0':
@@ -415,24 +426,26 @@ def train(
     train_step = train_utils.create_train_step()
     model_id = common.create_variable('model_id')
 
-    agent = agents.create_agent(environment_name=environment_name,
-                                algorithm=algorithm,
-                                train_step=train_step,
-                                max_train_step=max_train_step,
-                                observation_tensor_spec=observation_tensor_spec,
-                                action_tensor_spec=action_tensor_spec,
-                                time_step_tensor_spec=time_step_tensor_spec,
-                                debug_summaries=debug_summaries,
-                                summarize_grads_and_vars=summarize_grads_and_vars,
-                                gradient_clipping=gradient_clipping,
-                                seed=seed,
-                                max_vocab_size=max_vocab_size,
-                                latent_dim=latent_dim,
-                                strategy=strategy,
-                                profile_value_dropout=profile_value_dropout,
-                                embedding_dim=embedding_dim,
-                                algo_kwargs=algo_kwargs,
-                                **env_kwargs, )
+    agent = agents.create_agent(
+        environment_name=environment_name,
+        algorithm=algorithm,
+        train_step=train_step,
+        max_train_step=max_train_step,
+        observation_tensor_spec=observation_tensor_spec,
+        action_tensor_spec=action_tensor_spec,
+        time_step_tensor_spec=time_step_tensor_spec,
+        debug_summaries=debug_summaries,
+        summarize_grads_and_vars=summarize_grads_and_vars,
+        gradient_clipping=gradient_clipping,
+        seed=seed,
+        max_vocab_size=max_vocab_size,
+        latent_dim=latent_dim,
+        strategy=strategy,
+        profile_value_dropout=profile_value_dropout,
+        embedding_dim=embedding_dim,
+        algo_kwargs=algo_kwargs,
+        **env_kwargs,
+    )
 
     logging.info('Created agent.')
 
@@ -469,7 +482,7 @@ def train(
         triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
     ]
 
-    learner = learners.create_learner(
+    learner_obj = learners.create_learner(
         algorithm=algorithm,
         model_id=model_id,
         agent=agent,
@@ -483,12 +496,12 @@ def train(
         train_checkpoint_interval=train_checkpoint_interval,
         log_interval=log_interval,
         learning_triggers=learning_triggers,
-        strategy=strategy
+        strategy=strategy,
     )
     reverb_replay_trains = create_replay_buffers(
         tf_agent=agent,
         replay_buffer_server_address=replay_buffer_server_address,
-        tasks=[task_name]
+        tasks=[task_name],
     )
 
     if algorithm == 'ppo':
@@ -500,41 +513,46 @@ def train(
           batch_size,
           strategy.num_replicas_in_sync,
       )
-      logging.info('Initialize iteration at: init_iteration %s.',
-                   init_iteration)
+      logging.info(
+          'Initialize iteration at: init_iteration %s.', init_iteration
+      )
       model_id.assign(init_iteration)
 
       # Push the variables to the variable container before starting the
       # training loop. This is to stop the learner from hanging since it will
       # initially see sequences from model id 0.
       variable_container.push(variables)
-      train_on_policy(train_step=train_step,
-                      max_train_step=max_train_step,
-                      debug_summaries=debug_summaries,
-                      learner_obj=learner, model_id=model_id,
-                      variable_container=variable_container,
-                      variables=variables,
-                      reverb_replay_trains=reverb_replay_trains,
-                      num_iterations=num_iterations,
-                      init_iteration=init_iteration
-                      )
+      train_on_policy(
+          train_step=train_step,
+          max_train_step=max_train_step,
+          debug_summaries=debug_summaries,
+          learner_obj=learner_obj,
+          model_id=model_id,
+          variable_container=variable_container,
+          variables=variables,
+          reverb_replay_trains=reverb_replay_trains,
+          num_iterations=num_iterations,
+          init_iteration=init_iteration,
+      )
 
     else:
       init_iteration = train_step.numpy()
-      logging.info('Initialize iteration at: init_iteration %s.',
-                   init_iteration)
+      logging.info(
+          'Initialize iteration at: init_iteration %s.', init_iteration
+      )
       model_id.assign(train_step)
 
       variable_container.push(variables)
-      train_off_policy(train_step=train_step,
-                       learner_obj=learner,
-                       model_id=model_id,
-                       variable_container=variable_container,
-                       variables=variables,
-                       num_iterations=num_iterations,
-                       init_iteration=init_iteration,
-                       learner_iterations_per_call=learner_iterations_per_call
-                       )
+      train_off_policy(
+          train_step=train_step,
+          learner_obj=learner_obj,
+          model_id=model_id,
+          variable_container=variable_container,
+          variables=variables,
+          num_iterations=num_iterations,
+          init_iteration=init_iteration,
+          learner_iterations_per_call=learner_iterations_per_call,
+      )
 
     # Create root_dir/training_complete file to signal training completion
     with open(os.path.join(root_dir, 'training_complete'), 'w') as f:
@@ -598,7 +616,6 @@ def main(_):
         suite_gym.load,
         gym_kwargs=default_gym_kwargs,
         env_wrappers=[wrappers.ActionClipWrapper],
-
     )
 
   else:
