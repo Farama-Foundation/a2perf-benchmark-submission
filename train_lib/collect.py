@@ -1,5 +1,5 @@
 """Sample collection Job using a variable container for policy updates."""
-
+from .patch import gym_wrapper
 import functools
 import os
 import time
@@ -448,7 +448,7 @@ def run_collect(
     )
 
     if algorithm in ('dqn', 'ddqn'):
-      # The TF Agent creates a collect policy that handles epsilon greeedy,
+      # The TF Agent creates a collect policy that handles epsilon greedy,
       # but some environments use a mask on valid/invalid actions. Loading the raw
       # policy allows us to apply the mask ourselves.
       greedy_policy_dir = os.path.join(root_policy_path,

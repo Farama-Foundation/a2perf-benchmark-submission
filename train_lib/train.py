@@ -460,7 +460,7 @@ def train(
         agent,
         train_step,
         interval=policy_checkpoint_interval,
-        async_saving=True,
+        async_saving=False,
         save_greedy_policy=True,
         save_collect_policy=True,
     )
