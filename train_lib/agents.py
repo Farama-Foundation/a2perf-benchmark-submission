@@ -851,6 +851,9 @@ def _create_ddqn_agent(
     summarize_grads_and_vars: bool = False,
     gradient_clipping: Optional[float] = None,
     seed: Optional[int] = None,
+    gamma: float = 0.99,
+    target_update_period: int = 1,
+    target_update_tau: float = 5e-3,
     **kwargs
 ) -> tf_agent.TFAgent:
   """Creates an agent."""
@@ -884,9 +887,9 @@ def _create_ddqn_agent(
       q_network=q_net,
       target_q_network=target_q_net,
       optimizer=optimizer,
-      target_update_period=1,
-      target_update_tau=5e-3,
-      gamma=0.99,
+      target_update_period=target_update_period,
+      target_update_tau=target_update_tau,
+      gamma=gamma,
       td_errors_loss_fn=tf.math.squared_difference,
       train_step_counter=train_step,
       epsilon_greedy=epsilon_greedy,
@@ -995,18 +998,33 @@ def create_agent(algorithm, environment_name,
         **algo_kwargs, **kwargs)
 
   elif algorithm == 'ddqn':
-    return _create_ddqn_agent(
-        env_name=environment_name,
-        train_step=train_step,
-        max_train_steps=max_train_step,
-        observation_tensor_spec=observation_tensor_spec,
-        action_tensor_spec=action_tensor_spec,
-        time_step_tensor_spec=time_step_tensor_spec,
-        debug_summaries=debug_summaries,
-        summarize_grads_and_vars=summarize_grads_and_vars,
-        gradient_clipping=gradient_clipping,
-        seed=seed,
-        **algo_kwargs, **kwargs)
+    if environment_name == 'CircuitTraining-v0':
+      return _create_ddqn_agent(
+          env_name=environment_name,
+          train_step=train_step,
+          max_train_steps=max_train_step,
+          observation_tensor_spec=observation_tensor_spec,
+          action_tensor_spec=action_tensor_spec,
+          gamma=1.0,
+          gradient_clipping=1.0,
+          time_step_tensor_spec=time_step_tensor_spec,
+          debug_summaries=debug_summaries,
+          summarize_grads_and_vars=summarize_grads_and_vars,
+          seed=seed,
+          **algo_kwargs, **kwargs)
+    else:
+      return _create_ddqn_agent(
+          env_name=environment_name,
+          train_step=train_step,
+          max_train_steps=max_train_step,
+          observation_tensor_spec=observation_tensor_spec,
+          action_tensor_spec=action_tensor_spec,
+          time_step_tensor_spec=time_step_tensor_spec,
+          debug_summaries=debug_summaries,
+          summarize_grads_and_vars=summarize_grads_and_vars,
+          gradient_clipping=gradient_clipping,
+          seed=seed,
+          **algo_kwargs, **kwargs)
 
   elif algorithm == 'td3':
     return _create_td3_agent(
