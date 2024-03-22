@@ -52,11 +52,23 @@ def run_reverb_server(root_dir):
   saved_model_pb_path = os.path.join(
       collect_policy_saved_model_path, 'saved_model.pb'
   )
+  policy_specs_pbtxt_path = os.path.join(
+      collect_policy_saved_model_path, 'policy_specs.pbtxt'
+  )
+  fingerprint_pb_path = os.path.join(
+      collect_policy_saved_model_path, 'fingerprint.pb'
+  )
   try:
-    # Wait for the collect policy to be outputed by learner (timeout after 2
+    # Wait for the collect policy to be output by learner (timeout after 2
     # days), then load it.
     train_utils.wait_for_file(
         saved_model_pb_path, sleep_time_secs=2, num_retries=86400
+    )
+    train_utils.wait_for_file(
+        policy_specs_pbtxt_path, sleep_time_secs=2, num_retries=86400
+    )
+    train_utils.wait_for_file(
+        fingerprint_pb_path, sleep_time_secs=2, num_retries=86400
     )
     collect_policy = py_tf_eager_policy.SavedModelPyTFEagerPolicy(
         collect_policy_saved_model_path, load_specs_from_pbtxt=True
