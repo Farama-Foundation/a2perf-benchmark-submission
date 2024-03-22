@@ -37,13 +37,15 @@ def load_policy(env: Any) -> TFPolicy:
       ValueError: If the ROOT_DIR environment variable is not set.
   """
   root_dir = os.environ.get('ROOT_DIR', None)
+  policy_name = os.environ.get('POLICY_NAME', None)
+
   if root_dir is None:
     raise ValueError(
         'ROOT_DIR environment variable must be set to load the model for inference.'
     )
   logging.info('Loading model from %s', root_dir)
 
-  saved_model_path = os.path.join(root_dir, 'policies', 'policy')
+  saved_model_path = os.path.join(root_dir, 'policies', policy_name)
   checkpoint_path = os.path.join(root_dir, 'policies', 'checkpoints')
 
   # Get max checkpoint from checkpoint_path
@@ -105,8 +107,16 @@ def preprocess_observation(
                                                           dtype=value.dtype)
     observation = processed_observation
   elif isinstance(observation, np.ndarray):
-    # Convert the ndarray directly, using its own dtype
-    observation = tf.convert_to_tensor(observation, dtype=observation.dtype)
+    # Use the time_step_spec to convert the ndarray to a tensor
+    if time_step_spec:
+      observation = tf.nest.map_structure(
+          lambda spec, value: tf.convert_to_tensor(value, dtype=spec.dtype),
+          time_step_spec.observation,
+          observation,
+      )
+    else:
+      # Convert the ndarray directly, using its own dtype
+      observation = tf.convert_to_tensor(observation, dtype=observation.dtype)
   else:
     raise ValueError(
         'Observation type not recognized. Please provide an OrderedDict, dict, or NumPy array.'
