@@ -589,7 +589,7 @@ def main(_):
         num_parallel_envs=_ENV_BATCH_SIZE.value,
     )
     suite_load_function = functools.partial(
-        suite_pybullet.load, gym_kwargs=default_gym_kwargs
+        suite_gym.load, gym_kwargs=default_gym_kwargs
     )
   elif _ENV_NAME.value == 'WebNavigation-v0':
     # Set the budget for TF data autotuning
