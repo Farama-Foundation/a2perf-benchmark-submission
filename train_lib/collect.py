@@ -13,7 +13,6 @@ import tf_agents
 from absl import app
 from absl import flags
 from absl import logging
-from tf_agents.environments import suite_pybullet
 from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
@@ -591,7 +590,7 @@ def setup_quadruped_locomotion_env_for_collect():
       num_parallel_envs=_ENV_BATCH_SIZE.value,
   )
   suite_load_function = functools.partial(
-      suite_pybullet.load, gym_kwargs=default_gym_kwargs
+      suite_gym.load, gym_kwargs=default_gym_kwargs
   )
   return suite_load_function
 
