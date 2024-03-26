@@ -17,26 +17,20 @@ r"""Sample training with distributed collection using a variable container.
 
 See README for launch instructions.
 """
-from .patch import gym_wrapper
 import functools
 import os
 import time
 from typing import Callable
-from typing import Dict
 from typing import Optional
 from typing import Text
 
-from a2perf.domains import circuit_training
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains import web_navigation
-from absl import app
-from absl import flags
-from absl import logging
 import gin
 import numpy as np
 import tensorflow as tf
+from absl import app
+from absl import flags
+from absl import logging
 from tf_agents.environments import py_environment
-from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_mujoco
 from tf_agents.environments import suite_pybullet
 from tf_agents.environments import wrappers
@@ -49,6 +43,13 @@ from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
+# noinspection PyUnresolvedReferences
+from a2perf.domains import circuit_training
+# noinspection PyUnresolvedReferences
+from a2perf.domains import quadruped_locomotion
+# noinspection PyUnresolvedReferences
+from a2perf.domains import web_navigation
+from a2perf.domains.utils import suite_gym
 from . import agents
 from . import learners
 
@@ -275,9 +276,9 @@ def train_on_policy(
     for reverb_replay_train in reverb_replay_trains:
       reverb_replay_train.clear()
     with (
-        learner_obj.train_summary_writer.as_default(),
-        common.soft_device_placement(),
-        tf.summary.record_if(lambda: True),
+      learner_obj.train_summary_writer.as_default(),
+      common.soft_device_placement(),
+      tf.summary.record_if(lambda: True),
     ):
       with tf.name_scope('RunTime/'):
         tf.summary.scalar(
@@ -311,9 +312,9 @@ def train_off_policy(
     logging.info('Pushing variables at model_id: %d', model_id.numpy())
     variable_container.push(variables)
     with (
-        learner_obj.train_summary_writer.as_default(),
-        common.soft_device_placement(),
-        tf.summary.record_if(lambda: True),
+      learner_obj.train_summary_writer.as_default(),
+      common.soft_device_placement(),
+      tf.summary.record_if(lambda: True),
     ):
       with tf.name_scope('RunTime/'):
         tf.summary.scalar(
@@ -327,8 +328,6 @@ def train_off_policy(
               data=learner_obj._agent._optimizer.learning_rate,
               step=train_step,
           )
-
-
 
 
 @gin.configurable
@@ -354,7 +353,7 @@ def train(
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
-        [Text], py_environment.PyEnvironment
+      [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,

@@ -1,5 +1,4 @@
 """Sample collection Job using a variable container for policy updates."""
-from .patch import gym_wrapper
 import functools
 import os
 import time
@@ -14,7 +13,6 @@ import tf_agents
 from absl import app
 from absl import flags
 from absl import logging
-from tf_agents.environments import suite_gym
 from tf_agents.environments import suite_pybullet
 from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
@@ -34,6 +32,7 @@ from tf_agents.utils import common
 from a2perf.domains import circuit_training
 # noinspection PyUnresolvedReferences
 from a2perf.domains import quadruped_locomotion
+from a2perf.domains.utils import suite_gym
 # noinspection PyUnresolvedReferences
 from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
