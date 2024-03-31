@@ -1,18 +1,23 @@
 """Sample collection Job using a variable container for policy updates."""
+
 import functools
+from multiprocessing.managers import BaseManager
 import os
 import time
-from multiprocessing.managers import BaseManager
 from typing import Optional
 from typing import Text
 
+from a2perf.domains import circuit_training
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains.utils import suite_gym
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
+from absl import app
+from absl import flags
+from absl import logging
 import gin
 import reverb
 import tensorflow as tf
 import tf_agents
-from absl import app
-from absl import flags
-from absl import logging
 from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
@@ -26,14 +31,6 @@ from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
-
-# noinspection PyUnresolvedReferences
-from a2perf.domains import circuit_training
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains.utils import suite_gym
-# noinspection PyUnresolvedReferences
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 _DEBUG = flags.DEFINE_bool('debug', False, 'Debug mode.')
 _GIN_FILE = flags.DEFINE_multi_string(
@@ -50,8 +47,9 @@ _ALGORITHM = flags.DEFINE_string(
 _GIN_BINDINGS = flags.DEFINE_multi_string(
     'gin_bindings', [], 'Gin binding parameters.'
 )
-_NETLIST_FILE = flags.DEFINE_string('netlist_file', '',
-                                    'File path to the netlist file.')
+_NETLIST_FILE = flags.DEFINE_string(
+    'netlist_file', '', 'File path to the netlist file.'
+)
 _INIT_PLACEMENT = flags.DEFINE_string(
     'init_placement', '', 'File path to the init placement file.'
 )
@@ -292,8 +290,12 @@ def collect_off_policy(
     logging.info('\tCollection took %.3f seconds', end_time - start_time)
     prev_num_steps_collected = env_step_metric.result()
 
-    with collect_actor.summary_writer.as_default(), tf.summary.record_if(
-        lambda: tf.math.equal(train_step % summary_interval, 0)):
+    with (
+        collect_actor.summary_writer.as_default(),
+        tf.summary.record_if(
+            lambda: tf.math.equal(train_step % summary_interval, 0)
+        ),
+    ):
       if getattr(collect_policy, '_get_epsilon', None) is not None:
         tf.summary.scalar(
             'Metrics/EpsilonGreedy',
@@ -302,11 +304,6 @@ def collect_off_policy(
         )
 
   logging.info('Done collecting.')
-
-  # Clean up the environment and replay buffer.
-  del reverb_client
-  collect_env.close()
-  del collect_env
 
 
 @gin.configurable
@@ -321,8 +318,7 @@ def collect_on_policy(
     summary_interval: int,
     sequence_length: int,
     max_timesteps_per_model: Optional[int] = None,
-
-    **kwargs
+    **kwargs,
 ) -> None:
   """Collects experience using a policy updated after every episode."""
   summary_dir = None
@@ -367,8 +363,7 @@ def collect_on_policy(
       collect_policy,
       train_step,
       steps_per_run=sequence_length,
-      metrics=actor.collect_metrics(
-          ACTOR_COLLECT_METRICS_BUFFER_SIZE),
+      metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE),
       summary_dir=summary_dir,
       summary_interval=summary_interval,
       observers=observers,
@@ -409,9 +404,6 @@ def collect_on_policy(
         env_step_metric.result() - prev_num_steps_collected,
     )
     prev_num_steps_collected = env_step_metric.result()
-  # Clean up the environment and replay buffer.
-  collect_env.close()
-  del collect_env
 
 
 def run_collect(
@@ -432,7 +424,8 @@ def run_collect(
   root_policy_path = os.path.join(
       root_dir,
       '../../',  # two levels because collect/<hostname>/ is the root_dir
-      learner.POLICY_SAVED_MODEL_DIR, )
+      learner.POLICY_SAVED_MODEL_DIR,
+  )
   if algorithm in ('sac', 'ddqn', 'td3', 'dqn', 'ddpg'):
     observation_and_action_constraint_splitter_fn = None
     if environment_name == 'CircuitTraining-v0':
@@ -441,16 +434,18 @@ def run_collect(
       )
 
     random_policy = random_py_policy.RandomPyPolicy(
-        collect_env.time_step_spec(), collect_env.action_spec(),
-        observation_and_action_constraint_splitter=observation_and_action_constraint_splitter_fn
+        collect_env.time_step_spec(),
+        collect_env.action_spec(),
+        observation_and_action_constraint_splitter=observation_and_action_constraint_splitter_fn,
     )
 
     if algorithm in ('dqn', 'ddqn'):
       # The TF Agent creates a collect policy that handles epsilon greedy,
       # but some environments use a mask on valid/invalid actions. Loading the raw
       # policy allows us to apply the mask ourselves.
-      greedy_policy_dir = os.path.join(root_policy_path,
-                                       learner.GREEDY_POLICY_SAVED_MODEL_DIR)
+      greedy_policy_dir = os.path.join(
+          root_policy_path, learner.GREEDY_POLICY_SAVED_MODEL_DIR
+      )
       greedy_policy = train_utils.wait_for_policy(
           greedy_policy_dir, load_specs_from_pbtxt=True
       )
@@ -470,15 +465,17 @@ def run_collect(
       epsilon_greedy_policy_obj.variables = greedy_policy.variables
       policy = epsilon_greedy_policy_obj
     elif algorithm in ('sac', 'td3', 'ddpg'):
-      collect_policy_dir = os.path.join(root_policy_path,
-                                        learner.COLLECT_POLICY_SAVED_MODEL_DIR)
+      collect_policy_dir = os.path.join(
+          root_policy_path, learner.COLLECT_POLICY_SAVED_MODEL_DIR
+      )
       policy = train_utils.wait_for_policy(
           collect_policy_dir, load_specs_from_pbtxt=True
       )
       logging.info('Loaded collect policy from %s', collect_policy_dir)
   else:
-    collect_policy_dir = os.path.join(root_policy_path,
-                                      learner.COLLECT_POLICY_SAVED_MODEL_DIR)
+    collect_policy_dir = os.path.join(
+        root_policy_path, learner.COLLECT_POLICY_SAVED_MODEL_DIR
+    )
 
     logging.info('Looking for collect policy in %s', collect_policy_dir)
 
@@ -607,7 +604,6 @@ def setup_circuit_training_env_for_collect():
       suite_gym.load,
       gym_kwargs=gym_kwargs,
       env_wrappers=[wrappers.ActionClipWrapper],
-
   )
 
   return suite_load_function
