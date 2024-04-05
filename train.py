@@ -280,12 +280,16 @@ def train():
         f'--env_name={env_name}',
         f'--num_websites={num_websites}',
         f'--difficulty_level={difficulty_level}',
+        f'--profile_value_dropout={profile_value_dropout}',
+        f'--embedding_dim={embedding_dim}',
+        f'--latent_dim={latent_dim}',
+        f'--max_vocab_size={max_vocab_size}',
     ])
 
     if job_type == 'train':
       vocab_manager_command = [
           'python',
-          'distributed/vocabulary_manager.py',
+          'train_lib/vocabulary_manager.py',
           f'--vocabulary_server_port={vocab_port}',
           f'--vocabulary_server_address={vocabulary_server_address}',
           f'--vocabulary_manager_auth_key={vocabulary_manager_auth_key}',

@@ -564,8 +564,12 @@ def train(
 def main(_):
   if _DEBUG.value:
     logging.set_verbosity(logging.DEBUG)
-    # tf.config.run_functions_eagerly(True)
-    # tf.data.experimental.enable_debug_mode()
+    tf.config.run_functions_eagerly(True)
+    tf.data.experimental.enable_debug_mode()
+
+  if _ENV_NAME.value == 'WebNavigation-v0':
+    # LSTM implemented in dm-sonnet does not seem to work with graph mode
+    tf.config.run_functions_eagerly(True)
 
   # Set the random seeds
   tf.random.set_seed(_SEED.value)
@@ -594,8 +598,8 @@ def main(_):
   elif _ENV_NAME.value == 'WebNavigation-v0':
     # Set the budget for TF data autotuning
     default_gym_kwargs = dict(
-        use_legacy_step=True,
-        use_legacy_reset=True,
+        # use_legacy_step=True,
+        # use_legacy_reset=True,
         difficulty=_DIFFICULTY_LEVEL.value,
         num_websites=_NUM_WEBSITES.value,
         seed=0,
