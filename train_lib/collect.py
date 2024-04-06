@@ -291,10 +291,10 @@ def collect_off_policy(
     prev_num_steps_collected = env_step_metric.result()
 
     with (
-      collect_actor.summary_writer.as_default(),
-      tf.summary.record_if(
-          lambda: tf.math.equal(train_step % summary_interval, 0)
-      ),
+        collect_actor.summary_writer.as_default(),
+        tf.summary.record_if(
+            lambda: tf.math.equal(train_step % summary_interval, 0)
+        ),
     ):
       if getattr(collect_policy, '_get_epsilon', None) is not None:
         tf.summary.scalar(
@@ -566,6 +566,8 @@ def setup_web_navigation_env_for_collect():
 
   default_gym_kwargs = dict(
       global_vocabulary=global_vocabulary,
+      use_legacy_step=True,
+      use_legacy_reset=True,
       difficulty=_DIFFICULTY_LEVEL.value,
       num_websites=_NUM_WEBSITES.value,
       seed=0,
@@ -577,7 +579,6 @@ def setup_web_navigation_env_for_collect():
       suite_gym.load,
       gym_kwargs=default_gym_kwargs,
       env_wrappers=[wrappers.ActionClipWrapper],
-
   )
   return suite_load_function
 
@@ -590,6 +591,7 @@ def setup_quadruped_locomotion_env_for_collect():
   suite_load_function = functools.partial(
       suite_gym.load,
       gym_kwargs=default_gym_kwargs,
+      env_wrappers=[wrappers.ActionClipWrapper],
   )
   return suite_load_function
 
