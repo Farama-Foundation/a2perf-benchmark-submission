@@ -330,6 +330,19 @@ def train_off_policy(
           )
 
 
+def train_bc(
+    train_step,
+    learner_obj,
+    model_id,
+    variable_container,
+    variables,
+    minari_dataset,
+    num_iterations,
+    learner_iterations_per_call,
+):
+  pass
+
+
 @gin.configurable
 def train(
     root_dir: Text,
@@ -463,20 +476,23 @@ def train(
         save_greedy_policy=True,
         save_collect_policy=True,
     )
+    if algorithm in ('bc',):
+      variable_container = None
+      variables = None
+    else:
+      variables = {
+          reverb_variable_container.POLICY_KEY: agent.collect_policy.variables(),
+          reverb_variable_container.TRAIN_STEP_KEY: train_step,
+          'model_id': model_id,
+      }
 
-    variables = {
-        reverb_variable_container.POLICY_KEY: agent.collect_policy.variables(),
-        reverb_variable_container.TRAIN_STEP_KEY: train_step,
-        'model_id': model_id,
-    }
-
-    variable_container = reverb_variable_container.ReverbVariableContainer(
-        variable_container_server_address,
-        table_names=[reverb_variable_container.DEFAULT_TABLE],
-    )
-    variable_container.push(
-        values=variables, table=reverb_variable_container.DEFAULT_TABLE
-    )
+      variable_container = reverb_variable_container.ReverbVariableContainer(
+          variable_container_server_address,
+          table_names=[reverb_variable_container.DEFAULT_TABLE],
+      )
+      variable_container.push(
+          values=variables, table=reverb_variable_container.DEFAULT_TABLE
+      )
 
     # Create the learner.
     learning_triggers = [
@@ -500,13 +516,28 @@ def train(
         learning_triggers=learning_triggers,
         strategy=strategy,
     )
-    reverb_replay_trains = create_replay_buffers(
-        tf_agent=agent,
-        replay_buffer_server_address=replay_buffer_server_address,
-        tasks=[task_name],
-    )
 
-    if algorithm == 'ppo':
+    if algorithm == 'bc':
+      # Instead of creating replay buffer, load the dataset from minari
+      reverb_replay_trains = ()
+    else:
+      reverb_replay_trains = create_replay_buffers(
+          tf_agent=agent,
+          replay_buffer_server_address=replay_buffer_server_address,
+          tasks=[task_name],
+      )
+    if algorithm == 'bc':
+      train_bc(
+          train_step=train_step,
+          learner_obj=learner_obj,
+          model_id=model_id,
+          variable_container=variable_container,
+          variables=variables,
+          minari_dataset=None,
+          num_iterations=num_iterations,
+          learner_iterations_per_call=learner_iterations_per_call,
+      )
+    elif algorithm == 'ppo':
       init_iteration = compute_init_iteration_on_policy(
           train_step,
           sequence_length,
