@@ -49,7 +49,7 @@ from a2perf.domains import circuit_training
 from a2perf.domains import quadruped_locomotion
 # noinspection PyUnresolvedReferences
 from a2perf.domains import web_navigation
-from a2perf.domains.utils import suite_gym
+from a2perf.domains.tfa import suite_gym
 from . import agents
 from . import learners
 

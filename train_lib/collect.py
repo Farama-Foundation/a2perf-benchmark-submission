@@ -1,36 +1,42 @@
 """Sample collection Job using a variable container for policy updates."""
 
 import functools
-from multiprocessing.managers import BaseManager
 import os
 import time
+from multiprocessing.managers import BaseManager
 from typing import Optional
 from typing import Text
 
-from a2perf.domains import circuit_training
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains.utils import suite_gym
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
-from absl import app
-from absl import flags
-from absl import logging
 import gin
 import reverb
 import tensorflow as tf
 import tf_agents
+from absl import app
+from absl import flags
+from absl import logging
 from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
 from tf_agents.policies import py_epsilon_greedy_policy
 from tf_agents.policies import py_tf_eager_policy
 from tf_agents.policies import random_py_policy
-from tf_agents.policies import tf_policy
 from tf_agents.replay_buffers import reverb_utils
 from tf_agents.system import system_multiprocessing as multiprocessing
 from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
+
+# noinspection PyUnresolvedReferences
+from a2perf.domains import circuit_training
+# noinspection PyUnresolvedReferences
+from a2perf.domains import quadruped_locomotion
+# noinspection PyUnresolvedReferences
+from a2perf.domains import web_navigation
+from a2perf.domains.tfa import suite_gym
+from a2perf.domains.tfa.utils import create_random_py_policy
+from a2perf.domains.tfa.utils import mask_circuit_training_actions
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 _DEBUG = flags.DEFINE_bool('debug', False, 'Debug mode.')
 _GIN_FILE = flags.DEFINE_multi_string(
@@ -180,7 +186,7 @@ _VOCABULARY_SERVER_PORT = flags.DEFINE_integer(
 # max_episodes_per_model limit, since various workers (including the Reverb
 # server) can be preempted.
 COLLECT_AT_LEAST_EVERY_SECONDS = 10 * 60
-ACTOR_COLLECT_METRICS_BUFFER_SIZE = 10
+ACTOR_COLLECT_METRICS_BUFFER_SIZE = 5
 
 # Maximum number of retries for connecting to the vocabulary server.
 MAX_RETRIES = 8640  # 24 hours
@@ -189,15 +195,10 @@ RETRY_DELAY = 10
 EPSILON_DECAY_END_VALUE = 1e-2
 
 
-def mask_circuit_training_actions(circuit_env, observation):
-  mask = circuit_env.unwrapped._get_mask()
-  return observation, mask
-
-
 def collect_off_policy(
     collect_env: tf_agents.environments.TFPyEnvironment,
-    collect_policy: tf_policy.TFPolicy,
-    random_policy: tf_policy.TFPolicy,
+    collect_policy: py_tf_eager_policy.PyTFEagerPolicyBase,
+    random_policy: random_py_policy.RandomPyPolicy,
     replay_buffer_server_address: str,
     variable_container_server_address: str,
     root_dir: str,
@@ -426,18 +427,15 @@ def run_collect(
       '../../',  # two levels because collect/<hostname>/ is the root_dir
       learner.POLICY_SAVED_MODEL_DIR,
   )
-  if algorithm in ('sac', 'ddqn', 'td3', 'dqn', 'ddpg'):
-    observation_and_action_constraint_splitter_fn = None
-    if environment_name == 'CircuitTraining-v0':
-      observation_and_action_constraint_splitter_fn = functools.partial(
-          mask_circuit_training_actions, collect_env
-      )
 
-    random_policy = random_py_policy.RandomPyPolicy(
-        collect_env.time_step_spec(),
-        collect_env.action_spec(),
-        observation_and_action_constraint_splitter=observation_and_action_constraint_splitter_fn,
-    )
+  policy = None
+  random_policy = None
+  if algorithm in ('sac', 'ddqn', 'td3', 'dqn', 'ddpg'):
+    if environment_name == 'CircuitTraining-v0':
+      random_policy = create_random_py_policy(collect_env,
+                                              observation_and_action_constraint_splitter=functools.partial(
+                                                  mask_circuit_training_actions,
+                                                  collect_env))
 
     if algorithm in ('dqn', 'ddqn'):
       # The TF Agent creates a collect policy that handles epsilon greedy,
@@ -482,7 +480,6 @@ def run_collect(
     policy = train_utils.wait_for_policy(
         collect_policy_dir, load_specs_from_pbtxt=True
     )
-    random_policy = None
     logging.info('Loaded collect policy from %s', collect_policy_dir)
 
   if algorithm in ('sac', 'ddqn', 'td3', 'dqn', 'ddpg'):
