@@ -25,6 +25,7 @@ from typing import Optional
 from typing import Text
 
 import gin
+import minari
 import numpy as np
 import tensorflow as tf
 from absl import app
@@ -43,6 +44,8 @@ from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
+from a2perf.data.minari.tf_utils import convert_to_tf_dataset
+from a2perf.data.minari.tf_utils import minari_bc_dataset_iterator
 # noinspection PyUnresolvedReferences
 from a2perf.domains import circuit_training
 # noinspection PyUnresolvedReferences
@@ -52,6 +55,8 @@ from a2perf.domains import web_navigation
 from a2perf.domains.tfa import suite_gym
 from . import agents
 from . import learners
+
+import minari
 
 _TASK_INDEX = flags.DEFINE_integer(
     'task_index', 0, 'Index of the netlist in the agent policy model.'
@@ -75,6 +80,7 @@ _LEARNER_ITERATIONS_PER_CALL = flags.DEFINE_integer(
     None,
     'Number of iterations per learner call.',
 )
+_DATASET_ID = flags.DEFINE_string('dataset_id', None, 'Dataset ID.')
 
 _EPSILON_GREEDY = flags.DEFINE_float(
     'epsilon_greedy', None, 'Epsilon greedy value.'
@@ -334,13 +340,30 @@ def train_bc(
     train_step,
     learner_obj,
     model_id,
-    variable_container,
-    variables,
-    minari_dataset,
+    init_iteration,
     num_iterations,
     learner_iterations_per_call,
 ):
-  pass
+  """Train the BC model."""
+  for i in range(init_iteration, num_iterations):
+    step_val = train_step.numpy()
+    logging.info('Training. Iteration: %d', i)
+    start_time = time.time()
+    learner_obj.run(learner_iterations_per_call)
+    model_id.assign_add(1)
+    run_time = time.time() - start_time
+    num_steps = train_step.numpy() - step_val
+    logging.info('Steps per sec: %s', num_steps / run_time)
+    logging.info('Pushing variables at model_id: %d', model_id.numpy())
+    with (
+      learner_obj.train_summary_writer.as_default(),
+      common.soft_device_placement(),
+      tf.summary.record_if(lambda: True),
+    ):
+      with tf.name_scope('RunTime/'):
+        tf.summary.scalar(
+            name='step_per_sec', data=num_steps / run_time, step=train_step
+        )
 
 
 @gin.configurable
@@ -384,6 +407,7 @@ def train(
     max_vocab_size: Optional[int] = None,
     latent_dim: Optional[int] = None,
     profile_value_dropout: Optional[float] = None,
+    dataset_id: Optional[str] = None,
     embedding_dim: Optional[int] = None,
 ) -> None:
   env = suite_load_fn(environment_name)
@@ -433,6 +457,10 @@ def train(
     algo_kwargs = {
         'learning_rate': learning_rate,
     }
+  elif algorithm == 'bc':
+    algo_kwargs = {
+        'learning_rate': learning_rate,
+    }
   else:
     raise ValueError(f'Unknown algorithm: {algorithm}')
 
@@ -476,9 +504,32 @@ def train(
         save_greedy_policy=True,
         save_collect_policy=True,
     )
+    learning_triggers = [
+        save_model_trigger,
+        triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
+    ]
+
     if algorithm in ('bc',):
       variable_container = None
       variables = None
+      dataset = minari.load_dataset(dataset_id=dataset_id)
+      learner_obj = learners.create_learner(
+          algorithm=algorithm,
+          model_id=model_id,
+          agent=agent,
+          sequence_length=sequence_length,
+          replay_buffer_server_address=replay_buffer_server_address,
+          num_episodes_per_iteration=num_episodes_per_iteration,
+          num_epochs=num_epochs,
+          batch_size=batch_size,
+          train_step=train_step,
+          root_dir=root_dir,
+          train_checkpoint_interval=train_checkpoint_interval,
+          log_interval=log_interval,
+          learning_triggers=learning_triggers,
+          strategy=strategy,
+          minari_dataset_obj=dataset,
+      )
     else:
       variables = {
           reverb_variable_container.POLICY_KEY: agent.collect_policy.variables(),
@@ -494,46 +545,41 @@ def train(
           values=variables, table=reverb_variable_container.DEFAULT_TABLE
       )
 
-    # Create the learner.
-    learning_triggers = [
-        save_model_trigger,
-        triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
-    ]
+      learner_obj = learners.create_learner(
+          algorithm=algorithm,
+          model_id=model_id,
+          agent=agent,
+          sequence_length=sequence_length,
+          replay_buffer_server_address=replay_buffer_server_address,
+          num_episodes_per_iteration=num_episodes_per_iteration,
+          num_epochs=num_epochs,
+          batch_size=batch_size,
+          train_step=train_step,
+          root_dir=root_dir,
+          train_checkpoint_interval=train_checkpoint_interval,
+          log_interval=log_interval,
+          learning_triggers=learning_triggers,
+          strategy=strategy,
+      )
 
-    learner_obj = learners.create_learner(
-        algorithm=algorithm,
-        model_id=model_id,
-        agent=agent,
-        sequence_length=sequence_length,
-        replay_buffer_server_address=replay_buffer_server_address,
-        num_episodes_per_iteration=num_episodes_per_iteration,
-        num_epochs=num_epochs,
-        batch_size=batch_size,
-        train_step=train_step,
-        root_dir=root_dir,
-        train_checkpoint_interval=train_checkpoint_interval,
-        log_interval=log_interval,
-        learning_triggers=learning_triggers,
-        strategy=strategy,
-    )
-
-    if algorithm == 'bc':
-      # Instead of creating replay buffer, load the dataset from minari
-      reverb_replay_trains = ()
-    else:
       reverb_replay_trains = create_replay_buffers(
           tf_agent=agent,
           replay_buffer_server_address=replay_buffer_server_address,
           tasks=[task_name],
       )
+
     if algorithm == 'bc':
+      init_iteration = train_step.numpy()
+      logging.info(
+          'Initialize iteration at: init_iteration %s.', init_iteration
+      )
+      model_id.assign(train_step)
+      logging.info('Loading minari dataset: %s', dataset_id)
       train_bc(
+          init_iteration=init_iteration,
           train_step=train_step,
           learner_obj=learner_obj,
           model_id=model_id,
-          variable_container=variable_container,
-          variables=variables,
-          minari_dataset=None,
           num_iterations=num_iterations,
           learner_iterations_per_call=learner_iterations_per_call,
       )
@@ -574,7 +620,6 @@ def train(
           'Initialize iteration at: init_iteration %s.', init_iteration
       )
       model_id.assign(train_step)
-
       variable_container.push(variables)
       train_off_policy(
           train_step=train_step,
@@ -599,6 +644,7 @@ def main(_):
     tf.data.experimental.enable_debug_mode()
 
   if _ENV_NAME.value == 'WebNavigation-v0':
+    # TODO: Remove this
     # LSTM implemented in dm-sonnet does not seem to work with graph mode
     tf.config.run_functions_eagerly(True)
 
@@ -627,10 +673,7 @@ def main(_):
         suite_gym.load, gym_kwargs=default_gym_kwargs
     )
   elif _ENV_NAME.value == 'WebNavigation-v0':
-    # Set the budget for TF data autotuning
     default_gym_kwargs = dict(
-        # use_legacy_step=True,
-        # use_legacy_reset=True,
         difficulty=_DIFFICULTY_LEVEL.value,
         num_websites=_NUM_WEBSITES.value,
         seed=0,
@@ -660,6 +703,7 @@ def main(_):
   logging.info('Args passed to gym: %s', default_gym_kwargs)
 
   train(
+      dataset_id=_DATASET_ID.value,
       root_dir=_ROOT_DIR.value,
       environment_name=_ENV_NAME.value,
       strategy=strategy,

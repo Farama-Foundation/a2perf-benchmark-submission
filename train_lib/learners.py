@@ -1,16 +1,19 @@
 import functools
 from typing import Callable
+from typing import Optional
 from typing import Tuple
 
 import gin
 import reverb
 import tensorflow as tf
+import tf_agents.agents
 from absl import logging
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.train import learner as learner_lib
 from tf_agents.typing import types
-
+import minari
 from . import learner_lib as learner
+from a2perf.data.minari import tf_utils
 
 # A function which processes a tuple of a nested tensor representing a TF-Agent
 # Trajectory and Reverb SampleInfo.
@@ -54,6 +57,30 @@ def get_shuffle_buffer_size(
     The shuffle buffer size.
   """
   return sequence_length * shuffle_buffer_episode_len
+
+
+def create_minari_experience_dataset_fn(tf_agent: tf_agents.agents.TFAgent
+    , minari_dataset: minari.MinariDataset, batch_size: int,
+    shuffle_buffer_size: int = 1000):
+  def experience_dataset_fn():
+    action_spec = tf_agent.collect_data_spec.action
+    observation_spec = tf_agent.collect_data_spec.observation
+    dataset = tf.data.Dataset.from_generator(
+        functools.partial(tf_utils.minari_bc_dataset_iterator, minari_dataset),
+        output_signature=(tf_agents.trajectories.Trajectory(
+            step_type=tf.TensorSpec(shape=(), dtype=tf.int32),
+            observation=observation_spec,
+            action=action_spec,
+            policy_info=(),
+            next_step_type=tf.TensorSpec(shape=(), dtype=tf.int32),
+            reward=tf.TensorSpec(shape=(), dtype=tf.float32),
+            discount=tf.TensorSpec(shape=(), dtype=tf.float32),
+        ), tf.TensorSpec(shape=(), dtype=tf.string)
+        )).shuffle(shuffle_buffer_size).batch(batch_size).prefetch(
+        tf.data.AUTOTUNE).with_options(dataset_options())
+    return dataset
+
+  return experience_dataset_fn
 
 
 def create_off_policy_experience_dataset_fn(tf_agent, tasks, batch_size,
@@ -183,12 +210,36 @@ def create_off_policy_learner(
   )
 
 
+def create_bc_learner(
+    agent,
+    batch_size,
+    train_step,
+    root_dir, train_checkpoint_interval,
+    log_interval, learning_triggers, strategy, dataset: minari.MinariDataset):
+  experience_dataset_fn = create_minari_experience_dataset_fn(
+      minari_dataset=dataset,
+      batch_size=batch_size,
+      tf_agent=agent
+  )
+  return learner_lib.Learner(
+      root_dir=root_dir,
+      train_step=train_step,
+      agent=agent,
+      experience_dataset_fn=experience_dataset_fn,
+      checkpoint_interval=train_checkpoint_interval,
+      summary_interval=log_interval,
+      triggers=learning_triggers,
+      strategy=strategy,
+  )
+
+
 def create_learner(
     algorithm, agent, model_id, sequence_length,
     replay_buffer_server_address,
     num_episodes_per_iteration, num_epochs, batch_size,
     train_step, root_dir, train_checkpoint_interval,
-    log_interval, learning_triggers, strategy):
+    log_interval, learning_triggers, strategy,
+    minari_dataset_obj: Optional[minari.MinariDataset] = None):
   if algorithm in ('ppo',):
     return create_ppo_learner(
         agent=agent,
@@ -209,6 +260,18 @@ def create_learner(
     return create_off_policy_learner(
         agent=agent,
         replay_buffer_server_address=replay_buffer_server_address,
+        batch_size=batch_size,
+        train_step=train_step,
+        root_dir=root_dir,
+        train_checkpoint_interval=train_checkpoint_interval,
+        log_interval=log_interval,
+        learning_triggers=learning_triggers,
+        strategy=strategy
+    )
+  elif algorithm in ('bc',):
+    return create_bc_learner(
+        agent=agent,
+        dataset=minari_dataset_obj,
         batch_size=batch_size,
         train_step=train_step,
         root_dir=root_dir,

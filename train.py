@@ -27,7 +27,7 @@ def train_command(num_iterations, entropy_regularization, use_gae, root_dir,
     variable_container_server_address, variable_container_server_port,
     replay_buffer_server_address, replay_buffer_server_port, env_name,
     max_sequence_length, num_episodes_per_iteration, log_interval, use_gpu,
-    seed, task_name,
+    seed, task_name, dataset_id,
     num_epochs, batch_size, shuffle_buffer_size, num_replicas, algorithm, debug,
     epsilon_greedy, train_checkpoint_interval, policy_checkpoint_interval,
     env_batch_size, learning_rate, exploration_noise_std, max_train_steps,
@@ -37,6 +37,7 @@ def train_command(num_iterations, entropy_regularization, use_gae, root_dir,
       '-m',
       'train_lib.train',
       f'--algorithm={algorithm}',
+      f'--dataset_id={dataset_id}',
       f'--batch_size={batch_size}',
       f'--env_batch_size={env_batch_size}',
       f'--debug={debug}',
@@ -154,6 +155,7 @@ def train():
   )
   max_sequence_length = int(os.environ.get('MAX_SEQUENCE_LENGTH', -1))
   env_name = os.environ.get('ENV_NAME', None)
+  dataset_id = os.environ.get('DATASET_ID', None)
   netlist_path = os.environ.get('NETLIST_PATH', None)
   init_placement_path = os.environ.get('INIT_PLACEMENT_PATH', None)
   motion_file_path = os.environ.get('MOTION_FILE_PATH', None)
@@ -247,6 +249,12 @@ def train():
     shuffle_buffer_size = -1
     initial_collect_steps = max_sequence_length
     min_table_size_before_sampling = 1
+  elif algorithm in ('bc',):
+    learner_iterations_per_call = 1
+    train_steps_per_iteration = 1
+    shuffle_buffer_size = -1
+    initial_collect_steps = 0
+    min_table_size_before_sampling = 1
   else:
     raise ValueError(f'Unsupported algorithm: {algorithm}')
   if train_steps_per_iteration < 1:
@@ -318,7 +326,7 @@ def train():
   else:
     raise ValueError(f'Unsupported environment: {env_name}')
 
-  if job_type == 'collect':
+  if job_type == 'collect' and algorithm != 'bc':
     collect_job_commands = [
         collect_command(
             algorithm=algorithm, env_name=env_name, debug=debug,
@@ -358,26 +366,29 @@ def train():
       time.sleep(PROCESS_WAIT_INTERVAL)
 
   elif job_type == 'train':
-    reverb_job_command = reverb_command(
-        task_name=task_name,
-        replay_buffer_server_port=replay_buffer_server_port,
-        root_dir=root_dir, replay_buffer_capacity=replay_buffer_capacity,
-        algorithm=algorithm,
-        min_table_size_before_sampling=min_table_size_before_sampling
-    )
-    print(' '.join(reverb_job_command))
-    create_and_manage_process(
-        reverb_job_command,
-        all_processes,
-        env_vars=dict(**os.environ, CUDA_VISIBLE_DEVICES='-1'),
-    )
-    print('Successfully launched reverb server.')
+
+    if algorithm != 'bc':
+      reverb_job_command = reverb_command(
+          task_name=task_name,
+          replay_buffer_server_port=replay_buffer_server_port,
+          root_dir=root_dir, replay_buffer_capacity=replay_buffer_capacity,
+          algorithm=algorithm,
+          min_table_size_before_sampling=min_table_size_before_sampling
+      )
+      print(' '.join(reverb_job_command))
+      create_and_manage_process(
+          reverb_job_command,
+          all_processes,
+          env_vars=dict(**os.environ, CUDA_VISIBLE_DEVICES='-1'),
+      )
+      print('Successfully launched reverb server.')
 
     train_job_command = train_command(
         num_iterations=num_iterations,
         entropy_regularization=entropy_regularization, use_gae=use_gae,
         root_dir=root_dir,
         env_name=env_name,
+        dataset_id=dataset_id,
         variable_container_server_address=variable_container_server_address,
         variable_container_server_port=variable_container_server_port,
         replay_buffer_server_address=replay_buffer_server_address,

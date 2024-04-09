@@ -8,6 +8,7 @@ from absl import logging
 from tf_agents.agents import tf_agent
 from tf_agents.agents.ddpg import ddpg_agent
 from tf_agents.agents.dqn import dqn_agent
+from tf_agents.agents.behavioral_cloning import behavioral_cloning_agent
 from tf_agents.agents.ppo import ppo_agent
 from tf_agents.agents.ppo import ppo_clip_agent
 from tf_agents.agents.ppo import ppo_utils
@@ -899,6 +900,49 @@ def _create_ddqn_agent(
   )
 
 
+def _create_bc_agent(
+    env_name: Text,
+    train_step: tf.Variable,
+    observation_tensor_spec: types.NestedTensorSpec,
+    action_tensor_spec: types.NestedTensorSpec,
+    time_step_tensor_spec: ts.TimeStep,
+    learning_rate: float,
+    debug_summaries: bool = False,
+    summarize_grads_and_vars: bool = False,
+    gradient_clipping: Optional[float] = None,
+    seed: Optional[int] = None,
+    **kwargs,
+) -> tf_agent.TFAgent:
+  """Creates a BC agent."""
+
+  lr = tf.keras.optimizers.schedules.CosineDecay(
+      initial_learning_rate=learning_rate,
+      decay_steps=kwargs.get('max_train_steps', int(1e6)),
+      alpha=0.1,
+  )
+
+  optimizer = tf.keras.optimizers.Adam(learning_rate=lr, epsilon=1e-5)
+
+  actor_net = _create_actor_net(
+      env_name=env_name,
+      observation_tensor_spec=observation_tensor_spec,
+      action_tensor_spec=action_tensor_spec,
+      seed=seed,
+      **kwargs,
+  )
+
+  return behavioral_cloning_agent.BehavioralCloningAgent(
+      time_step_spec=time_step_tensor_spec,
+      action_spec=action_tensor_spec,
+      cloning_network=actor_net,
+      optimizer=optimizer,
+      train_step_counter=train_step,
+      debug_summaries=debug_summaries,
+      summarize_grads_and_vars=summarize_grads_and_vars,
+      gradient_clipping=gradient_clipping,
+  )
+
+
 def _create_sac_agent(
     env_name: Text,
     train_step: tf.Variable,
@@ -1041,6 +1085,20 @@ def create_agent(algorithm, environment_name,
         **algo_kwargs, **kwargs)
   elif algorithm == 'ddpg':
     return _create_ddpg_agent(
+        env_name=environment_name,
+        train_step=train_step,
+        max_train_steps=max_train_step,
+        observation_tensor_spec=observation_tensor_spec,
+        action_tensor_spec=action_tensor_spec,
+        time_step_tensor_spec=time_step_tensor_spec,
+        debug_summaries=debug_summaries,
+        summarize_grads_and_vars=summarize_grads_and_vars,
+        gradient_clipping=gradient_clipping,
+        seed=seed,
+        **algo_kwargs, **kwargs)
+
+  elif algorithm == 'bc':
+    return _create_bc_agent(
         env_name=environment_name,
         train_step=train_step,
         max_train_steps=max_train_step,

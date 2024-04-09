@@ -433,7 +433,7 @@ def run_collect(
   if algorithm in ('sac', 'ddqn', 'td3', 'dqn', 'ddpg'):
     if environment_name == 'CircuitTraining-v0':
       random_policy = create_random_py_policy(collect_env,
-                                              observation_and_action_constraint_splitter=functools.partial(
+                                              obs_and_action_constraint_splitter_fn=functools.partial(
                                                   mask_circuit_training_actions,
                                                   collect_env))
 
