@@ -469,6 +469,7 @@ def run_collect(
       policy = train_utils.wait_for_policy(
           collect_policy_dir, load_specs_from_pbtxt=True
       )
+      random_policy = policy # Perform inital collect with the same policy
       logging.info('Loaded collect policy from %s', collect_policy_dir)
   else:
     collect_policy_dir = os.path.join(
