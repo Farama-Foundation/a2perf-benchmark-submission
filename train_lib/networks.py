@@ -71,7 +71,7 @@ def _create_q_net(
     latent_dim = kwargs.get('latent_dim')
     profile_value_dropout = kwargs.get('profile_value_dropout')
     embedding_dim = kwargs.get('embedding_dim')
-    return networks.WebLSTMQNetwork(
+    return web_networks.WebLSTMQNetwork(
         vocab_size=max_vocab_size,
         latent_dim=latent_dim,
         profile_value_dropout=profile_value_dropout,
@@ -108,22 +108,6 @@ def _create_actor_net(
         observation_tensor_spec,
         action_tensor_spec,
         fc_layer_params=(512, 256),
-    )
-  elif env_name == 'WebNavigation-v0':
-    max_vocab_size = kwargs.get('max_vocab_size')
-    latent_dim = kwargs.get('latent_dim')
-    profile_value_dropout = kwargs.get('profile_value_dropout')
-    embedding_dim = kwargs.get('embedding_dim')
-
-    return networks.WebLSTMActorNetwork(
-        input_tensor_spec=observation_tensor_spec,
-        output_tensor_spec=action_tensor_spec,
-        lstm_kwargs=dict(
-            vocab_size=max_vocab_size,
-            latent_dim=latent_dim,
-            profile_value_dropout=profile_value_dropout,
-            embedding_dim=embedding_dim,
-        ),
     )
   else:
     raise ValueError(f'No network defined for {env_name}')
