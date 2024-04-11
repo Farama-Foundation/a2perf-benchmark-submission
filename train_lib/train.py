@@ -24,13 +24,19 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
+from a2perf.data.minari.tf_utils import convert_to_tf_dataset
+from a2perf.data.minari.tf_utils import minari_bc_dataset_iterator
+from a2perf.domains import circuit_training
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains import web_navigation
+from a2perf.domains.tfa import suite_gym
+from absl import app
+from absl import flags
+from absl import logging
 import gin
 import minari
 import numpy as np
 import tensorflow as tf
-from absl import app
-from absl import flags
-from absl import logging
 from tf_agents.environments import py_environment
 from tf_agents.environments import suite_mujoco
 from tf_agents.environments import suite_pybullet
@@ -44,19 +50,8 @@ from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
-from a2perf.data.minari.tf_utils import convert_to_tf_dataset
-from a2perf.data.minari.tf_utils import minari_bc_dataset_iterator
-# noinspection PyUnresolvedReferences
-from a2perf.domains import circuit_training
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-# noinspection PyUnresolvedReferences
-from a2perf.domains import web_navigation
-from a2perf.domains.tfa import suite_gym
 from . import agents
 from . import learners
-
-import minari
 
 _TASK_INDEX = flags.DEFINE_integer(
     'task_index', 0, 'Index of the netlist in the agent policy model.'
@@ -282,9 +277,9 @@ def train_on_policy(
     for reverb_replay_train in reverb_replay_trains:
       reverb_replay_train.clear()
     with (
-      learner_obj.train_summary_writer.as_default(),
-      common.soft_device_placement(),
-      tf.summary.record_if(lambda: True),
+        learner_obj.train_summary_writer.as_default(),
+        common.soft_device_placement(),
+        tf.summary.record_if(lambda: True),
     ):
       with tf.name_scope('RunTime/'):
         tf.summary.scalar(
@@ -318,9 +313,9 @@ def train_off_policy(
     logging.info('Pushing variables at model_id: %d', model_id.numpy())
     variable_container.push(variables)
     with (
-      learner_obj.train_summary_writer.as_default(),
-      common.soft_device_placement(),
-      tf.summary.record_if(lambda: True),
+        learner_obj.train_summary_writer.as_default(),
+        common.soft_device_placement(),
+        tf.summary.record_if(lambda: True),
     ):
       with tf.name_scope('RunTime/'):
         tf.summary.scalar(
@@ -356,9 +351,9 @@ def train_bc(
     logging.info('Steps per sec: %s', num_steps / run_time)
     logging.info('Pushing variables at model_id: %d', model_id.numpy())
     with (
-      learner_obj.train_summary_writer.as_default(),
-      common.soft_device_placement(),
-      tf.summary.record_if(lambda: True),
+        learner_obj.train_summary_writer.as_default(),
+        common.soft_device_placement(),
+        tf.summary.record_if(lambda: True),
     ):
       with tf.name_scope('RunTime/'):
         tf.summary.scalar(
@@ -389,7 +384,7 @@ def train(
     policy_checkpoint_interval: int = 1000,
     sequence_length: int = 0,
     suite_load_fn: Callable[
-      [Text], py_environment.PyEnvironment
+        [Text], py_environment.PyEnvironment
     ] = suite_mujoco.load,
     summarize_grads_and_vars: bool = False,
     train_checkpoint_interval: int = 1000,
@@ -532,7 +527,9 @@ def train(
       )
     else:
       variables = {
-          reverb_variable_container.POLICY_KEY: agent.collect_policy.variables(),
+          reverb_variable_container.POLICY_KEY: (
+              agent.collect_policy.variables()
+          ),
           reverb_variable_container.TRAIN_STEP_KEY: train_step,
           'model_id': model_id,
       }
@@ -646,7 +643,8 @@ def main(_):
   if _ENV_NAME.value == 'WebNavigation-v0':
     # TODO: Remove this
     # LSTM implemented in dm-sonnet does not seem to work with graph mode
-    tf.config.run_functions_eagerly(True)
+    # tf.config.run_functions_eagerly(True)
+    pass
 
   # Set the random seeds
   tf.random.set_seed(_SEED.value)
@@ -678,7 +676,11 @@ def main(_):
         num_websites=_NUM_WEBSITES.value,
         seed=0,
         browser_args=dict(
-            threading=False, chrome_options={'--headless', '--no-sandbox'}
+            threading=False,
+            chrome_options={
+                '--headless=new',
+                '--no-sandbox',
+            },
         ),
     )
     suite_load_function = functools.partial(

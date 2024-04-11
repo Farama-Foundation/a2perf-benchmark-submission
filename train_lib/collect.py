@@ -1,19 +1,26 @@
 """Sample collection Job using a variable container for policy updates."""
 
 import functools
+from multiprocessing.managers import BaseManager
 import os
 import time
-from multiprocessing.managers import BaseManager
 from typing import Optional
 from typing import Text
 
+from a2perf.domains import circuit_training
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains import web_navigation
+from a2perf.domains.tfa import suite_gym
+from a2perf.domains.tfa.utils import create_random_py_policy
+from a2perf.domains.tfa.utils import mask_circuit_training_actions
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
+from absl import app
+from absl import flags
+from absl import logging
 import gin
 import reverb
 import tensorflow as tf
 import tf_agents
-from absl import app
-from absl import flags
-from absl import logging
 from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
@@ -26,17 +33,6 @@ from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
-
-# noinspection PyUnresolvedReferences
-from a2perf.domains import circuit_training
-# noinspection PyUnresolvedReferences
-from a2perf.domains import quadruped_locomotion
-# noinspection PyUnresolvedReferences
-from a2perf.domains import web_navigation
-from a2perf.domains.tfa import suite_gym
-from a2perf.domains.tfa.utils import create_random_py_policy
-from a2perf.domains.tfa.utils import mask_circuit_training_actions
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 
 _DEBUG = flags.DEFINE_bool('debug', False, 'Debug mode.')
 _GIN_FILE = flags.DEFINE_multi_string(
@@ -209,15 +205,18 @@ def collect_off_policy(
 ) -> None:
   # We run collect jobs in replicas when using kubernetes,
   # so check if JOB_COMPLETION_INDEX is set.
-  # If it is, we make sure to only record summaries from task 0, replica 0.
+  # If it is, we make sure to only record summaries from task 0 on a few
+  # different replicas.
   summary_dir = None
   actor_collect_metrics = actor.collect_metrics(
       ACTOR_COLLECT_METRICS_BUFFER_SIZE
   )
   if 'JOB_COMPLETION_INDEX' in os.environ:
     job_completion_index = int(os.environ['JOB_COMPLETION_INDEX'])
-    if job_completion_index == 0:
-      summary_dir = os.path.join(root_dir, 'summaries', str(task))
+    if job_completion_index in (0, 1, 2):
+      summary_dir = os.path.join(
+          root_dir, 'summaries', str(job_completion_index), str(task)
+      )
 
   else:
     summary_dir = os.path.join(root_dir, 'summaries', str(task))
@@ -432,10 +431,12 @@ def run_collect(
   random_policy = None
   if algorithm in ('sac', 'ddqn', 'td3', 'dqn', 'ddpg'):
     if environment_name == 'CircuitTraining-v0':
-      random_policy = create_random_py_policy(collect_env,
-                                              obs_and_action_constraint_splitter_fn=functools.partial(
-                                                  mask_circuit_training_actions,
-                                                  collect_env))
+      random_policy = create_random_py_policy(
+          collect_env,
+          obs_and_action_constraint_splitter_fn=functools.partial(
+              mask_circuit_training_actions, collect_env
+          ),
+      )
 
     if algorithm in ('dqn', 'ddqn'):
       # The TF Agent creates a collect policy that handles epsilon greedy,
@@ -469,7 +470,7 @@ def run_collect(
       policy = train_utils.wait_for_policy(
           collect_policy_dir, load_specs_from_pbtxt=True
       )
-      random_policy = policy # Perform inital collect with the same policy
+      random_policy = policy  # Perform inital collect with the same policy
       logging.info('Loaded collect policy from %s', collect_policy_dir)
   else:
     collect_policy_dir = os.path.join(
@@ -564,13 +565,15 @@ def setup_web_navigation_env_for_collect():
 
   default_gym_kwargs = dict(
       global_vocabulary=global_vocabulary,
-      use_legacy_step=True,
-      use_legacy_reset=True,
       difficulty=_DIFFICULTY_LEVEL.value,
       num_websites=_NUM_WEBSITES.value,
       seed=0,
       browser_args=dict(
-          threading=False, chrome_options={'--headless', '--no-sandbox'}
+          threading=False,
+          chrome_options={
+              '--headless=new',
+              '--no-sandbox',
+          },
       ),
   )
   suite_load_function = functools.partial(
