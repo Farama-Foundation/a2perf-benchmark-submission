@@ -499,7 +499,7 @@ def run_collect(
         task=task,
         variable_container_server_address=variable_container_server_address,
     )
-  else:
+  elif algorithm in ('ppo', ):
     collect_on_policy(
         collect_env=collect_env,
         collect_policy=policy,
@@ -511,6 +511,11 @@ def run_collect(
         summary_interval=summary_interval,
         sequence_length=sequence_length,
     )
+  elif algorithm in ('bc',):
+    # Do nothing
+    logging.info('No need to collect for BC.')
+  else:
+    raise ValueError(f'Unknown algorithm: {algorithm}')
 
 
 def setup_web_navigation_env_for_collect():
