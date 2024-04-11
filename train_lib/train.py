@@ -640,12 +640,6 @@ def main(_):
     tf.config.run_functions_eagerly(True)
     tf.data.experimental.enable_debug_mode()
 
-  if _ENV_NAME.value == 'WebNavigation-v0':
-    # TODO: Remove this
-    # LSTM implemented in dm-sonnet does not seem to work with graph mode
-    # tf.config.run_functions_eagerly(True)
-    pass
-
   # Set the random seeds
   tf.random.set_seed(_SEED.value)
   np.random.seed(_SEED.value)

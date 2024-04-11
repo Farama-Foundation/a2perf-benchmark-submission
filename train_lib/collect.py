@@ -437,6 +437,8 @@ def run_collect(
               mask_circuit_training_actions, collect_env
           ),
       )
+    else:
+      random_policy = create_random_py_policy(collect_env)
 
     if algorithm in ('dqn', 'ddqn'):
       # The TF Agent creates a collect policy that handles epsilon greedy,
