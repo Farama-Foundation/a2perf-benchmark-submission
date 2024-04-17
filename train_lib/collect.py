@@ -213,7 +213,7 @@ def collect_off_policy(
   )
   if 'JOB_COMPLETION_INDEX' in os.environ:
     job_completion_index = int(os.environ['JOB_COMPLETION_INDEX'])
-    if job_completion_index in (0, 1, 2):
+    if job_completion_index in (0, 1):
       summary_dir = os.path.join(
           root_dir, 'summaries', str(job_completion_index), str(task)
       )
