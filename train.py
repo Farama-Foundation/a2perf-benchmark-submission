@@ -23,15 +23,38 @@ def create_and_manage_process(command, process_list, env_vars=None):
   return process
 
 
-def train_command(num_iterations, entropy_regularization, use_gae, root_dir,
-    variable_container_server_address, variable_container_server_port,
-    replay_buffer_server_address, replay_buffer_server_port, env_name,
-    max_sequence_length, num_episodes_per_iteration, log_interval, use_gpu,
-    seed, task_name, dataset_id,
-    num_epochs, batch_size, shuffle_buffer_size, num_replicas, algorithm, debug,
-    epsilon_greedy, train_checkpoint_interval, policy_checkpoint_interval,
-    env_batch_size, learning_rate, exploration_noise_std, max_train_steps,
-    learner_iterations_per_call):
+def train_command(
+    num_iterations,
+    entropy_regularization,
+    use_gae,
+    root_dir,
+    variable_container_server_address,
+    variable_container_server_port,
+    replay_buffer_server_address,
+    replay_buffer_server_port,
+    env_name,
+    max_sequence_length,
+    num_episodes_per_iteration,
+    log_interval,
+    use_gpu,
+    seed,
+    task_name,
+    dataset_id,
+    num_epochs,
+    batch_size,
+    shuffle_buffer_size,
+    num_replicas,
+    algorithm,
+    debug,
+    epsilon_greedy,
+    train_checkpoint_interval,
+    policy_checkpoint_interval,
+    env_batch_size,
+    learning_rate,
+    exploration_noise_std,
+    max_train_steps,
+    learner_iterations_per_call,
+):
   return [
       'python',
       '-m',
@@ -69,42 +92,63 @@ def train_command(num_iterations, entropy_regularization, use_gae, root_dir,
   ]
 
 
-def collect_command(algorithm, debug, env_batch_size, env_name,
+def collect_command(
+    algorithm,
+    debug,
+    env_batch_size,
+    env_name,
     initial_collect_steps,
     epsilon_greedy,
     num_iterations,
-    max_sequence_length, max_train_steps, num_replicas,
-    replay_buffer_server_address, replay_buffer_server_port, root_dir, seed,
-    log_interval, variable_container_server_address,
-    variable_container_server_port, vocabulary_manager_auth_key,
-    vocabulary_server_address, vocabulary_server_port, task):
-  return ['python',
-          '-m',
-          'train_lib.collect',
-          f'--algorithm={algorithm}',
-          f'--debug={debug}',
-          f'--env_batch_size={env_batch_size}',
-          f'--env_name={env_name}',
-          f'--epsilon_greedy={epsilon_greedy}',
-          f'--initial_collect_steps={initial_collect_steps}',
-          f'--max_sequence_length={max_sequence_length}',
-          f'--max_train_steps={max_train_steps}',
-          f'--num_iterations={num_iterations}',
-          f'--num_replicas={num_replicas}',
-          f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
-          f'--root_dir={root_dir}',
-          f'--seed={seed}',
-          f'--summary_interval={log_interval}',
-          f'--task={task}',
-          f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
-          f'--verbosity={"1" if task == 0 else "-1"}',
-          f'--vocabulary_manager_auth_key={vocabulary_manager_auth_key}',
-          f'--vocabulary_server_address={vocabulary_server_address}',
-          f'--vocabulary_server_port={vocabulary_server_port}']
+    max_sequence_length,
+    max_train_steps,
+    num_replicas,
+    replay_buffer_server_address,
+    replay_buffer_server_port,
+    root_dir,
+    seed,
+    log_interval,
+    variable_container_server_address,
+    variable_container_server_port,
+    vocabulary_manager_auth_key,
+    vocabulary_server_address,
+    vocabulary_server_port,
+    task,
+):
+  return [
+      'python',
+      '-m',
+      'train_lib.collect',
+      f'--algorithm={algorithm}',
+      f'--debug={debug}',
+      f'--env_batch_size={env_batch_size}',
+      f'--env_name={env_name}',
+      f'--epsilon_greedy={epsilon_greedy}',
+      f'--initial_collect_steps={initial_collect_steps}',
+      f'--max_sequence_length={max_sequence_length}',
+      f'--max_train_steps={max_train_steps}',
+      f'--num_iterations={num_iterations}',
+      f'--num_replicas={num_replicas}',
+      f'--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}',
+      f'--root_dir={root_dir}',
+      f'--seed={seed}',
+      f'--summary_interval={log_interval}',
+      f'--task={task}',
+      f'--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}',
+      f'--verbosity={"1" if task == 0 else "-1"}',
+      f'--vocabulary_manager_auth_key={vocabulary_manager_auth_key}',
+      f'--vocabulary_server_address={vocabulary_server_address}',
+      f'--vocabulary_server_port={vocabulary_server_port}',
+  ]
 
 
-def reverb_command(task_name, replay_buffer_server_port, root_dir,
-    replay_buffer_capacity, algorithm, min_table_size_before_sampling,
+def reverb_command(
+    task_name,
+    replay_buffer_server_port,
+    root_dir,
+    replay_buffer_capacity,
+    algorithm,
+    min_table_size_before_sampling,
 ):
   return [
       'python',
@@ -224,11 +268,44 @@ def train():
   print('vocabulary_server_address:', vocabulary_server_address)
   print('vocabulary_server_port:', vocabulary_server_port)
 
+  # We need to pass the IP address of the train machine to the other machines
+  # Simply save the result of hostname -I to a file and read it in the other
+  # machines
+  if job_type == 'train':
+    ip_address = subprocess.run(
+        ['hostname', '-I'], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    with open(os.path.join(root_dir, 'ip_address.txt'), 'w') as f:
+      f.write(ip_address)
+  else:
+    # Wait for the IP address to be written
+    ip_address_path = os.path.abspath(
+        os.path.join(root_dir, os.path.pardir, os.path.pardir, 'ip_address.txt')
+    )
+    while not os.path.exists(ip_address_path):
+      time.sleep(PROCESS_WAIT_INTERVAL)
+      print('Waiting for IP address to be written.')
+
+    with open(ip_address_path, 'r') as f:
+      ip_address = f.readline().strip()
+
+    # Use this IP address for distributed training
+    variable_container_server_address = ip_address
+    replay_buffer_server_address = ip_address
+    vocabulary_server_address = ip_address
+
   # Check if the selected algorithm is Proximal Policy Optimization (PPO)
   if algorithm in ('ppo',):
-    train_steps_per_iteration = max(1, int(
-        num_episodes_per_iteration * max_sequence_length / batch_size * num_epochs / num_replicas
-    ))
+    train_steps_per_iteration = max(
+        1,
+        int(
+            num_episodes_per_iteration
+            * max_sequence_length
+            / batch_size
+            * num_epochs
+            / num_replicas
+        ),
+    )
 
     # Shuffle three episodes worth of samples
     shuffle_buffer_size = 3
@@ -329,23 +406,29 @@ def train():
   if job_type == 'collect' and algorithm != 'bc':
     collect_job_commands = [
         collect_command(
-            algorithm=algorithm, env_name=env_name, debug=debug,
+            algorithm=algorithm,
+            env_name=env_name,
+            debug=debug,
             env_batch_size=env_batch_size,
             num_iterations=num_iterations,
             initial_collect_steps=initial_collect_steps,
             max_sequence_length=max_sequence_length,
             epsilon_greedy=epsilon_greedy,
-            max_train_steps=max_train_steps, num_replicas=num_replicas,
+            max_train_steps=max_train_steps,
+            num_replicas=num_replicas,
             replay_buffer_server_address=replay_buffer_server_address,
             replay_buffer_server_port=replay_buffer_server_port,
-            root_dir=root_dir, seed=seed, log_interval=log_interval,
+            root_dir=root_dir,
+            seed=seed,
+            log_interval=log_interval,
             variable_container_server_address=variable_container_server_address,
             variable_container_server_port=variable_container_server_port,
             vocabulary_manager_auth_key=vocabulary_manager_auth_key,
             vocabulary_server_address=vocabulary_server_address,
             vocabulary_server_port=vocabulary_server_port,
-            task=i
-        ) + env_flags
+            task=i,
+        )
+        + env_flags
         for i in range(num_collect_jobs)
     ]
 
@@ -354,8 +437,12 @@ def train():
 
     collect_jobs = []
     for command in collect_job_commands:
-      collect_jobs.append(create_and_manage_process(command, all_processes,
-                                                    ))
+      collect_jobs.append(
+          create_and_manage_process(
+              command,
+              all_processes,
+          )
+      )
     print('Successfully launched collect jobs.')
 
     # Recall that root dir is modified for collect jobs to separate
@@ -366,14 +453,14 @@ def train():
       time.sleep(PROCESS_WAIT_INTERVAL)
 
   elif job_type == 'train':
-
     if algorithm != 'bc':
       reverb_job_command = reverb_command(
           task_name=task_name,
           replay_buffer_server_port=replay_buffer_server_port,
-          root_dir=root_dir, replay_buffer_capacity=replay_buffer_capacity,
+          root_dir=root_dir,
+          replay_buffer_capacity=replay_buffer_capacity,
           algorithm=algorithm,
-          min_table_size_before_sampling=min_table_size_before_sampling
+          min_table_size_before_sampling=min_table_size_before_sampling,
       )
       print(' '.join(reverb_job_command))
       create_and_manage_process(
@@ -383,30 +470,41 @@ def train():
       )
       print('Successfully launched reverb server.')
 
-    train_job_command = train_command(
-        num_iterations=num_iterations,
-        entropy_regularization=entropy_regularization, use_gae=use_gae,
-        root_dir=root_dir,
-        env_name=env_name,
-        dataset_id=dataset_id,
-        variable_container_server_address=variable_container_server_address,
-        variable_container_server_port=variable_container_server_port,
-        replay_buffer_server_address=replay_buffer_server_address,
-        replay_buffer_server_port=replay_buffer_server_port,
-        max_sequence_length=max_sequence_length,
-        num_episodes_per_iteration=num_episodes_per_iteration,
-        log_interval=log_interval,
-        task_name=task_name,
-        use_gpu=True, seed=seed, num_epochs=num_epochs, batch_size=batch_size,
-        shuffle_buffer_size=shuffle_buffer_size, num_replicas=num_replicas,
-        algorithm=algorithm, debug=debug, epsilon_greedy=epsilon_greedy,
-        train_checkpoint_interval=train_checkpoint_interval,
-        policy_checkpoint_interval=policy_checkpoint_interval,
-        env_batch_size=env_batch_size, learning_rate=learning_rate,
-        exploration_noise_std=exploration_noise_std,
-        max_train_steps=max_train_steps,
-        learner_iterations_per_call=learner_iterations_per_call
-    ) + env_flags
+    train_job_command = (
+        train_command(
+            num_iterations=num_iterations,
+            entropy_regularization=entropy_regularization,
+            use_gae=use_gae,
+            root_dir=root_dir,
+            env_name=env_name,
+            dataset_id=dataset_id,
+            variable_container_server_address=variable_container_server_address,
+            variable_container_server_port=variable_container_server_port,
+            replay_buffer_server_address=replay_buffer_server_address,
+            replay_buffer_server_port=replay_buffer_server_port,
+            max_sequence_length=max_sequence_length,
+            num_episodes_per_iteration=num_episodes_per_iteration,
+            log_interval=log_interval,
+            task_name=task_name,
+            use_gpu=True,
+            seed=seed,
+            num_epochs=num_epochs,
+            batch_size=batch_size,
+            shuffle_buffer_size=shuffle_buffer_size,
+            num_replicas=num_replicas,
+            algorithm=algorithm,
+            debug=debug,
+            epsilon_greedy=epsilon_greedy,
+            train_checkpoint_interval=train_checkpoint_interval,
+            policy_checkpoint_interval=policy_checkpoint_interval,
+            env_batch_size=env_batch_size,
+            learning_rate=learning_rate,
+            exploration_noise_std=exploration_noise_std,
+            max_train_steps=max_train_steps,
+            learner_iterations_per_call=learner_iterations_per_call,
+        )
+        + env_flags
+    )
 
     # Display the command
     print(' '.join(train_job_command))

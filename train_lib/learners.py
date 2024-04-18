@@ -3,17 +3,17 @@ from typing import Callable
 from typing import Optional
 from typing import Tuple
 
+from a2perf.data.minari import tf_utils
+from absl import logging
 import gin
 import reverb
 import tensorflow as tf
 import tf_agents.agents
-from absl import logging
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.train import learner as learner_lib
 from tf_agents.typing import types
-import minari
+
 from . import learner_lib as learner
-from a2perf.data.minari import tf_utils
 
 # A function which processes a tuple of a nested tensor representing a TF-Agent
 # Trajectory and Reverb SampleInfo.
@@ -59,32 +59,46 @@ def get_shuffle_buffer_size(
   return sequence_length * shuffle_buffer_episode_len
 
 
-def create_minari_experience_dataset_fn(tf_agent: tf_agents.agents.TFAgent
-    , minari_dataset: minari.MinariDataset, batch_size: int,
-    shuffle_buffer_size: int = 1000):
+def create_minari_experience_dataset_fn(
+    tf_agent: tf_agents.agents.TFAgent,
+    minari_dataset,
+    batch_size: int,
+    shuffle_buffer_size: int = 1000,
+):
   def experience_dataset_fn():
     action_spec = tf_agent.collect_data_spec.action
     observation_spec = tf_agent.collect_data_spec.observation
-    dataset = tf.data.Dataset.from_generator(
-        functools.partial(tf_utils.minari_bc_dataset_iterator, minari_dataset),
-        output_signature=(tf_agents.trajectories.Trajectory(
-            step_type=tf.TensorSpec(shape=(), dtype=tf.int32),
-            observation=observation_spec,
-            action=action_spec,
-            policy_info=(),
-            next_step_type=tf.TensorSpec(shape=(), dtype=tf.int32),
-            reward=tf.TensorSpec(shape=(), dtype=tf.float32),
-            discount=tf.TensorSpec(shape=(), dtype=tf.float32),
-        ), tf.TensorSpec(shape=(), dtype=tf.string)
-        )).shuffle(shuffle_buffer_size).batch(batch_size).prefetch(
-        tf.data.AUTOTUNE).with_options(dataset_options())
+    dataset = (
+        tf.data.Dataset.from_generator(
+            functools.partial(
+                tf_utils.minari_bc_dataset_iterator, minari_dataset
+            ),
+            output_signature=(
+                tf_agents.trajectories.Trajectory(
+                    step_type=tf.TensorSpec(shape=(), dtype=tf.int32),
+                    observation=observation_spec,
+                    action=action_spec,
+                    policy_info=(),
+                    next_step_type=tf.TensorSpec(shape=(), dtype=tf.int32),
+                    reward=tf.TensorSpec(shape=(), dtype=tf.float32),
+                    discount=tf.TensorSpec(shape=(), dtype=tf.float32),
+                ),
+                tf.TensorSpec(shape=(), dtype=tf.string),
+            ),
+        )
+        .shuffle(shuffle_buffer_size)
+        .batch(batch_size)
+        .prefetch(tf.data.AUTOTUNE)
+        .with_options(dataset_options())
+    )
     return dataset
 
   return experience_dataset_fn
 
 
-def create_off_policy_experience_dataset_fn(tf_agent, tasks, batch_size,
-    replay_buffer_server_address):
+def create_off_policy_experience_dataset_fn(
+    tf_agent, tasks, batch_size, replay_buffer_server_address
+):
   def experience_dataset_fn():
     reverb_replay_train = reverb_replay_buffer.ReverbReplayBuffer(
         tf_agent.collect_data_spec,
@@ -93,13 +107,17 @@ def create_off_policy_experience_dataset_fn(tf_agent, tasks, batch_size,
         server_address=replay_buffer_server_address,
     )
 
-    dataset = reverb_replay_train.as_dataset(
-        sample_batch_size=batch_size,
-        sequence_preprocess_fn=tf_agent.preprocess_sequence,
-        num_steps=2,
-        num_parallel_calls=tf.data.experimental.AUTOTUNE,
-        single_deterministic_pass=False,
-    ).prefetch(3).with_options(dataset_options())
+    dataset = (
+        reverb_replay_train.as_dataset(
+            sample_batch_size=batch_size,
+            sequence_preprocess_fn=tf_agent.preprocess_sequence,
+            num_steps=2,
+            num_parallel_calls=tf.data.experimental.AUTOTUNE,
+            single_deterministic_pass=False,
+        )
+        .prefetch(3)
+        .with_options(dataset_options())
+    )
     logging.info('Created dataset for training_table_0')
 
     return dataset
@@ -107,8 +125,9 @@ def create_off_policy_experience_dataset_fn(tf_agent, tasks, batch_size,
   return experience_dataset_fn
 
 
-def create_on_policy_experience_dataset_fn(tf_agent, tasks,
-    replay_buffer_server_address):
+def create_on_policy_experience_dataset_fn(
+    tf_agent, tasks, replay_buffer_server_address
+):
   def experience_dataset_fn():
     get_dtype = lambda x: x.dtype
     get_shape = lambda x: (None,) + x.shape
@@ -150,7 +169,8 @@ def create_per_sequence_fn(tf_agent):
   return per_sequence_fn
 
 
-def create_ppo_learner(agent,
+def create_ppo_learner(
+    agent,
     sequence_length,
     replay_buffer_server_address,
     model_id,
@@ -158,13 +178,17 @@ def create_ppo_learner(agent,
     num_epochs,
     batch_size,
     train_step,
-    root_dir, train_checkpoint_interval,
+    root_dir,
+    train_checkpoint_interval,
     learning_triggers,
     log_interval,
-    strategy):
-  experience_dataset_fn = create_on_policy_experience_dataset_fn(tf_agent=agent,
-                                                                 tasks=[0],
-                                                                 replay_buffer_server_address=replay_buffer_server_address)
+    strategy,
+):
+  experience_dataset_fn = create_on_policy_experience_dataset_fn(
+      tf_agent=agent,
+      tasks=[0],
+      replay_buffer_server_address=replay_buffer_server_address,
+  )
   per_sequence_fn = create_per_sequence_fn(agent)
   return learner.PPOLearner(
       root_dir,
@@ -189,13 +213,18 @@ def create_off_policy_learner(
     agent,
     replay_buffer_server_address,
     batch_size,
-    train_step, root_dir, train_checkpoint_interval,
-    log_interval, learning_triggers, strategy):
+    train_step,
+    root_dir,
+    train_checkpoint_interval,
+    log_interval,
+    learning_triggers,
+    strategy,
+):
   experience_dataset_fn = create_off_policy_experience_dataset_fn(
       tf_agent=agent,
       batch_size=batch_size,
       tasks=[0],
-      replay_buffer_server_address=replay_buffer_server_address
+      replay_buffer_server_address=replay_buffer_server_address,
   )
 
   return learner_lib.Learner(
@@ -214,12 +243,15 @@ def create_bc_learner(
     agent,
     batch_size,
     train_step,
-    root_dir, train_checkpoint_interval,
-    log_interval, learning_triggers, strategy, dataset: minari.MinariDataset):
+    root_dir,
+    train_checkpoint_interval,
+    log_interval,
+    learning_triggers,
+    strategy,
+    dataset,
+):
   experience_dataset_fn = create_minari_experience_dataset_fn(
-      minari_dataset=dataset,
-      batch_size=batch_size,
-      tf_agent=agent
+      minari_dataset=dataset, batch_size=batch_size, tf_agent=agent
   )
   return learner_lib.Learner(
       root_dir=root_dir,
@@ -234,12 +266,22 @@ def create_bc_learner(
 
 
 def create_learner(
-    algorithm, agent, model_id, sequence_length,
+    algorithm,
+    agent,
+    model_id,
+    sequence_length,
     replay_buffer_server_address,
-    num_episodes_per_iteration, num_epochs, batch_size,
-    train_step, root_dir, train_checkpoint_interval,
-    log_interval, learning_triggers, strategy,
-    minari_dataset_obj: Optional[minari.MinariDataset] = None):
+    num_episodes_per_iteration,
+    num_epochs,
+    batch_size,
+    train_step,
+    root_dir,
+    train_checkpoint_interval,
+    log_interval,
+    learning_triggers,
+    strategy,
+    minari_dataset_obj=None,
+):
   if algorithm in ('ppo',):
     return create_ppo_learner(
         agent=agent,
@@ -254,7 +296,7 @@ def create_learner(
         train_checkpoint_interval=train_checkpoint_interval,
         log_interval=log_interval,
         learning_triggers=learning_triggers,
-        strategy=strategy
+        strategy=strategy,
     )
   elif algorithm in ('sac', 'ddqn', 'td3', 'ddpg'):
     return create_off_policy_learner(
@@ -266,7 +308,7 @@ def create_learner(
         train_checkpoint_interval=train_checkpoint_interval,
         log_interval=log_interval,
         learning_triggers=learning_triggers,
-        strategy=strategy
+        strategy=strategy,
     )
   elif algorithm in ('bc',):
     return create_bc_learner(
@@ -278,7 +320,7 @@ def create_learner(
         train_checkpoint_interval=train_checkpoint_interval,
         log_interval=log_interval,
         learning_triggers=learning_triggers,
-        strategy=strategy
+        strategy=strategy,
     )
   else:
     raise ValueError(f'Unknown algorithm: {algorithm}')
