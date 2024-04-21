@@ -1013,6 +1013,10 @@ def create_agent(algorithm, environment_name,
     gradient_clipping,
     seed,
     algo_kwargs, **kwargs, ):
+  # TODO: Put this param in a config file
+  if environment_name == 'WebNavigation-v0':
+    gradient_clipping=1.0
+
   if algorithm == 'ppo':
     return _create_ppo_agent(
         env_name=environment_name,
