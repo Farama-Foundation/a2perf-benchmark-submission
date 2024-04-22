@@ -1,4 +1,6 @@
+import json
 import multiprocessing
+import os
 import time
 from multiprocessing.managers import BaseManager
 
@@ -18,6 +20,9 @@ _VOCABULARY_MANAGER_AUTH_KEY = flags.DEFINE_string(
 )
 _MAX_VOCAB_SIZE = flags.DEFINE_integer(
     'max_vocab_size', None, 'Maximum vocabulary size.'
+)
+_ROOT_DIR = flags.DEFINE_string(
+    'root_dir', '/tmp/xm_local', 'Base directory for logs and results.'
 )
 
 
@@ -54,7 +59,8 @@ def main(_):
 
   manager = VocabularyManager(
       address=(
-          '0.0.0.0', # Allow connections from any address (firewall rules apply)
+          '0.0.0.0',
+          # Allow connections from any address (firewall rules apply)
           _VOCABULARY_SERVER_PORT.value,
       ),
       authkey=_VOCABULARY_MANAGER_AUTH_KEY.value.encode()
@@ -95,6 +101,18 @@ def main(_):
       callable=lambda: LockProxy(_shared_lock),
       exposed=('__enter__', '__exit__', 'acquire', 'release'),
   )
+
+  # Before starting the vocab server, check for saved vocab file and load it
+  # if it exists. get all files in the dir, sort them and load the latest checkpoint
+  # into the shared dict.
+  save_vocab_dir = os.path.join(_ROOT_DIR.value, 'vocabulary')
+  if os.path.exists(save_vocab_dir):
+    vocab_files = os.listdir(save_vocab_dir)
+    if vocab_files:
+      vocab_files.sort()
+      latest_vocab_file = vocab_files[-1]
+      with open(os.path.join(save_vocab_dir, latest_vocab_file), 'r') as f:
+        _shared_dict.update(json.load(f))
 
   manager.start()
   logging.info(

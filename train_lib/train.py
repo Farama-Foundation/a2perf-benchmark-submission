@@ -20,6 +20,7 @@ See README for launch instructions.
 import functools
 import os
 import time
+from multiprocessing.managers import BaseManager
 from typing import Callable
 from typing import Optional
 from typing import Text
@@ -50,9 +51,10 @@ from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 from . import agents
 from . import learners
-
+from .triggers import VocabularySaveTrigger
 _TASK_INDEX = flags.DEFINE_integer(
     'task_index', 0, 'Index of the netlist in the agent policy model.'
 )
@@ -103,6 +105,18 @@ _SEQUENCE_LENGTH = flags.DEFINE_integer(
     'sequence_length',
     None,
     'Length of sequences to sample from the replay buffer.',
+)
+
+_VOCABULARY_MANAGER_AUTH_KEY = flags.DEFINE_string(
+    'vocabulary_manager_auth_key',
+    None,
+    'Authentication key for the manager server.',
+)
+_VOCABULARY_SERVER_ADDRESS = flags.DEFINE_string(
+    'vocabulary_server_address', None, 'Address for the vocabulary manager.'
+)
+_VOCABULARY_SERVER_PORT = flags.DEFINE_integer(
+    'vocabulary_server_port', None, 'Vocabulary server port.'
 )
 _SEED = flags.DEFINE_integer('seed', None, 'Random seed.')
 _ROOT_DIR = flags.DEFINE_string(
@@ -186,6 +200,10 @@ _SUMMARIZE_GRADS_AND_VARS = flags.DEFINE_bool(
 _LEARNING_RATE = flags.DEFINE_float('learning_rate', None, 'Learning rate.')
 _USE_GAE = flags.DEFINE_bool('use_gae', None, 'Whether to use GAE or not.')
 FLAGS = flags.FLAGS
+
+# Maximum number of retries for connecting to the vocabulary server.
+MAX_RETRIES = 8640  # 24 hours
+RETRY_DELAY = 10
 
 
 def create_replay_buffers(tf_agent, tasks, replay_buffer_server_address):
@@ -416,17 +434,14 @@ def train(
     env_kwargs = {
         'static_features': static_features,
     }
-
-    # Also supply
   elif environment_name == 'WebNavigation-v0':
     env_kwargs = {}
+
   elif environment_name == 'QuadrupedLocomotion-v0':
     env_kwargs = {}
   else:
     raise ValueError(f'Unknown environment: {environment_name}')
 
-  env.close()
-  del env
 
   if algorithm == 'ppo':
     algo_kwargs = {
@@ -461,8 +476,20 @@ def train(
 
   # Create the agent.
   with strategy.scope():
+    saved_model_dir = os.path.join(root_dir, 'policies')
     train_step = train_utils.create_train_step()
     model_id = common.create_variable('model_id')
+
+    saved_vocab_dir = os.path.join(root_dir, 'vocabulary')
+    vocab_save_trigger = VocabularySaveTrigger(
+        saved_vocab_dir=saved_vocab_dir,
+        vocabulary=env.gym.local_vocab,
+        train_step=train_step,
+        interval=policy_checkpoint_interval
+    )
+
+    # env.close()
+    # del env
 
     agent = agents.create_agent(
         environment_name=environment_name,
@@ -489,7 +516,6 @@ def train(
 
     # Create the policy saver which saves the initial model now, then it
     # periodically checkpoints the policy weights.
-    saved_model_dir = os.path.join(root_dir, 'policies')
     save_model_trigger = triggers.PolicySavedModelTrigger(
         saved_model_dir,
         agent,
@@ -503,6 +529,11 @@ def train(
         save_model_trigger,
         triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
     ]
+
+    if environment_name =='WebNavigation-v0':
+      learning_triggers.append(vocab_save_trigger)
+
+
 
     if algorithm in ('bc',):
       variable_container = None
@@ -669,7 +700,58 @@ def main(_):
         suite_gym.load, gym_kwargs=default_gym_kwargs
     )
   elif _ENV_NAME.value == 'WebNavigation-v0':
+    class VocabularyManager(BaseManager):
+      pass
+
+    VocabularyManager.register('get_shared_dict')
+    VocabularyManager.register('get_shared_lock')
+
+    # Initialize the manager outside of the loop
+    manager = VocabularyManager(
+        address=(
+            _VOCABULARY_SERVER_ADDRESS.value,
+            _VOCABULARY_SERVER_PORT.value,
+        ),
+        authkey=_VOCABULARY_MANAGER_AUTH_KEY.value.encode(),
+    )
+
+    connected = False
+    for attempt in range(MAX_RETRIES):
+      try:
+        manager.connect()
+        connected = True
+        print(
+            'Successfully connected to the vocab server on attempt'
+            f' {attempt + 1}.'
+        )
+        break
+      except ConnectionRefusedError:
+        if attempt < MAX_RETRIES - 1:
+          print(
+              f'Attempt {attempt + 1} failed to connect to the vocab server. '
+              f'Retrying in {RETRY_DELAY} seconds...'
+          )
+          time.sleep(RETRY_DELAY)
+        else:
+          print('Failed to connect to the manager server.')
+
+    if not connected:
+      raise ConnectionRefusedError(
+          'Unable to connect to the vocabulary server after maximum retries.'
+      )
+
+    manager.connect()
+
+    shared_dict = manager.get_shared_dict()
+    shared_lock = manager.get_shared_lock()
+
+    global_vocabulary = vocabulary_node.LockedMultiprocessingVocabulary(
+        shared_lock=shared_lock,
+        shared_dict=shared_dict,
+    )
+
     default_gym_kwargs = dict(
+        global_vocabulary=global_vocabulary,
         difficulty=_DIFFICULTY_LEVEL.value,
         num_websites=_NUM_WEBSITES.value,
         seed=0,
@@ -682,7 +764,9 @@ def main(_):
         ),
     )
     suite_load_function = functools.partial(
-        suite_gym.load, gym_kwargs=default_gym_kwargs
+        suite_gym.load,
+        gym_kwargs=default_gym_kwargs,
+        env_wrappers=[wrappers.ActionClipWrapper],
     )
   elif _ENV_NAME.value == 'CircuitTraining-v0':
     default_gym_kwargs = dict(
