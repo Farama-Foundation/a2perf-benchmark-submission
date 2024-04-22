@@ -30,6 +30,9 @@ def train_command(
     root_dir,
     variable_container_server_address,
     variable_container_server_port,
+    vocabulary_manager_auth_key,
+    vocabulary_server_port,
+    vocabulary_server_address,
     replay_buffer_server_address,
     replay_buffer_server_port,
     env_name,
@@ -63,6 +66,9 @@ def train_command(
       f'--dataset_id={dataset_id}',
       f'--batch_size={batch_size}',
       f'--env_batch_size={env_batch_size}',
+      f'--vocabulary_server_port={vocabulary_server_port}',
+      f'--vocabulary_server_address={vocabulary_server_address}',
+      f'--vocabulary_manager_auth_key={vocabulary_manager_auth_key}',
       f'--debug={debug}',
       f'--entropy_regularization={entropy_regularization}',
       f'--env_name={env_name}',
@@ -275,6 +281,7 @@ def train():
     ip_address = subprocess.run(
         ['hostname', '-I'], capture_output=True, text=True, check=True
     ).stdout.strip()
+    ip_address = ip_address.split(' ')[0]
     with open(os.path.join(root_dir, 'ip_address.txt'), 'w') as f:
       f.write(ip_address)
   else:
@@ -380,6 +387,7 @@ def train():
           f'--vocabulary_manager_auth_key={vocabulary_manager_auth_key}',
           f'--max_vocab_size={max_vocab_size}',
           f'--verbosity={logging.get_verbosity()}',
+          f'--root_dir={root_dir}'
       ]
       print('Command for vocab manager:', vocab_manager_command)
       vocab_server_process = create_and_manage_process(
@@ -478,6 +486,9 @@ def train():
             root_dir=root_dir,
             env_name=env_name,
             dataset_id=dataset_id,
+            vocabulary_manager_auth_key=vocabulary_manager_auth_key,
+            vocabulary_server_port=vocab_port,
+            vocabulary_server_address=vocabulary_server_address,
             variable_container_server_address=variable_container_server_address,
             variable_container_server_port=variable_container_server_port,
             replay_buffer_server_address=replay_buffer_server_address,
