@@ -7,6 +7,8 @@ import time
 from typing import Optional
 from typing import Text
 
+import selenium
+
 from a2perf.domains import circuit_training
 from a2perf.domains import quadruped_locomotion
 from a2perf.domains import web_navigation
@@ -202,6 +204,8 @@ def collect_off_policy(
     max_train_step: int,
     summary_interval: int,
     initial_collect_steps: int,
+    suite_load_fn: Optional[callable] = None,
+
 ) -> None:
   # We run collect jobs in replicas when using kubernetes,
   # so check if JOB_COMPLETION_INDEX is set.
@@ -274,7 +278,28 @@ def collect_off_policy(
   prev_num_steps_collected = 0
   while train_step < max_train_step and not os.path.exists(training_done_file):
     start_time = time.time()
-    collect_actor.run()
+    try:
+      collect_actor.run()
+    except selenium.common.exceptions.WebDriverException:
+      logging.error(
+          'Browser crashed. Restarting the collect environment and actor.')
+
+      # Close the underlying browser instance.
+      collect_env.gym.unwrapped._wob_env.instances[0].close()
+
+      del collect_env
+      collect_env = suite_load_fn('WebNavigation-v0')
+      collect_actor = actor.Actor(
+          collect_env,
+          collect_policy,
+          train_step,
+          steps_per_run=1,
+          metrics=actor_collect_metrics,
+          summary_dir=summary_dir,
+          summary_interval=summary_interval,
+          observers=[rb_observer, env_step_metric],
+      )
+
     end_time = time.time()
     variable_container.update(variables)
     logging.info(
@@ -291,10 +316,10 @@ def collect_off_policy(
     prev_num_steps_collected = env_step_metric.result()
 
     with (
-        collect_actor.summary_writer.as_default(),
-        tf.summary.record_if(
-            lambda: tf.math.equal(train_step % summary_interval, 0)
-        ),
+      collect_actor.summary_writer.as_default(),
+      tf.summary.record_if(
+          lambda: tf.math.equal(train_step % summary_interval, 0)
+      ),
     ):
       if getattr(collect_policy, '_get_epsilon', None) is not None:
         tf.summary.scalar(
@@ -318,6 +343,7 @@ def collect_on_policy(
     summary_interval: int,
     sequence_length: int,
     max_timesteps_per_model: Optional[int] = None,
+    suite_load_fn: Optional[callable] = None,
     **kwargs,
 ) -> None:
   """Collects experience using a policy updated after every episode."""
@@ -386,7 +412,29 @@ def collect_on_policy(
       logging.info('Collecting at model_id: %d', model_id.numpy())
       last_collection_ts = time.time()
       start_time = time.time()
-      collect_actor.run()
+
+      try:
+        collect_actor.run()
+      except selenium.common.exceptions.WebDriverException:
+        logging.error(
+            'Browser crashed. Restarting the collect environment and actor.')
+
+        # Close the underlying browser instance.
+        collect_env.gym.unwrapped._wob_env.instances[0].close()
+
+        del collect_env
+        collect_env = suite_load_fn('WebNavigation-v0')
+        collect_actor = actor.Actor(
+            collect_env,
+            collect_policy,
+            train_step,
+            steps_per_run=sequence_length,
+            metrics=actor.collect_metrics(ACTOR_COLLECT_METRICS_BUFFER_SIZE),
+            summary_dir=summary_dir,
+            summary_interval=summary_interval,
+            observers=observers,
+        )
+
       end_time = time.time()
       # Clear old models.
       for k in list(model_to_num_timesteps):
@@ -498,8 +546,9 @@ def run_collect(
         summary_interval=summary_interval,
         task=task,
         variable_container_server_address=variable_container_server_address,
+        suite_load_fn=suite_load_fn,
     )
-  elif algorithm in ('ppo', ):
+  elif algorithm in ('ppo',):
     collect_on_policy(
         collect_env=collect_env,
         collect_policy=policy,
@@ -510,6 +559,7 @@ def run_collect(
         max_train_step=max_train_step,
         summary_interval=summary_interval,
         sequence_length=sequence_length,
+        suite_load_fn=suite_load_fn,
     )
   elif algorithm in ('bc',):
     # Do nothing
