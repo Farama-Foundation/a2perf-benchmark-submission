@@ -758,8 +758,10 @@ def main(_):
         browser_args=dict(
             threading=False,
             chrome_options={
-                '--headless=new',
+                '--headless',
                 '--no-sandbox',
+                '--disable-gpu',
+                '--disable-dev-shm-usage',
             },
         ),
     )

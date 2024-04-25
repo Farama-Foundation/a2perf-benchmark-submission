@@ -628,8 +628,10 @@ def setup_web_navigation_env_for_collect():
       browser_args=dict(
           threading=False,
           chrome_options={
-              '--headless=new',
+              '--headless',
               '--no-sandbox',
+              '--disable-gpu',
+              '--disable-dev-shm-usage',
           },
       ),
   )
