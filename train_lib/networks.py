@@ -8,6 +8,8 @@ from tf_agents.networks import q_network
 from tf_agents.networks import value_network
 from tf_agents.typing import types
 from .circuit_training import static_feature_cache
+from .models import GrlModel
+from .models import GrlPolicyModel
 from .models import create_circuit_training_dqn_models_fn
 from .models import create_circuit_training_ppo_models_fn
 from a2perf.domains.web_navigation.gwob.CoDE import networks as web_networks
@@ -113,16 +115,20 @@ def _create_actor_net(
   elif env_name == 'CircuitTraining-v0':
     # Create ppo models but only use actor
     static_features = kwargs.get('static_features', None)
-    observation_tensor_spec = kwargs.get('observation_tensor_spec')
-    network, _ = create_circuit_training_ppo_models_fn(
-        rl_architecture='generalization',
-        observation_tensor_spec=observation_tensor_spec,
-        action_tensor_spec=action_tensor_spec,
-        static_features=static_features,
+    cache = static_feature_cache.StaticFeatureCache()
+    cache.add_static_feature(static_features)
+    grl_shared_net = GrlModel(
+        observation_tensor_spec,
+        action_tensor_spec,
+        all_static_features=cache.get_all_static_features(),
         use_model_tpu=False,
+        is_augmented=False,
         seed=seed,
     )
-    return network
+    grl_actor_net = GrlPolicyModel(
+        grl_shared_net, observation_tensor_spec, action_tensor_spec
+    )
+    return grl_actor_net
   else:
     raise ValueError(f'No network defined for {env_name}')
 
