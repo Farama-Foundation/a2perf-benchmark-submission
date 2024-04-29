@@ -479,14 +479,14 @@ def train(
     saved_model_dir = os.path.join(root_dir, 'policies')
     train_step = train_utils.create_train_step()
     model_id = common.create_variable('model_id')
-
-    saved_vocab_dir = os.path.join(root_dir, 'vocabulary')
-    vocab_save_trigger = VocabularySaveTrigger(
-        saved_vocab_dir=saved_vocab_dir,
-        vocabulary=env.gym.local_vocab,
-        train_step=train_step,
-        interval=policy_checkpoint_interval
-    )
+    if environment_name == 'WebNavigation-v0':
+      saved_vocab_dir = os.path.join(root_dir, 'vocabulary')
+      vocab_save_trigger = VocabularySaveTrigger(
+          saved_vocab_dir=saved_vocab_dir,
+          vocabulary=env.gym.local_vocab,
+          train_step=train_step,
+          interval=policy_checkpoint_interval
+      )
 
     # env.close()
     # del env

@@ -9,6 +9,7 @@ from tf_agents.networks import value_network
 from tf_agents.typing import types
 from .circuit_training import static_feature_cache
 from .models import create_circuit_training_dqn_models_fn
+from .models import create_circuit_training_ppo_models_fn
 from a2perf.domains.web_navigation.gwob.CoDE import networks as web_networks
 
 
@@ -109,6 +110,19 @@ def _create_actor_net(
         action_tensor_spec,
         fc_layer_params=(512, 256),
     )
+  elif env_name == 'CircuitTraining-v0':
+    # Create ppo models but only use actor
+    static_features = kwargs.get('static_features', None)
+    observation_tensor_spec = kwargs.get('observation_tensor_spec')
+    network, _ = create_circuit_training_ppo_models_fn(
+        rl_architecture='generalization',
+        observation_tensor_spec=observation_tensor_spec,
+        action_tensor_spec=action_tensor_spec,
+        static_features=static_features,
+        use_model_tpu=False,
+        seed=seed,
+    )
+    return network
   else:
     raise ValueError(f'No network defined for {env_name}')
 
