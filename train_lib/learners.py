@@ -87,6 +87,7 @@ def create_minari_experience_dataset_fn(
             ),
         )
         .shuffle(shuffle_buffer_size)
+        .repeat()
         .batch(batch_size)
         .prefetch(tf.data.AUTOTUNE)
         .with_options(dataset_options())
