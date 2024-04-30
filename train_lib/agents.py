@@ -935,6 +935,7 @@ def _create_bc_agent(
       time_step_spec=time_step_tensor_spec,
       action_spec=action_tensor_spec,
       cloning_network=actor_net,
+      loss_fn=None,
       optimizer=optimizer,
       train_step_counter=train_step,
       debug_summaries=debug_summaries,
