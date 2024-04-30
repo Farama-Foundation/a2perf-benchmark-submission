@@ -113,6 +113,8 @@ def main(_):
       latest_vocab_file = vocab_files[-1]
       with open(os.path.join(save_vocab_dir, latest_vocab_file), 'r') as f:
         _shared_dict.update(json.load(f))
+      logging.info(
+        f'Successfully re-loaded vocabulary from {latest_vocab_file}.')
 
   manager.start()
   logging.info(
