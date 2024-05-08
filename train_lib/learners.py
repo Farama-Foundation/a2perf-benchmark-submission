@@ -3,7 +3,7 @@ from typing import Callable
 from typing import Optional
 from typing import Tuple
 
-from a2perf.data.minari import tf_utils
+from a2perf.data.minari_dataset import tf_utils
 from absl import logging
 import gin
 import reverb
