@@ -7,12 +7,12 @@ from tf_agents.networks import actor_distribution_network
 from tf_agents.networks import q_network
 from tf_agents.networks import value_network
 from tf_agents.typing import types
+
+from a2perf.domains.web_navigation.gwob.CoDE import networks as web_networks
 from .circuit_training import static_feature_cache
 from .models import GrlModel
 from .models import GrlPolicyModel
 from .models import create_circuit_training_dqn_models_fn
-from .models import create_circuit_training_ppo_models_fn
-from a2perf.domains.web_navigation.gwob.CoDE import networks as web_networks
 
 
 def _create_critic_net(
@@ -129,6 +129,23 @@ def _create_actor_net(
         grl_shared_net, observation_tensor_spec, action_tensor_spec
     )
     return grl_actor_net
+
+  elif env_name == 'WebNavigation-v0':
+    max_vocab_size = kwargs.get('max_vocab_size')
+    latent_dim = kwargs.get('latent_dim')
+    profile_value_dropout = kwargs.get('profile_value_dropout')
+    embedding_dim = kwargs.get('embedding_dim')
+
+    return web_networks.WebLSTMActorDistributionNetwork(
+        input_tensor_spec=observation_tensor_spec,
+        output_tensor_spec=action_tensor_spec,
+        lstm_kwargs=dict(
+            vocab_size=max_vocab_size,
+            latent_dim=latent_dim,
+            profile_value_dropout=profile_value_dropout,
+            embedding_dim=embedding_dim,
+        ),
+    )
   else:
     raise ValueError(f'No network defined for {env_name}')
 

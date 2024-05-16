@@ -673,7 +673,8 @@ def main(_):
 
   if _ENV_NAME.value == 'WebNavigation-v0':
     # Unable to use DOM Encoder in graph mode
-    tf.config.run_functions_eagerly(True)
+    # tf.config.run_functions_eagerly(True)
+    pass
 
   # Set the random seeds
   tf.random.set_seed(_SEED.value)
