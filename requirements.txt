@@ -3,3 +3,4 @@ dm-sonnet
 tensorflow[and-cuda]
 tf-agents[reverb]
 numpy==1.23.5
+gin-config

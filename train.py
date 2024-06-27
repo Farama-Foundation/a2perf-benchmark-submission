@@ -1,267 +1,76 @@
 import os
-import subprocess
 import time
 
-from absl import app
+import gin
 from absl import logging
-import numpy as np
+
+from commands import collect_command
+from commands import create_and_manage_process
+from commands import reverb_command
+from commands import train_command
 
 PROCESS_WAIT_INTERVAL = 10
 
 
-def create_and_manage_process(command, process_list, env_vars=None):
-    if env_vars is None:
-        env_vars = os.environ.copy()
-
-    process = subprocess.Popen(
-        command,
-        env=env_vars,
-        text=True,
-    )
-
-    process_list.append(process)
-    return process
-
-
-def train_command(
-    num_iterations,
-    entropy_regularization,
-    use_gae,
-    root_dir,
-    variable_container_server_address,
-    variable_container_server_port,
-    vocabulary_manager_auth_key,
-    vocabulary_server_port,
-    vocabulary_server_address,
-    replay_buffer_server_address,
-    replay_buffer_server_port,
-    env_name,
-    max_sequence_length,
-    num_episodes_per_iteration,
-    log_interval,
-    use_gpu,
-    seed,
-    task_name,
-    dataset_id,
-    num_epochs,
-    batch_size,
-    shuffle_buffer_size,
-    num_replicas,
-    algorithm,
-    debug,
-    epsilon_greedy,
-    train_checkpoint_interval,
-    policy_checkpoint_interval,
-    env_batch_size,
-    learning_rate,
-    exploration_noise_std,
-    max_train_steps,
-    learner_iterations_per_call,
+@gin.configurable
+def train_func(
+    # Basic configuration
+    job_type: str,
+    task_name: str = None,
+    algorithm: str = None,
+    seed: int = -1,
+    root_dir: str = "/experiment",
+    debug: bool = False,
+    # Environment configuration
+    env_name: str = None,
+    env_batch_size: int = -1,
+    max_sequence_length: int = -1,
+    num_episodes_per_iteration: int = -1,
+    # Training hyperparameters
+    num_iterations: int = -1,
+    num_epochs: int = -1,
+    batch_size: int = -1,
+    learning_rate: float = -1.0,
+    use_gae: bool = False,
+    entropy_regularization: float = -1.0,
+    exploration_noise_std: float = -1.0,
+    epsilon_greedy: float = -1.0,
+    # Replay buffer configuration
+    replay_buffer_capacity: int = -1,
+    # Logging and checkpointing
+    eval_interval: int = -1,
+    train_checkpoint_interval: int = -1,
+    policy_checkpoint_interval: int = -1,
+    log_interval: int = -1,
+    # Distributed training
+    num_replicas: int = -1,
+    num_collect_jobs: int = -1,
+    ## Environment-specific parameters
+    # WebNavigation-v0
+    difficulty_level: int = -1,
+    num_websites: int = -1,
+    max_vocab_size: int = -1,
+    embedding_dim: int = -1,
+    latent_dim: int = -1,
+    profile_value_dropout: float = -1.0,
+    # CircuitTraining-v0
+    netlist_path: str = None,
+    init_placement_path: str = None,
+    std_cell_placer_mode: str = None,
+    # QuadrupedLocomotion-v0
+    motion_file_path: str = None,
+    # Distributed training configurations
+    vocab_port: int = 50000,
+    vocabulary_manager_auth_key: str = "",
+    replay_buffer_server_address: str = None,
+    variable_container_server_address: str = None,
+    replay_buffer_server_port: int = -1,
+    variable_container_server_port: int = -1,
+    vocabulary_server_address: str = None,
+    vocabulary_server_port: int = -1,
+    # Minari configurations
+    dataset_id: str = None,
 ):
-    return [
-        "python",
-        "-m",
-        "train_lib.train",
-        f"--algorithm={algorithm}",
-        f"--dataset_id={dataset_id}",
-        f"--batch_size={batch_size}",
-        f"--env_batch_size={env_batch_size}",
-        f"--vocabulary_server_port={vocabulary_server_port}",
-        f"--vocabulary_server_address={vocabulary_server_address}",
-        f"--vocabulary_manager_auth_key={vocabulary_manager_auth_key}",
-        f"--debug={debug}",
-        f"--entropy_regularization={entropy_regularization}",
-        f"--env_name={env_name}",
-        f"--epsilon_greedy={epsilon_greedy}",
-        f"--exploration_noise_std={exploration_noise_std}",
-        f"--learner_iterations_per_call={learner_iterations_per_call}",
-        f"--learning_rate={learning_rate}",
-        f"--log_interval={log_interval}",
-        f"--sequence_length={max_sequence_length}",
-        f"--max_train_steps={max_train_steps}",
-        f"--num_epochs={num_epochs}",
-        f"--num_iterations={num_iterations}",
-        f"--policy_checkpoint_interval={policy_checkpoint_interval}",
-        f"--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}",
-        f"--root_dir={root_dir}",
-        f"--seed={seed}",
-        f"--shuffle_buffer_size={shuffle_buffer_size}",
-        f"--num_episodes_per_iteration={num_episodes_per_iteration}",
-        f"--train_checkpoint_interval={train_checkpoint_interval}",
-        f"--use_gae={use_gae}",
-        f"--use_gpu={use_gpu}",
-        f"--task_name={task_name}",
-        f"--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}",
-        # Only use these if you have a pretrained policy to bootstrap from
-        # f'--policy_saved_model_dir={root_dir}/policies/policy',
-        # f'--policy_checkpoint_dir={root_dir}/policies/checkpoints',
-    ]
-
-
-def collect_command(
-    algorithm,
-    debug,
-    env_batch_size,
-    env_name,
-    initial_collect_steps,
-    epsilon_greedy,
-    num_iterations,
-    max_sequence_length,
-    max_train_steps,
-    num_replicas,
-    replay_buffer_server_address,
-    replay_buffer_server_port,
-    root_dir,
-    seed,
-    log_interval,
-    variable_container_server_address,
-    variable_container_server_port,
-    vocabulary_manager_auth_key,
-    vocabulary_server_address,
-    vocabulary_server_port,
-    task,
-):
-    return [
-        "python",
-        "-m",
-        "train_lib.collect",
-        f"--algorithm={algorithm}",
-        f"--debug={debug}",
-        f"--env_batch_size={env_batch_size}",
-        f"--env_name={env_name}",
-        f"--epsilon_greedy={epsilon_greedy}",
-        f"--initial_collect_steps={initial_collect_steps}",
-        f"--max_sequence_length={max_sequence_length}",
-        f"--max_train_steps={max_train_steps}",
-        f"--num_iterations={num_iterations}",
-        f"--num_replicas={num_replicas}",
-        f"--replay_buffer_server_address={replay_buffer_server_address}:{replay_buffer_server_port}",
-        f"--root_dir={root_dir}",
-        f"--seed={seed}",
-        f"--summary_interval={log_interval}",
-        f"--task={task}",
-        f"--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}",
-        f'--verbosity={"1" if task == 0 else "-1"}',
-        f"--vocabulary_manager_auth_key={vocabulary_manager_auth_key}",
-        f"--vocabulary_server_address={vocabulary_server_address}",
-        f"--vocabulary_server_port={vocabulary_server_port}",
-    ]
-
-
-def reverb_command(
-    task_name,
-    replay_buffer_server_port,
-    root_dir,
-    replay_buffer_capacity,
-    algorithm,
-    min_table_size_before_sampling,
-):
-    return [
-        "python",
-        "-m",
-        "train_lib.reverb_server",
-        f"--port={replay_buffer_server_port}",
-        f"--task_name={task_name}",
-        f"--root_dir={root_dir}",
-        f"--replay_buffer_capacity={replay_buffer_capacity}",
-        f"--algorithm={algorithm}",
-        f"--min_table_size_before_sampling={min_table_size_before_sampling}",
-        f"--verbosity={logging.get_verbosity()}",
-    ]
-
-
-def train():
-    job_type = os.environ.get("JOB_TYPE", None)
-    if job_type is None:
-        raise ValueError("Job type must be set.")
-
-    mode = os.environ.get("MODE", None)
-    if mode is None:
-        raise ValueError("Mode must be set to either train or inference.")
-    task_name = os.environ.get("TASK_NAME", None)
-    algorithm = os.environ.get("ALGORITHM", None)
-    seed = int(os.environ.get("SEED", -1))
-    use_gae_str = os.environ.get("USE_GAE", None)
-    use_gae = True if use_gae_str == "True" else False
-    root_dir = os.environ.get("ROOT_DIR", None)
-    num_epochs = int(os.environ.get("NUM_EPOCHS", -1))
-    replay_buffer_capacity = int(os.environ.get("RB_CAPACITY", -1))
-    env_batch_size = int(os.environ.get("ENV_BATCH_SIZE", -1))
-    batch_size = int(os.environ.get("BATCH_SIZE", -1))
-    num_iterations = int(os.environ.get("NUM_ITERATIONS", -1))
-    eval_interval = int(os.environ.get("EVAL_INTERVAL", -1))
-    entropy_regularization = float(os.environ.get("ENTROPY_REGULARIZATION", -1))
-    exploration_noise_std = float(os.environ.get("EXPLORATION_NOISE_STD", -1))
-    train_checkpoint_interval = int(os.environ.get("TRAIN_CHECKPOINT_INTERVAL", -1))
-    policy_checkpoint_interval = int(os.environ.get("POLICY_CHECKPOINT_INTERVAL", -1))
-    log_interval = int(os.environ.get("LOG_INTERVAL", -1))
-    learning_rate = float(os.environ.get("LEARNING_RATE", -1))
-    num_episodes_per_iteration = int(os.environ.get("NUM_EPISODES_PER_ITERATION", -1))
-    max_sequence_length = int(os.environ.get("MAX_SEQUENCE_LENGTH", -1))
-    env_name = os.environ.get("ENV_NAME", None)
-    dataset_id = os.environ.get("DATASET_ID", None)
-    netlist_path = os.environ.get("NETLIST_PATH", None)
-    init_placement_path = os.environ.get("INIT_PLACEMENT_PATH", None)
-    motion_file_path = os.environ.get("MOTION_FILE_PATH", None)
-    vocab_port = int(os.environ.get("VOCAB_PORT", "50000"))
-    difficulty_level = int(os.environ.get("DIFFICULTY_LEVEL", -1))
-    num_websites = int(os.environ.get("NUM_WEBSITES", -1))
-    debug_str = os.environ.get("DEBUG", None)
-    debug = True if debug_str == "True" else False
-    max_vocab_size = int(os.environ.get("MAX_VOCAB_SIZE", -1))
-    embedding_dim = int(os.environ.get("EMBEDDING_DIM", -1))
-    latent_dim = int(os.environ.get("LATENT_DIM", -1))
-    epsilon_greedy = float(os.environ.get("EPSILON_GREEDY", -1))
-    profile_value_dropout = float(os.environ.get("PROFILE_VALUE_DROPOUT", -1))
-    std_cell_placer_mode = os.environ.get("STD_CELL_PLACER_MODE", None)
-    num_replicas = int(os.environ.get("NUM_REPLICAS", -1))
-
-    # Networking params
-    num_collect_jobs = int(os.environ.get("NUM_COLLECT_JOBS_PER_MACHINE", -1))
-    vocabulary_manager_auth_key = os.environ.get("VOCABULARY_MANAGER_AUTH_KEY", "")
-    replay_buffer_server_address = os.environ.get("REPLAY_BUFFER_SERVER_ADDRESS", None)
-    variable_container_server_address = os.environ.get(
-        "VARIABLE_CONTAINER_SERVER_ADDRESS", None
-    )
-    replay_buffer_server_port = int(os.environ.get("REPLAY_BUFFER_SERVER_PORT", -1))
-    variable_container_server_port = int(
-        os.environ.get("VARIABLE_CONTAINER_SERVER_PORT", -1)
-    )
-    vocabulary_server_address = os.environ.get("VOCABULARY_SERVER_ADDRESS", None)
-    vocabulary_server_port = int(os.environ.get("VOCABULARY_SERVER_PORT", -1))
-
-    print("batch_size:", batch_size)
-    print("debug:", debug)
-    print("difficulty_level:", difficulty_level)
-    print("embedding_dim:", embedding_dim)
-    print("entropy_regularization:", entropy_regularization)
-    print("env_batch_size:", env_batch_size)
-    print("env_name:", env_name)
-    print("epsilon_greedy:", epsilon_greedy)
-    print("eval_interval:", eval_interval)
-    print("init_placement_path:", init_placement_path)
-    print("latent_dim:", latent_dim)
-    print("learning_rate:", learning_rate)
-    print("log_interval:", log_interval)
-    print("max_vocab_size:", max_vocab_size)
-    print("motion_file_path:", motion_file_path)
-    print("netlist_path:", netlist_path)
-    print("num_epochs:", num_epochs)
-    print("num_websites:", num_websites)
-    print("policy_checkpoint_interval:", policy_checkpoint_interval)
-    print("profile_value_dropout:", profile_value_dropout)
-    print("replay_buffer_server_address:", replay_buffer_server_address)
-    print("replay_buffer_server_port:", replay_buffer_server_port)
-    print("root_dir:", root_dir)
-    print("seed:", seed)
-    print("std_cell_placer_mode:", std_cell_placer_mode)
-    print("num_episodes_per_iteration:", num_episodes_per_iteration)
-    print("train_checkpoint_interval:", train_checkpoint_interval)
-    print("variable_container_server_address:", variable_container_server_address)
-    print("variable_container_server_port:", variable_container_server_port)
-    print("vocabulary_server_address:", vocabulary_server_address)
-    print("vocabulary_server_port:", vocabulary_server_port)
-
     # Check if the selected algorithm is Proximal Policy Optimization (PPO)
     if algorithm in ("ppo",):
         train_steps_per_iteration = max(
@@ -491,9 +300,9 @@ def train():
     print("Training complete.")
 
 
-def main(_):
-    train()
-
-
-if __name__ == "__main__":
-    app.run(main)
+def train(
+    gin_config_path: str,
+    job_type: str,
+):
+    gin.parse_config_file(gin_config_path)
+    train_func(job_type=job_type)
