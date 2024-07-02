@@ -1,9 +1,8 @@
 # Basic configuration
-train_func.job_type = "train"
 train_func.task_name = "dog_pace"
 train_func.algorithm = "ppo"
 train_func.seed = 42
-train_func.root_dir = "/experiment"
+train_func.root_dir = "/experiment_dir"
 train_func.debug = False
 
 # Environment configuration
@@ -26,7 +25,7 @@ train_func.log_interval = 8
 
 # Distributed training
 train_func.num_replicas = 1
-train_func.num_collect_jobs = 1
+train_func.num_collect_jobs = 8
 
 # Environment-specific parameters for QuadrupedLocomotion-v0
 train_func.motion_file_path = "/workdir/a2perf/domains/quadruped_locomotion/motion_imitation/data/motions/dog_pace.txt"
@@ -43,3 +42,4 @@ train_func.dataset_id = "QuadrupedLocomotion-dog_pace-novice-v0"
 # PPO configuration
 train_func.max_sequence_length = 100
 train_func.num_episodes_per_iteration = 512
+train_func.replay_buffer_capacity = 1000000 # set to high value to avoid overflow
