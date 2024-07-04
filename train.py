@@ -70,6 +70,10 @@ def train_func(
     # Minari configurations
     dataset_id: str = None,
 ):
+    # Export some useful environment variables
+    os.environ["WRAPT_DISABLE_EXTENSIONS"] = "1"
+    os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
+
     # Check if the selected algorithm is Proximal Policy Optimization (PPO)
     if algorithm in ("ppo",):
         train_steps_per_iteration = max(
@@ -201,7 +205,7 @@ def train_func(
                 num_replicas=num_replicas,
                 replay_buffer_server_address=replay_buffer_server_address,
                 replay_buffer_server_port=replay_buffer_server_port,
-                root_dir=root_dir,
+                root_dir=os.path.join(root_dir, "collect", f"actor_{i}"),
                 seed=seed,
                 log_interval=log_interval,
                 variable_container_server_address=variable_container_server_address,
@@ -216,7 +220,6 @@ def train_func(
         ]
 
         print("Collect job command (example):", " ".join(collect_job_commands[0]))
-
         collect_jobs = []
         for command in collect_job_commands:
             collect_jobs.append(create_and_manage_process(command, all_processes))

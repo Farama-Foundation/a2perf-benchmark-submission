@@ -1,28 +1,20 @@
 """Sample collection Job using a variable container for policy updates."""
 
 import functools
-from multiprocessing.managers import BaseManager
 import os
 import time
+from multiprocessing.managers import BaseManager
 from typing import Optional
 from typing import Text
 
+import gin
+import reverb
 import selenium
-
-from a2perf.domains import circuit_training
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains import web_navigation
-from a2perf.domains.tfa import suite_gym
-from a2perf.domains.tfa.utils import create_random_py_policy
-from a2perf.domains.tfa.utils import mask_circuit_training_actions
-from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
+import tensorflow as tf
+import tf_agents
 from absl import app
 from absl import flags
 from absl import logging
-import gin
-import reverb
-import tensorflow as tf
-import tf_agents
 from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.metrics import py_metrics
@@ -35,6 +27,14 @@ from tf_agents.train import actor
 from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
+
+from a2perf.domains.tfa import suite_gym
+from a2perf.domains.tfa.utils import create_random_py_policy
+from a2perf.domains.tfa.utils import mask_circuit_training_actions
+from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
+from a2perf.domains import circuit_training
+from a2perf.domains import quadruped_locomotion
+from a2perf.domains import web_navigation
 
 _DEBUG = flags.DEFINE_bool("debug", False, "Debug mode.")
 _GIN_FILE = flags.DEFINE_multi_string(
@@ -459,7 +459,6 @@ def run_collect(
         "../../",  # two levels because collect/<hostname>/ is the root_dir
         learner.POLICY_SAVED_MODEL_DIR,
     )
-
     policy = None
     random_policy = None
     if algorithm in ("sac", "ddqn", "td3", "dqn", "ddpg"):
@@ -670,6 +669,7 @@ def setup_env_for_collect():
 
 
 def main(_):
+
     if _DEBUG.value:
         tf.config.experimental_run_functions_eagerly(True)
 
