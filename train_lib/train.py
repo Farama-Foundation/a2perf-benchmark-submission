@@ -28,7 +28,8 @@ from typing import Text
 from a2perf.data.minari_dataset.tf_utils import convert_to_tf_dataset
 from a2perf.data.minari_dataset.tf_utils import minari_bc_dataset_iterator
 from a2perf.domains import circuit_training
-from a2perf.domains import quadruped_locomotion
+
+# from a2perf.domains import quadruped_locomotion
 from a2perf.domains import web_navigation
 from a2perf.domains.tfa import suite_gym
 from absl import app
@@ -741,7 +742,7 @@ def main(_):
                     "--headless",
                     "--no-sandbox",
                     "--disable-gpu",
-                    "--disable-dev-shm-usage",
+                    # "--disable-dev-shm-usage",
                 },
             ),
         )

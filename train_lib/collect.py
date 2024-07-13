@@ -615,7 +615,7 @@ def setup_web_navigation_env_for_collect():
                 "--headless",
                 "--no-sandbox",
                 "--disable-gpu",
-                "--disable-dev-shm-usage",
+                # "--disable-dev-shm-usage",
             },
         ),
     )
