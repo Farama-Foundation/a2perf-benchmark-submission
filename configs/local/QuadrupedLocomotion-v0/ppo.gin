@@ -2,7 +2,6 @@
 train_func.task_name = "dog_pace"
 train_func.algorithm = "ppo"
 train_func.seed = 42
-train_func.root_dir = "/home/ike2030/gcs/a2perf/experiments/1720032758452"
 train_func.debug = False
 
 # Environment configuration

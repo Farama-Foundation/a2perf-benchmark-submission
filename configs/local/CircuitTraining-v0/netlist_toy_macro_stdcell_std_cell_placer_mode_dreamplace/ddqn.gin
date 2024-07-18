@@ -1,0 +1,44 @@
+# Basic configuration
+train_func.task_name = "netlist_toy_macro_stdcell_std_cell_placer_mode_dreamplace"
+train_func.algorithm = "ddqn"
+train_func.seed = 42
+train_func.debug = False
+
+# Environment configuration
+train_func.env_name = "CircuitTraining-v0"
+
+# Training hyperparameters
+train_func.num_iterations = 10000
+train_func.batch_size = 256
+train_func.learning_rate = 4e-5
+train_func.epsilon_greedy = 0.3
+
+# Logging and checkpointing
+train_func.eval_interval = 1
+train_func.log_interval = 1
+train_func.train_checkpoint_interval = 10
+train_func.policy_checkpoint_interval = 10
+
+# Distributed training
+train_func.num_replicas = 1
+train_func.num_collect_jobs = 4
+train_func.env_batch_size = 4
+
+
+# Environment-specific parameters for CircuitTraining-v0
+train_func.init_placement_path = "/home/ike2030/workspace/a2perf/repo_new/a2perf/domains/circuit_training/circuit_training/environment/test_data/toy_macro_stdcell/initial.plc"
+train_func.netlist_path = "/home/ike2030/workspace/a2perf/repo_new/a2perf/domains/circuit_training/circuit_training/environment/test_data/toy_macro_stdcell/netlist.pb.txt"
+train_func.std_cell_placer_mode = "dreamplace"
+
+# Distributed training configurations
+train_func.replay_buffer_server_address = "127.0.0.1"
+train_func.variable_container_server_address = "127.0.0.1"
+train_func.replay_buffer_server_port = 8008
+train_func.variable_container_server_port = 8008
+
+# Minari configurations
+train_func.dataset_id = "CircuitTraining-toy_macro_stdcell_std_cell_placer_mode_dreamplace-novice-v0"
+
+# DDQN configuration
+train_func.max_sequence_length = 3
+train_func.replay_buffer_capacity = 1000000 # set to high value to avoid overflow

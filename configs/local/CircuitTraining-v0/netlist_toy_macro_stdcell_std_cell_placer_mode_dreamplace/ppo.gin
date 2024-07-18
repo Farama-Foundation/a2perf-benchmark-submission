@@ -1,8 +1,7 @@
 # Basic configuration
-train_func.task_name = "netlist_ariane_std_cell_placer_mode_dreamplace"
+train_func.task_name = "netlist_toy_macro_stdcell_std_cell_placer_mode_dreamplace"
 train_func.algorithm = "ppo"
 train_func.seed = 42
-train_func.root_dir = "/home/ike2030/gcs/a2perf/experiments/1720032758454"
 train_func.debug = False
 
 # Environment configuration

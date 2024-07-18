@@ -1,0 +1,46 @@
+# Basic configuration
+train_func.task_name = "difficulty_level_1_num_websites_1"
+train_func.algorithm = "ddqn"
+train_func.seed = 42
+train_func.root_dir = "/home/ike2030/gcs/a2perf/experiments/1724032758462"
+train_func.debug = False
+
+# Environment configuration
+train_func.env_name = "WebNavigation-v0"
+train_func.difficulty_level = 1
+train_func.num_websites = 1
+
+# Training hyperparameters
+train_func.num_iterations = 100000
+train_func.batch_size = 256
+train_func.learning_rate = 4e-5
+train_func.epsilon_greedy = 0.3
+train_func.replay_buffer_capacity = 10000000
+train_func.env_batch_size = 512
+
+# Logging and checkpointing
+train_func.eval_interval = 1000
+train_func.log_interval = 1000
+train_func.train_checkpoint_interval = 10000
+train_func.policy_checkpoint_interval = 10000
+
+# Distributed training
+train_func.num_replicas = 1
+train_func.num_collect_jobs = 4
+
+# Environment-specific parameters for WebNavigation-v0
+train_func.replay_buffer_server_address = "127.0.0.1"
+train_func.variable_container_server_address = "127.0.0.1"
+train_func.replay_buffer_server_port = 8008
+train_func.variable_container_server_port = 8008
+train_func.vocabulary_server_address = "127.0.0.1"
+train_func.vocabulary_server_port = 8009
+
+# Minari configurations
+train_func.dataset_id = "WebNavigation-difficulty_level_1_num_websites_1-novice-v0"
+
+# LSTM configuration
+train_func.latent_dim = 50
+train_func.embedding_dim = 100
+train_func.max_vocab_size = 500
+train_func.profile_value_dropout = 1.0
