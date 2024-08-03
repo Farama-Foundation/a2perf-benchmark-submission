@@ -5,7 +5,7 @@ train_func.seed = 42
 train_func.debug = False
 
 # Environment configuration
-train_func.env_name = "QuadrupedLocomotion-v0"
+train_func.env_name = "QuadrupedLocomotion-DogPace-v0"
 
 # Training hyperparameters
 train_func.num_iterations = 1000

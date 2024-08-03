@@ -28,8 +28,7 @@ from typing import Text
 from a2perf.data.minari_dataset.tf_utils import convert_to_tf_dataset
 from a2perf.data.minari_dataset.tf_utils import minari_bc_dataset_iterator
 from a2perf.domains import circuit_training
-
-# from a2perf.domains import quadruped_locomotion
+from a2perf.domains import quadruped_locomotion
 from a2perf.domains import web_navigation
 from a2perf.domains.tfa import suite_gym
 from absl import app
@@ -411,21 +410,22 @@ def train(
     dataset_id: Optional[str] = None,
     embedding_dim: Optional[int] = None,
 ) -> None:
+    assert 0 == 1, "Got to inner train function"
     env = suite_load_fn(environment_name)
     observation_tensor_spec, action_tensor_spec, time_step_tensor_spec = (
         spec_utils.get_tensor_specs(env)
     )
 
-    if environment_name == "CircuitTraining-v0":
+    if environment_name in suite_gym.CIRCUIT_TRAINING_ENVS:
         # Add static features
         static_features = env.wrapped_env().get_static_obs()
         env_kwargs = {
             "static_features": static_features,
         }
-    elif environment_name == "WebNavigation-v0":
+    elif environment_name in suite_gym.WEB_NAVIGATION_ENVS:
         env_kwargs = {}
 
-    elif environment_name == "QuadrupedLocomotion-v0":
+    elif environment_name in suite_gym.QUADRUPED_LOCOMOTION_ENVS:
         env_kwargs = {}
     else:
         raise ValueError(f"Unknown environment: {environment_name}")
@@ -517,7 +517,7 @@ def train(
             triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
         ]
 
-        if environment_name == "WebNavigation-v0":
+        if environment_name in suite_gym.WEB_NAVIGATION_ENVS:
             learning_triggers.append(vocab_save_trigger)
 
         if algorithm in ("bc",):
@@ -650,7 +650,7 @@ def main(_):
         tf.config.run_functions_eagerly(True)
         tf.data.experimental.enable_debug_mode()
 
-    if _ENV_NAME.value == "WebNavigation-v0":
+    if _ENV_NAME.value in suite_gym.WEB_NAVIGATION_ENVS:
         # Unable to use DOM Encoder in graph mode
         # tf.config.run_functions_eagerly(True)
         pass
@@ -671,7 +671,7 @@ def main(_):
         tpu=_USE_TPU.value,
         use_gpu=FLAGS.use_gpu,
     )
-    if _ENV_NAME.value == "QuadrupedLocomotion-v0":
+    if _ENV_NAME.value in suite_gym.QUADRUPED_LOCOMOTION_ENVS:
         default_gym_kwargs = dict(
             motion_files=[_MOTION_FILE_PATH.value],
             num_parallel_envs=_ENV_BATCH_SIZE.value,
@@ -679,7 +679,7 @@ def main(_):
         suite_load_function = functools.partial(
             suite_gym.load, gym_kwargs=default_gym_kwargs
         )
-    elif _ENV_NAME.value == "WebNavigation-v0":
+    elif _ENV_NAME.value in suite_gym.WEB_NAVIGATION_ENVS:
 
         class VocabularyManager(BaseManager):
             pass
@@ -751,7 +751,7 @@ def main(_):
             gym_kwargs=default_gym_kwargs,
             env_wrappers=[wrappers.ActionClipWrapper],
         )
-    elif _ENV_NAME.value == "CircuitTraining-v0":
+    elif _ENV_NAME.value in suite_gym.CIRCUIT_TRAINING_ENVS:
         default_gym_kwargs = dict(
             netlist_file=_NETLIST_FILE.value,
             init_placement=_INIT_PLACEMENT.value,

@@ -453,6 +453,9 @@ def run_collect(
     initial_collect_steps: int,
 ) -> None:
     """Wait for the collect policy to be ready and run collect job."""
+    assert 0 == 1, (
+        "Got to inner collection function with environment name: " + environment_name
+    )
     collect_env = suite_load_fn(environment_name)
     root_policy_path = os.path.join(
         root_dir,

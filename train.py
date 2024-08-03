@@ -11,10 +11,19 @@ from commands import train_command
 
 PROCESS_WAIT_INTERVAL = 10
 
+WEB_NAVIGATION_ENVS = ("WebNavigation-DifficultyLevel-01-v0",)
+CIRCUIT_TRAINING_ENVS = ("CircuitTraining-Ariane-v0", "CircuitTraining-ToyMacro-v0")
+QUADRUPED_LOCOMOTION_ENVS = (
+    "QuadrupedLocomotion-DogPace-v0",
+    "QuadrupedLocomotion-DogTrot-v0",
+    "QuadrupedLocomotion-DogSpin-v0",
+)
+
 
 @gin.configurable
 def train_func(
     # Basic configuration
+    job_type: str,
     task_name: str = None,
     algorithm: str = None,
     seed: int = -1,
@@ -73,7 +82,6 @@ def train_func(
     os.environ["WRAPT_DISABLE_EXTENSIONS"] = "1"
     os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
-    # Check if the selected algorithm is Proximal Policy Optimization (PPO)
     if algorithm in ("ppo",):
         train_steps_per_iteration = max(
             1,
@@ -139,7 +147,7 @@ def train_func(
 
     all_processes = []
     env_flags = []
-    if env_name == "WebNavigation-v0":
+    if env_name in WEB_NAVIGATION_ENVS:
         env_flags.extend(
             [
                 f"--env_name={env_name}",
@@ -152,32 +160,33 @@ def train_func(
             ]
         )
 
-        # Start vocabulary manager for WebNavigation-v0
-        vocab_manager_command = [
-            "python",
-            "train_lib/vocabulary_manager.py",
-            f"--vocabulary_server_port={vocabulary_server_port}",
-            f"--vocabulary_server_address={vocabulary_server_address}",
-            f"--vocabulary_manager_auth_key={vocabulary_manager_auth_key}",
-            f"--max_vocab_size={max_vocab_size}",
-            f"--verbosity={logging.get_verbosity()}",
-            f"--root_dir={root_dir}",
-        ]
-        print("Command for vocab manager:", vocab_manager_command)
-        vocab_server_process = create_and_manage_process(
-            vocab_manager_command, all_processes
-        )
+        if job_type == "train":
+            # Start vocabulary manager for WebNavigation-v0
+            vocab_manager_command = [
+                "python",
+                "train_lib/vocabulary_manager.py",
+                f"--vocabulary_server_port={vocabulary_server_port}",
+                f"--vocabulary_server_address={vocabulary_server_address}",
+                f"--vocabulary_manager_auth_key={vocabulary_manager_auth_key}",
+                f"--max_vocab_size={max_vocab_size}",
+                f"--verbosity={logging.get_verbosity()}",
+                f"--root_dir={root_dir}",
+            ]
+            print("Command for vocab manager:", vocab_manager_command)
+            vocab_server_process = create_and_manage_process(
+                vocab_manager_command, all_processes
+            )
 
-        if vocab_server_process.poll() is not None:
-            raise ValueError("Vocabulary manager server failed to start.")
-        else:
-            print("Successfully launched vocab manager server.")
+            if vocab_server_process.poll() is not None:
+                raise ValueError("Vocabulary manager server failed to start.")
+            else:
+                print("Successfully launched vocab manager server.")
 
-    elif env_name == "QuadrupedLocomotion-v0":
+    elif env_name in QUADRUPED_LOCOMOTION_ENVS:
         env_flags.extend(
             [f"--env_name={env_name}", f"--motion_file_path={motion_file_path}"]
         )
-    elif env_name == "CircuitTraining-v0":
+    elif env_name in CIRCUIT_TRAINING_ENVS:
         env_flags.extend(
             [
                 f"--std_cell_placer_mode={std_cell_placer_mode}",
@@ -189,7 +198,7 @@ def train_func(
         raise ValueError(f"Unsupported environment: {env_name}")
 
     # Start collect jobs (if not using BC)
-    if algorithm != "bc":
+    if job_type == "collect" and algorithm != "bc":
         collect_job_commands = [
             collect_command(
                 algorithm=algorithm,
@@ -224,67 +233,70 @@ def train_func(
             collect_jobs.append(create_and_manage_process(command, all_processes))
         print("Successfully launched collect jobs.")
 
-    # Start reverb server (if not using BC)
-    if algorithm != "bc":
-        reverb_job_command = reverb_command(
-            task_name=task_name,
-            replay_buffer_server_port=replay_buffer_server_port,
-            root_dir=root_dir,
-            replay_buffer_capacity=replay_buffer_capacity,
-            algorithm=algorithm,
-            min_table_size_before_sampling=min_table_size_before_sampling,
-        )
-        print("Reverb job command:", " ".join(reverb_job_command))
-        create_and_manage_process(
-            reverb_job_command,
-            all_processes,
-            env_vars=dict(**os.environ, CUDA_VISIBLE_DEVICES="-1"),
-        )
-        print("Successfully launched reverb server.")
+    elif job_type == "train":
 
-    # Start train job
-    train_job_command = (
-        train_command(
-            num_iterations=num_iterations,
-            entropy_regularization=entropy_regularization,
-            use_gae=use_gae,
-            root_dir=root_dir,
-            env_name=env_name,
-            dataset_id=dataset_id,
-            vocabulary_manager_auth_key=vocabulary_manager_auth_key,
-            vocabulary_server_port=vocabulary_server_port,
-            vocabulary_server_address=vocabulary_server_address,
-            variable_container_server_address=variable_container_server_address,
-            variable_container_server_port=variable_container_server_port,
-            replay_buffer_server_address=replay_buffer_server_address,
-            replay_buffer_server_port=replay_buffer_server_port,
-            max_sequence_length=max_sequence_length,
-            num_episodes_per_iteration=num_episodes_per_iteration,
-            log_interval=log_interval,
-            task_name=task_name,
-            use_gpu=True,
-            seed=seed,
-            num_epochs=num_epochs,
-            batch_size=batch_size,
-            shuffle_buffer_size=shuffle_buffer_size,
-            num_replicas=num_replicas,
-            algorithm=algorithm,
-            debug=debug,
-            epsilon_greedy=epsilon_greedy,
-            train_checkpoint_interval=train_checkpoint_interval,
-            policy_checkpoint_interval=policy_checkpoint_interval,
-            env_batch_size=env_batch_size,
-            learning_rate=learning_rate,
-            exploration_noise_std=exploration_noise_std,
-            max_train_steps=max_train_steps,
-            learner_iterations_per_call=learner_iterations_per_call,
-        )
-        + env_flags
-    )
+        if algorithm != "bc":
+            reverb_job_command = reverb_command(
+                task_name=task_name,
+                replay_buffer_server_port=replay_buffer_server_port,
+                root_dir=root_dir,
+                replay_buffer_capacity=replay_buffer_capacity,
+                algorithm=algorithm,
+                min_table_size_before_sampling=min_table_size_before_sampling,
+            )
+            print("Reverb job command:", " ".join(reverb_job_command))
+            reverb_envs_vars = dict(**os.environ)
+            reverb_envs_vars["CUDA_VISIBLE_DEVICES"] = "-1"
+            create_and_manage_process(
+                reverb_job_command,
+                all_processes,
+                env_vars=reverb_envs_vars,
+            )
+            print("Successfully launched reverb server.")
 
-    print("Train job command:", " ".join(train_job_command))
-    create_and_manage_process(train_job_command, all_processes)
-    print("Successfully launched train job.")
+        # Start train job
+        train_job_command = (
+            train_command(
+                num_iterations=num_iterations,
+                entropy_regularization=entropy_regularization,
+                use_gae=use_gae,
+                root_dir=root_dir,
+                env_name=env_name,
+                dataset_id=dataset_id,
+                vocabulary_manager_auth_key=vocabulary_manager_auth_key,
+                vocabulary_server_port=vocabulary_server_port,
+                vocabulary_server_address=vocabulary_server_address,
+                variable_container_server_address=variable_container_server_address,
+                variable_container_server_port=variable_container_server_port,
+                replay_buffer_server_address=replay_buffer_server_address,
+                replay_buffer_server_port=replay_buffer_server_port,
+                max_sequence_length=max_sequence_length,
+                num_episodes_per_iteration=num_episodes_per_iteration,
+                log_interval=log_interval,
+                task_name=task_name,
+                use_gpu=True,
+                seed=seed,
+                num_epochs=num_epochs,
+                batch_size=batch_size,
+                shuffle_buffer_size=shuffle_buffer_size,
+                num_replicas=num_replicas,
+                algorithm=algorithm,
+                debug=debug,
+                epsilon_greedy=epsilon_greedy,
+                train_checkpoint_interval=train_checkpoint_interval,
+                policy_checkpoint_interval=policy_checkpoint_interval,
+                env_batch_size=env_batch_size,
+                learning_rate=learning_rate,
+                exploration_noise_std=exploration_noise_std,
+                max_train_steps=max_train_steps,
+                learner_iterations_per_call=learner_iterations_per_call,
+            )
+            + env_flags
+        )
+
+        print("Train job command:", " ".join(train_job_command))
+        create_and_manage_process(train_job_command, all_processes)
+        print("Successfully launched train job.")
 
     # Wait for training to complete
     while not os.path.exists(os.path.join(root_dir, "training_complete")):
@@ -295,6 +307,7 @@ def train_func(
 
 def train(
     gin_config_path: str,
+    job_type: str,
 ):
     gin.parse_config_file(gin_config_path)
-    train_func()
+    train_func(job_type=job_type)
