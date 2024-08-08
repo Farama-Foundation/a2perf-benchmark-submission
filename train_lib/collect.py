@@ -258,6 +258,7 @@ def collect_off_policy(
 
     # Run the experience collection loop.
     training_done_file = os.path.join(root_dir, "../../", "training_complete")
+    logging.info("Training done file: %s", training_done_file)
     prev_num_steps_collected = 0
     while train_step < max_train_step and not os.path.exists(training_done_file):
         start_time = time.time()
@@ -380,6 +381,7 @@ def collect_on_policy(
     )
 
     training_done_file = os.path.join(root_dir, "../../", "training_complete")
+    logging.info("Training done file: %s", training_done_file)
     # Run the experience collection loop.
     model_to_num_timesteps = {}
     last_collection_ts = 0
@@ -453,9 +455,6 @@ def run_collect(
     initial_collect_steps: int,
 ) -> None:
     """Wait for the collect policy to be ready and run collect job."""
-    assert 0 == 1, (
-        "Got to inner collection function with environment name: " + environment_name
-    )
     collect_env = suite_load_fn(environment_name)
     root_policy_path = os.path.join(
         root_dir,
@@ -465,7 +464,7 @@ def run_collect(
     policy = None
     random_policy = None
     if algorithm in ("sac", "ddqn", "td3", "dqn", "ddpg"):
-        if environment_name == "CircuitTraining-v0":
+        if environment_name in suite_gym.CIRCUIT_TRAINING_ENVS:
             random_policy = create_random_py_policy(
                 collect_env,
                 obs_and_action_constraint_splitter_fn=functools.partial(
@@ -632,7 +631,7 @@ def setup_web_navigation_env_for_collect():
 
 def setup_quadruped_locomotion_env_for_collect():
     default_gym_kwargs = dict(
-        motion_files=[_MOTION_FILE_PATH.value],
+        # motion_files=[_MOTION_FILE_PATH.value],
         num_parallel_envs=_ENV_BATCH_SIZE.value,
     )
     suite_load_function = functools.partial(
@@ -661,11 +660,11 @@ def setup_circuit_training_env_for_collect():
 
 
 def setup_env_for_collect():
-    if _ENV_NAME.value == "QuadrupedLocomotion-v0":
+    if _ENV_NAME.value in suite_gym.QUADRUPED_LOCOMOTION_ENVS:
         return setup_quadruped_locomotion_env_for_collect()
-    elif _ENV_NAME.value == "WebNavigation-v0":
+    elif _ENV_NAME.value in suite_gym.WEB_NAVIGATION_ENVS:
         return setup_web_navigation_env_for_collect()
-    elif _ENV_NAME.value == "CircuitTraining-v0":
+    elif _ENV_NAME.value in suite_gym.CIRCUIT_TRAINING_ENVS:
         return setup_circuit_training_env_for_collect()
     else:
         raise ValueError(f"Unknown environment: {_ENV_NAME.value}")

@@ -45,7 +45,6 @@ PROCESS_WAIT_INTERVAL = 10
 
 
 def run_reverb_server(root_dir):
-    assert 0 == 1, "Got to run_reverb_server"
     collect_policy_saved_model_path = os.path.join(
         root_dir,
         learner.POLICY_SAVED_MODEL_DIR,

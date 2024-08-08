@@ -25,22 +25,15 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
-from a2perf.data.minari_dataset.tf_utils import convert_to_tf_dataset
-from a2perf.data.minari_dataset.tf_utils import minari_bc_dataset_iterator
-from a2perf.domains import circuit_training
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains import web_navigation
-from a2perf.domains.tfa import suite_gym
-from absl import app
-from absl import flags
-from absl import logging
 import gin
 import minari
 import numpy as np
 import tensorflow as tf
+from absl import app
+from absl import flags
+from absl import logging
 from tf_agents.environments import py_environment
 from tf_agents.environments import suite_mujoco
-from tf_agents.environments import suite_pybullet
 from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.replay_buffers import reverb_replay_buffer
@@ -51,6 +44,7 @@ from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
+from a2perf.domains.tfa import suite_gym
 from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 from . import agents
 from . import learners
@@ -410,7 +404,6 @@ def train(
     dataset_id: Optional[str] = None,
     embedding_dim: Optional[int] = None,
 ) -> None:
-    assert 0 == 1, "Got to inner train function"
     env = suite_load_fn(environment_name)
     observation_tensor_spec, action_tensor_spec, time_step_tensor_spec = (
         spec_utils.get_tensor_specs(env)
@@ -466,7 +459,7 @@ def train(
         saved_model_dir = os.path.join(root_dir, "policies")
         train_step = train_utils.create_train_step()
         model_id = common.create_variable("model_id")
-        if environment_name == "WebNavigation-v0":
+        if environment_name in suite_gym.WEB_NAVIGATION_ENVS:
             saved_vocab_dir = os.path.join(root_dir, "vocabulary")
             vocab_save_trigger = VocabularySaveTrigger(
                 saved_vocab_dir=saved_vocab_dir,
@@ -673,7 +666,7 @@ def main(_):
     )
     if _ENV_NAME.value in suite_gym.QUADRUPED_LOCOMOTION_ENVS:
         default_gym_kwargs = dict(
-            motion_files=[_MOTION_FILE_PATH.value],
+            # motion_files=[_MOTION_FILE_PATH.value],
             num_parallel_envs=_ENV_BATCH_SIZE.value,
         )
         suite_load_function = functools.partial(

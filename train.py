@@ -213,7 +213,7 @@ def train_func(
                 num_replicas=num_replicas,
                 replay_buffer_server_address=replay_buffer_server_address,
                 replay_buffer_server_port=replay_buffer_server_port,
-                root_dir=os.path.join(root_dir, "collect", f"actor_{i}"),
+                root_dir=root_dir,
                 seed=seed,
                 log_interval=log_interval,
                 variable_container_server_address=variable_container_server_address,
@@ -232,6 +232,11 @@ def train_func(
         for command in collect_job_commands:
             collect_jobs.append(create_and_manage_process(command, all_processes))
         print("Successfully launched collect jobs.")
+
+        # Recall that root dir is modified for collect jobs to separate
+        # system metrics from the train job
+        while not os.path.exists(os.path.join(root_dir, "../../", "training_complete")):
+            time.sleep(PROCESS_WAIT_INTERVAL)
 
     elif job_type == "train":
 
@@ -298,16 +303,29 @@ def train_func(
         create_and_manage_process(train_job_command, all_processes)
         print("Successfully launched train job.")
 
-    # Wait for training to complete
-    while not os.path.exists(os.path.join(root_dir, "training_complete")):
-        time.sleep(PROCESS_WAIT_INTERVAL)
+        # Wait for training to complete
+        while not os.path.exists(os.path.join(root_dir, "training_complete")):
+            time.sleep(PROCESS_WAIT_INTERVAL)
 
-    print("Training complete.")
+        print("Training complete.")
 
 
 def train(
     gin_config_path: str,
     job_type: str,
+    root_dir: str,
 ):
     gin.parse_config_file(gin_config_path)
-    train_func(job_type=job_type)
+
+    # Use environment variable for loading hostname of the training server
+    hostname = os.environ.get("A2PERF_TRAIN_HOSTNAME", None)
+
+    replay_buffer_server_address = f"{hostname}"
+    variable_container_server_address = f"{hostname}"
+
+    train_func(
+        job_type=job_type,
+        root_dir=root_dir,
+        replay_buffer_server_address=replay_buffer_server_address,
+        variable_container_server_address=variable_container_server_address,
+    )
