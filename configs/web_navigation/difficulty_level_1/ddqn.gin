@@ -44,3 +44,4 @@ train_func.latent_dim = 50
 train_func.embedding_dim = 100
 train_func.max_vocab_size = 500
 train_func.profile_value_dropout = 1.0
+train_func.max_sequence_length = 50
