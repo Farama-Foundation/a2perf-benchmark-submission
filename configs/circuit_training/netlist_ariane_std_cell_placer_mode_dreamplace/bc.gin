@@ -1,6 +1,6 @@
 # Basic configuration
 train_func.task_name = "netlist_ariane_std_cell_placer_mode_dreamplace"
-train_func.algorithm = "bc"
+train_func.algorithm = "ppo"
 train_func.seed = 42
 train_func.debug = False
 
@@ -8,26 +8,25 @@ train_func.debug = False
 train_func.env_name = "CircuitTraining-v0"
 
 # Training hyperparameters
-train_func.num_iterations = 5000
-train_func.num_epochs = 0  # these epochs are for PPO, not BC
-train_func.batch_size = 128
-train_func.learning_rate = 1e-3
+train_func.num_iterations = 250
+train_func.num_epochs = 4
+train_func.batch_size = 32
+train_func.learning_rate = 4e-4
 train_func.use_gae = False
+train_func.entropy_regularization = 1e-2
 
 # Logging and checkpointing
-train_func.eval_interval = 50
-train_func.log_interval = 50
-train_func.train_checkpoint_interval = 500
-train_func.policy_checkpoint_interval = 500
+train_func.eval_interval = 1
+train_func.log_interval = 1
+train_func.train_checkpoint_interval = 25
+train_func.policy_checkpoint_interval = 25
 
 # Distributed training
 train_func.num_replicas = 1
-train_func.num_collect_jobs = 1
-train_func.env_batch_size = 1
+train_func.num_collect_jobs = 4
+train_func.env_batch_size = 4
 
 # Environment-specific parameters for CircuitTraining-v0
-train_func.init_placement_path = "/home/ike2030/workspace/a2perf/repo_new/a2perf/domains/circuit_training/circuit_training/environment/test_data/ariane/initial.plc"
-train_func.netlist_path = "/home/ike2030/workspace/a2perf/repo_new/a2perf/domains/circuit_training/circuit_training/environment/test_data/ariane/netlist.pb.txt"
 train_func.std_cell_placer_mode = "dreamplace"
 
 # Distributed training configurations
@@ -38,3 +37,8 @@ train_func.variable_container_server_port = 8008
 
 # Minari configurations
 train_func.dataset_id = "CircuitTraining-ariane_std_cell_placer_mode_dreamplace-novice-v0"
+
+# PPO configuration
+train_func.max_sequence_length = 134  # Adjusted for ariane
+train_func.num_episodes_per_iteration = 8
+train_func.replay_buffer_capacity = 1000000  # set to high value to avoid overflow

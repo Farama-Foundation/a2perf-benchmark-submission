@@ -25,23 +25,15 @@ from typing import Callable
 from typing import Optional
 from typing import Text
 
-from a2perf.data.minari_dataset.tf_utils import convert_to_tf_dataset
-from a2perf.data.minari_dataset.tf_utils import minari_bc_dataset_iterator
-from a2perf.domains import circuit_training
-
-# from a2perf.domains import quadruped_locomotion
-from a2perf.domains import web_navigation
-from a2perf.domains.tfa import suite_gym
-from absl import app
-from absl import flags
-from absl import logging
 import gin
 import minari
 import numpy as np
 import tensorflow as tf
+from absl import app
+from absl import flags
+from absl import logging
 from tf_agents.environments import py_environment
 from tf_agents.environments import suite_mujoco
-from tf_agents.environments import suite_pybullet
 from tf_agents.environments import wrappers
 from tf_agents.experimental.distributed import reverb_variable_container
 from tf_agents.replay_buffers import reverb_replay_buffer
@@ -52,6 +44,12 @@ from tf_agents.train.utils import strategy_utils
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
+from a2perf.constants import BenchmarkDomain
+from a2perf.constants import ENV_NAMES
+from a2perf.domains import circuit_training  # noqa: F401
+from a2perf.domains import quadruped_locomotion  # noqa: F401
+from a2perf.domains import web_navigation  # noqa: F401
+from a2perf.domains.tfa import suite_gym
 from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
 from . import agents
 from . import learners
@@ -416,16 +414,16 @@ def train(
         spec_utils.get_tensor_specs(env)
     )
 
-    if environment_name == "CircuitTraining-v0":
+    if environment_name in ENV_NAMES[BenchmarkDomain.CIRCUIT_TRAINING]:
         # Add static features
         static_features = env.wrapped_env().get_static_obs()
         env_kwargs = {
             "static_features": static_features,
         }
-    elif environment_name == "WebNavigation-v0":
+    elif environment_name in ENV_NAMES[BenchmarkDomain.WEB_NAVIGATION]:
         env_kwargs = {}
 
-    elif environment_name == "QuadrupedLocomotion-v0":
+    elif environment_name in ENV_NAMES[BenchmarkDomain.QUADRUPED_LOCOMOTION]:
         env_kwargs = {}
     else:
         raise ValueError(f"Unknown environment: {environment_name}")
@@ -466,7 +464,7 @@ def train(
         saved_model_dir = os.path.join(root_dir, "policies")
         train_step = train_utils.create_train_step()
         model_id = common.create_variable("model_id")
-        if environment_name == "WebNavigation-v0":
+        if environment_name in ENV_NAMES[BenchmarkDomain.WEB_NAVIGATION]:
             saved_vocab_dir = os.path.join(root_dir, "vocabulary")
             vocab_save_trigger = VocabularySaveTrigger(
                 saved_vocab_dir=saved_vocab_dir,
@@ -517,7 +515,7 @@ def train(
             triggers.StepPerSecondLogTrigger(train_step, interval=log_interval),
         ]
 
-        if environment_name == "WebNavigation-v0":
+        if environment_name in ENV_NAMES[BenchmarkDomain.WEB_NAVIGATION]:
             learning_triggers.append(vocab_save_trigger)
 
         if algorithm in ("bc",):
@@ -650,7 +648,7 @@ def main(_):
         tf.config.run_functions_eagerly(True)
         tf.data.experimental.enable_debug_mode()
 
-    if _ENV_NAME.value == "WebNavigation-v0":
+    if _ENV_NAME.value in ENV_NAMES[BenchmarkDomain.QUADRUPED_LOCOMOTION]:
         # Unable to use DOM Encoder in graph mode
         # tf.config.run_functions_eagerly(True)
         pass
@@ -671,15 +669,15 @@ def main(_):
         tpu=_USE_TPU.value,
         use_gpu=FLAGS.use_gpu,
     )
-    if _ENV_NAME.value == "QuadrupedLocomotion-v0":
+    if _ENV_NAME.value in ENV_NAMES[BenchmarkDomain.QUADRUPED_LOCOMOTION]:
         default_gym_kwargs = dict(
-            motion_files=[_MOTION_FILE_PATH.value],
+            # motion_files=[_MOTION_FILE_PATH.value],
             num_parallel_envs=_ENV_BATCH_SIZE.value,
         )
         suite_load_function = functools.partial(
             suite_gym.load, gym_kwargs=default_gym_kwargs
         )
-    elif _ENV_NAME.value == "WebNavigation-v0":
+    elif _ENV_NAME.value in ENV_NAMES[BenchmarkDomain.WEB_NAVIGATION]:
 
         class VocabularyManager(BaseManager):
             pass
@@ -733,7 +731,7 @@ def main(_):
 
         default_gym_kwargs = dict(
             global_vocabulary=global_vocabulary,
-            difficulty=_DIFFICULTY_LEVEL.value,
+            # difficulty=_DIFFICULTY_LEVEL.value,
             num_websites=_NUM_WEBSITES.value,
             seed=0,
             browser_args=dict(
@@ -751,13 +749,13 @@ def main(_):
             gym_kwargs=default_gym_kwargs,
             env_wrappers=[wrappers.ActionClipWrapper],
         )
-    elif _ENV_NAME.value == "CircuitTraining-v0":
+    elif _ENV_NAME.value in ENV_NAMES[BenchmarkDomain.CIRCUIT_TRAINING]:
         default_gym_kwargs = dict(
-            netlist_file=_NETLIST_FILE.value,
-            init_placement=_INIT_PLACEMENT.value,
+            # netlist_file=_NETLIST_FILE.value,
+            # init_placement=_INIT_PLACEMENT.value,
             global_seed=_SEED.value,
-            std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
-            netlist_index=_TASK_INDEX.value,
+            # std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
+            # netlist_index=_TASK_INDEX.value,
         )
         suite_load_function = functools.partial(
             suite_gym.load,

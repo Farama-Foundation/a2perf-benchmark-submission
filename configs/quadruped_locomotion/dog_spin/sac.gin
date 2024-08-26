@@ -1,22 +1,16 @@
 # Basic configuration
-train_func.task_name = "netlist_toy_macro_stdcell_std_cell_placer_mode_dreamplace"
-train_func.algorithm = "ppo"
+train_func.task_name = "dog_spin"
+train_func.algorithm = "sac"
 train_func.seed = 42
 train_func.debug = False
 
 # Environment configuration
-train_func.env_name = "CircuitTraining-ToyMacro-v0"
+train_func.env_name = "QuadrupedLocomotion-DogSpin-v0"
 
 # Training hyperparameters
-train_func.num_iterations = 10
-train_func.num_epochs = 6
-train_func.batch_size = 128
-train_func.learning_rate = 4e-4
-train_func.use_gae = False
-train_func.entropy_regularization = 1e-2
-train_func.max_sequence_length = 3
-train_func.num_episodes_per_iteration = 43
-train_func.replay_buffer_capacity = 1000000 # set to high value to avoid overflow
+train_func.num_iterations = 1000
+train_func.batch_size = 256
+train_func.learning_rate = 3e-4
 
 # Logging and checkpointing
 train_func.eval_interval = 1
@@ -26,11 +20,15 @@ train_func.policy_checkpoint_interval = 10
 
 # Distributed training
 train_func.num_replicas = 1
-train_func.num_collect_jobs = 4
-train_func.env_batch_size = 4
+train_func.num_collect_jobs = 11
+train_func.env_batch_size = 11
 
 # Distributed training configurations
 train_func.replay_buffer_server_address = "127.0.0.1"
 train_func.variable_container_server_address = "127.0.0.1"
 train_func.replay_buffer_server_port = 8008
 train_func.variable_container_server_port = 8008
+
+# SAC configuration
+train_func.max_sequence_length = 100
+train_func.replay_buffer_capacity = 2000000  # Updated as per SAC hyperparameters

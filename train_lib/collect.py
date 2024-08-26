@@ -28,13 +28,15 @@ from tf_agents.train import learner
 from tf_agents.train.utils import train_utils
 from tf_agents.utils import common
 
+from a2perf.constants import BenchmarkDomain
+from a2perf.constants import ENV_NAMES
+from a2perf.domains import circuit_training  # noqa: F401
+from a2perf.domains import quadruped_locomotion  # noqa: F401
+from a2perf.domains import web_navigation  # noqa: F401
 from a2perf.domains.tfa import suite_gym
 from a2perf.domains.tfa.utils import create_random_py_policy
 from a2perf.domains.tfa.utils import mask_circuit_training_actions
 from a2perf.domains.web_navigation.gwob.CoDE import vocabulary_node
-from a2perf.domains import circuit_training
-from a2perf.domains import quadruped_locomotion
-from a2perf.domains import web_navigation
 
 _DEBUG = flags.DEFINE_bool("debug", False, "Debug mode.")
 _GIN_FILE = flags.DEFINE_multi_string(
@@ -462,7 +464,7 @@ def run_collect(
     policy = None
     random_policy = None
     if algorithm in ("sac", "ddqn", "td3", "dqn", "ddpg"):
-        if environment_name == "CircuitTraining-v0":
+        if environment_name in ENV_NAMES[BenchmarkDomain.CIRCUIT_TRAINING]:
             random_policy = create_random_py_policy(
                 collect_env,
                 obs_and_action_constraint_splitter_fn=functools.partial(
@@ -606,7 +608,7 @@ def setup_web_navigation_env_for_collect():
 
     default_gym_kwargs = dict(
         global_vocabulary=global_vocabulary,
-        difficulty=_DIFFICULTY_LEVEL.value,
+        # difficulty=_DIFFICULTY_LEVEL.value,
         num_websites=_NUM_WEBSITES.value,
         seed=0,
         browser_args=dict(
@@ -629,7 +631,7 @@ def setup_web_navigation_env_for_collect():
 
 def setup_quadruped_locomotion_env_for_collect():
     default_gym_kwargs = dict(
-        motion_files=[_MOTION_FILE_PATH.value],
+        # motion_files=[_MOTION_FILE_PATH.value],
         num_parallel_envs=_ENV_BATCH_SIZE.value,
     )
     suite_load_function = functools.partial(
@@ -642,11 +644,11 @@ def setup_quadruped_locomotion_env_for_collect():
 
 def setup_circuit_training_env_for_collect():
     gym_kwargs = dict(
-        netlist_file=_NETLIST_FILE.value,
-        init_placement=_INIT_PLACEMENT.value,
+        # netlist_file=_NETLIST_FILE.value,
+        # init_placement=_INIT_PLACEMENT.value,
         global_seed=_GLOBAL_SEED.value,
-        std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
-        netlist_index=_NETLIST_INDEX.value,
+        # std_cell_placer_mode=_STD_CELL_PLACER_MODE.value,
+        # netlist_index=_NETLIST_INDEX.value,
     )
     suite_load_function = functools.partial(
         suite_gym.load,
@@ -658,11 +660,11 @@ def setup_circuit_training_env_for_collect():
 
 
 def setup_env_for_collect():
-    if _ENV_NAME.value == "QuadrupedLocomotion-v0":
+    if _ENV_NAME.value in ENV_NAMES[BenchmarkDomain.QUADRUPED_LOCOMOTION]:
         return setup_quadruped_locomotion_env_for_collect()
-    elif _ENV_NAME.value == "WebNavigation-v0":
+    elif _ENV_NAME.value in ENV_NAMES[BenchmarkDomain.WEB_NAVIGATION]:
         return setup_web_navigation_env_for_collect()
-    elif _ENV_NAME.value == "CircuitTraining-v0":
+    elif _ENV_NAME.value in ENV_NAMES[BenchmarkDomain.CIRCUIT_TRAINING]:
         return setup_circuit_training_env_for_collect()
     else:
         raise ValueError(f"Unknown environment: {_ENV_NAME.value}")

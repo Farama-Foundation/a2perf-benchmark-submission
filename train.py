@@ -4,6 +4,8 @@ import time
 import gin
 from absl import logging
 
+from a2perf.constants import BenchmarkDomain
+from a2perf.constants import ENV_NAMES
 from commands import collect_command
 from commands import create_and_manage_process
 from commands import reverb_command
@@ -139,12 +141,12 @@ def train_func(
 
     all_processes = []
     env_flags = []
-    if env_name == "WebNavigation-v0":
+    if env_name in ENV_NAMES[BenchmarkDomain.WEB_NAVIGATION]:
         env_flags.extend(
             [
                 f"--env_name={env_name}",
                 f"--num_websites={num_websites}",
-                f"--difficulty_level={difficulty_level}",
+                # f"--difficulty_level={difficulty_level}",
                 f"--profile_value_dropout={profile_value_dropout}",
                 f"--embedding_dim={embedding_dim}",
                 f"--latent_dim={latent_dim}",
@@ -173,16 +175,16 @@ def train_func(
         else:
             print("Successfully launched vocab manager server.")
 
-    elif env_name == "QuadrupedLocomotion-v0":
+    elif env_name in ENV_NAMES[BenchmarkDomain.QUADRUPED_LOCOMOTION]:
         env_flags.extend(
             [f"--env_name={env_name}", f"--motion_file_path={motion_file_path}"]
         )
-    elif env_name == "CircuitTraining-v0":
+    elif env_name in ENV_NAMES[BenchmarkDomain.CIRCUIT_TRAINING]:
         env_flags.extend(
             [
                 f"--std_cell_placer_mode={std_cell_placer_mode}",
-                f"--netlist_file={netlist_path}",
-                f"--init_placement={init_placement_path}",
+                # f"--netlist_file={netlist_path}",
+                # f"--init_placement={init_placement_path}",
             ]
         )
     else:
@@ -297,4 +299,6 @@ def train(
     gin_config_path: str,
 ):
     gin.parse_config_file(gin_config_path)
-    train_func()
+
+    root_dir = os.environ.get("ROOT_DIR")
+    train_func(root_dir=root_dir)

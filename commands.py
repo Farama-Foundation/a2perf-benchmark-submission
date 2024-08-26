@@ -47,7 +47,7 @@ def collect_command(
         f"--summary_interval={log_interval}",
         f"--task={task}",
         f"--variable_container_server_address={variable_container_server_address}:{variable_container_server_port}",
-        f'--verbosity={"1" if task == 0 else "-1"}',
+        f"--verbosity={logging.get_verbosity()}",
         f"--vocabulary_manager_auth_key={vocabulary_manager_auth_key}",
         f"--vocabulary_server_address={vocabulary_server_address}",
         f"--vocabulary_server_port={vocabulary_server_port}",
