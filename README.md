@@ -1,5 +1,7 @@
 # A2Perf Benchmark Submission
 
+**Nov 7, 2025: This project has been deprecated due to a lack of widespread community use, and is no longer planned to receive any additional updates or support.**
+
 This repository contains a template script for training and inference of a model for the A2Perf Benchmark Submission.
 
 ## Files
